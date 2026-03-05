@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Plus,
   CheckSquare,
@@ -16,6 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Menu,
+  LogOut,
 } from 'lucide-react';
 import { useScheduleStore } from '@/lib/store';
 import { fetchAllSports } from '@/lib/fetchAllSports';
@@ -67,6 +69,13 @@ export default function SchedulePage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [featuredLeagues, setFeaturedLeagues] = useState<Map<string, string>>(new Map());
+  const [flashKey, setFlashKey] = useState(0);
+  const router = useRouter();
+
+  async function handleLogout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.push('/login');
+  }
   const [activeSortLeague, setActiveSortLeague] = useState<string | null>(null);
   const [headerHeight, setHeaderHeight] = useState(116);
   const hasFetchedRef = useRef(false);
@@ -388,7 +397,7 @@ export default function SchedulePage() {
         <div className="px-2 pt-2">
           <SportFilter
             activeFilter={activeSportFilter}
-            onFilterChange={(f) => { setActiveSportFilter(f); setSidebarOpen(false); }}
+            onFilterChange={(f) => { setActiveSportFilter(f); setFlashKey(k => k + 1); setSidebarOpen(false); }}
             events={events}
           />
         </div>
@@ -402,6 +411,13 @@ export default function SchedulePage() {
           >
             <Settings className="w-4 h-4" />
             Settings
+          </button>
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-all text-muted-foreground hover:text-destructive hover:bg-accent"
+          >
+            <LogOut className="w-4 h-4" />
+            Sign Out
           </button>
         </div>
       </aside>
@@ -574,7 +590,7 @@ export default function SchedulePage() {
 
           {Array.from(groupedByLeague.entries()).length === 0 ? null : Array.from(groupedByLeague.entries()).map(([sportId, leagueEvents]) => (
             <LeagueSection
-              key={sportId}
+              key={`${sportId}-${flashKey}`}
               sportId={sportId}
               events={leagueEvents}
               isLoading={fetchStatuses[sportId]?.loading}

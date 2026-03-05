@@ -52,7 +52,7 @@ const LeagueSection = memo(function LeagueSection({
   if (!config) return null;
 
   return (
-    <div className="mb-6">
+    <div className="mb-6 animate-league-flash">
       {/* League header */}
       <div className="flex items-center gap-2 mb-3 sticky top-0 bg-background backdrop-blur-sm py-2 z-10 -mx-3 px-3 sm:-mx-6 sm:px-6 border-b border-border/50">
         {config.logo && (

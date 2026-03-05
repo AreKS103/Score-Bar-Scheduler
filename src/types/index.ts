@@ -44,22 +44,41 @@ export interface WPConfig {
 // ─── API Response Types ──────────────────────────────────────────────────────
 
 export interface ESPNCompetitor {
-  homeAway: 'home' | 'away';
-  team: {
+  homeAway?: 'home' | 'away';
+  order?: number;
+  team?: {
     displayName: string;
     shortDisplayName: string;
     logo?: string;
   };
+  athlete?: {
+    fullName?: string;
+    displayName: string;
+    shortName?: string;
+    flag?: { href: string; alt: string };
+  };
   score?: string;
+  winner?: boolean;
 }
 
 export interface ESPNCompetition {
+  id?: string;
   competitors: ESPNCompetitor[];
+  type?: {
+    abbreviation?: string;
+  };
   venue?: {
     fullName: string;
     address?: {
       city: string;
       country: string;
+    };
+  };
+  date?: string;
+  status?: {
+    type: {
+      name: string;
+      description: string;
     };
   };
 }

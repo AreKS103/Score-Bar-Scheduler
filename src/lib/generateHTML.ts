@@ -144,9 +144,17 @@ function generateMatchLine(event: MatchEvent): string {
 }
 
 /**
- * Get short abbreviation for a league
+ * Get short abbreviation for a league.
+ * For combat sports, uses the event-specific card name (e.g. "UFC 326") from leagueLabel.
  */
 function getLeagueAbbrev(sportId: string, label: string): string {
+  // For combat sports, the label is the card/event name (e.g. "UFC 326", "Boxing")
+  // Use it directly as the abbreviation line — this gives correct format:
+  //   05:00 – UFC 326 – Holloway vs. Oliveira 2
+  if (sportId === 'ufc' || sportId === 'bellator' || sportId === 'boxing') {
+    return label;
+  }
+
   const abbrevMap: Record<string, string> = {
     'soccer-epl': 'EPL',
     'soccer-ucl': 'UCL',
@@ -189,9 +197,7 @@ function getLeagueAbbrev(sportId: string, label: string): string {
     'f1': 'F1',
     'motogp': 'MotoGP',
     'indycar': 'IndyCar',
-    'ufc': 'UFC',
-    'bellator': 'PFL',
-    'boxing': 'Boxing',
+    // ufc, bellator, boxing handled above with event-level card names
     'rugby-superrugby': 'Super Rugby',
     'rugby-sixnations': '6N',
     'rugby-premship': 'Prem Rugby',

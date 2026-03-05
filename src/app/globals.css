@@ -109,3 +109,12 @@ input[type='time']::-webkit-calendar-picker-indicator { filter: invert(1); }
     @apply bg-background text-foreground;
   }
 }
+
+/* ── League section flash on filter change ───────────────────────────────────── */
+@keyframes league-flash {
+  0%   { background-color: oklch(0.623 0.214 259 / 12%); }
+  100% { background-color: transparent; }
+}
+.animate-league-flash {
+  animation: league-flash 400ms ease-out;
+}

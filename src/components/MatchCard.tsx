@@ -92,7 +92,11 @@ const MatchCard = memo(function MatchCard({
             return (
               <button
                 key={tag}
-                onClick={(e) => { e.stopPropagation(); onToggleTag(event.id, tag); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleTag(event.id, tag);
+                  if (!event.isSelected) onToggleSelected(event.id);
+                }}
                 className={cn(
                   'text-[10px] px-1.5 py-0 rounded-full border transition-all',
                   isActive

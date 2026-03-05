@@ -24,6 +24,32 @@ async function fetchLeagueSeason(
 }
 
 /**
+ * Parse fight event name into fighters and card name.
+ * Handles: "UFC 326 Holloway vs Oliveira 2", "Canelo Alvarez vs Terence Crawford"
+ */
+function parseFightEvent(eventName: string): { fighter1: string; fighter2: string; cardName?: string } {
+  let remaining = eventName;
+  let cardName: string | undefined;
+
+  // Extract card prefix: "UFC 326", "UFC Fight Night 271", "PFL 12", "Bellator 300"
+  const cardPrefixMatch = remaining.match(
+    /^(UFC\s+\d+|UFC\s+Fight\s+Night\s*\d*|PFL\s+\d+|Bellator\s+\d+)\s*/i
+  );
+  if (cardPrefixMatch) {
+    cardName = cardPrefixMatch[1].trim();
+    remaining = remaining.slice(cardPrefixMatch[0].length);
+  }
+
+  // Split by "vs" or "vs."
+  const vsMatch = remaining.match(/^(.+?)\s+vs\.?\s+(.+)$/i);
+  if (vsMatch) {
+    return { fighter1: vsMatch[1].trim(), fighter2: vsMatch[2].trim(), cardName };
+  }
+
+  return { fighter1: eventName, fighter2: '', cardName };
+}
+
+/**
  * Convert a SportsDB event to our MatchEvent format
  */
 function mapSportsDBEvent(
@@ -35,17 +61,29 @@ function mapSportsDBEvent(
     event.strTime || '00:00:00'
   );
 
+  let home = event.strHomeTeam || event.strEvent || 'TBD';
+  let away = event.strAwayTeam || '';
+  let leagueLabel = sportConfig.label;
+
+  // For combat sports, parse fighters from event name (strHomeTeam/strAwayTeam are null)
+  if (sportConfig.category === 'Combat Sports' && !event.strHomeTeam && event.strEvent) {
+    const parsed = parseFightEvent(event.strEvent);
+    home = parsed.fighter1;
+    away = parsed.fighter2;
+    if (parsed.cardName) leagueLabel = parsed.cardName;
+  }
+
   return {
     id: `sportsdb-${event.idEvent}`,
     source: 'sportsdb' as const,
     sportId: sportConfig.id,
     category: sportConfig.category,
-    leagueLabel: sportConfig.label,
+    leagueLabel,
     leagueLogo: sportConfig.logo,
     date,
     time,
-    home: event.strHomeTeam || event.strEvent || 'TBD',
-    away: event.strAwayTeam || '',
+    home,
+    away,
     round: event.strRound || '',
     tags: [],
     isFeatured: false,

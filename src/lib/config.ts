@@ -59,7 +59,7 @@ export const SPORTS_CONFIG: SportConfig[] = [
   // ── Combat Sports ──────────────────────────────────────────────────────────
   { id: 'ufc',                   label: 'UFC / MMA',                           category: 'Combat Sports', espnSlug: 'mma/ufc',                logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/ufc.png' },
   { id: 'bellator',              label: 'PFL / Bellator',                      category: 'Combat Sports', espnSlug: 'mma/bellator',            logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/pfl.png' },
-  { id: 'boxing',                label: 'Boxing',                              category: 'Combat Sports', espnSlug: null,                      logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/boxing.png' },
+  { id: 'boxing',                label: 'Boxing',                              category: 'Combat Sports', espnSlug: null,                      sportsdbId: '4445', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/boxing.png' },
 
   // ── Rugby Union ────────────────────────────────────────────────────────────
   { id: 'rugby-superrugby',      label: 'Super Rugby Pacific',                category: 'Rugby',       espnSlug: 'rugby/242041',              logo: 'https://r2.thesportsdb.com/images/media/league/badge/gz76v11717091774.png' },

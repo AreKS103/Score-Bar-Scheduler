@@ -3,7 +3,19 @@ import { utcToICT } from '@/lib/timezone';
 
 const OPENF1_BASE = 'https://api.openf1.org/v1';
 
-const SESSION_TYPES_TO_SHOW = ['Race', 'Qualifying', 'Sprint'];
+// Show all session types: Practice, Qualifying, Sprint, Race
+const SESSION_TYPES_TO_SHOW = ['Race', 'Qualifying', 'Sprint', 'Practice'];
+
+/** Shorten "Grand Prix" to "GP" for cleaner display */
+function shortenGPName(name: string): string {
+  return name.replace(/Grand Prix/gi, 'GP').replace(/\s+/g, ' ').trim();
+}
+
+/** Map session names to user-friendly labels */
+function formatSessionName(name: string): string {
+  if (name === 'Race') return 'Main Race';
+  return name; // "Practice 1", "Practice 2", "Practice 3", "Qualifying", "Sprint", etc.
+}
 
 /**
  * Fetch all F1 meetings (race weekends) for a given year
@@ -53,20 +65,24 @@ function mapF1Sessions(
   sessions: OpenF1Session[],
   meeting: OpenF1Meeting
 ): MatchEvent[] {
+  const gpName = shortenGPName(meeting.meeting_name);
+
   return sessions.map((session) => {
     const { date, time } = utcToICT(session.date_start);
+    const sessionLabel = formatSessionName(session.session_name);
+
     return {
       id: `openf1-${session.session_key}`,
       source: 'openf1' as const,
       sportId: 'f1',
       category: 'Motorsport',
       leagueLabel: 'Formula 1',
-      leagueLogo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/33/F1.svg/200px-F1.svg.png',
+      leagueLogo: 'https://r2.thesportsdb.com/images/media/league/badge/g8cofl1513623681.png',
       date,
       time,
-      home: `${meeting.meeting_name} – ${session.session_name}`,
+      home: `${gpName} – ${sessionLabel}`,
       away: '',
-      round: meeting.country_name || '',
+      round: '',
       tags: [],
       isFeatured: false,
       isSelected: false,
