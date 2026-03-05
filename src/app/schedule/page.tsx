@@ -20,6 +20,7 @@ import {
   LogOut,
 } from 'lucide-react';
 import { useScheduleStore } from '@/lib/store';
+import { useThemeStore } from '@/lib/themeStore';
 import { fetchAllSports } from '@/lib/fetchAllSports';
 import { generateHTML } from '@/lib/generateHTML';
 import { SPORTS_CONFIG, getCategories, ALL_SCREEN_TAGS } from '@/lib/config';
@@ -38,6 +39,8 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 
 export default function SchedulePage() {
+  const theme = useThemeStore((s) => s.theme);
+
   const {
     events,
     fetchStatuses,
@@ -385,7 +388,7 @@ export default function SchedulePage() {
       >
         <div className="pt-2 pb-1">
           <img
-            src="/Score WEB White Transp.png"
+            src={theme === 'dark' ? '/Score WEB White Transp.png' : '/Score WEB Black Transp.png'}
             alt="SCORE Sports Bar"
             className="w-full h-37 object-contain object-center"
           />
