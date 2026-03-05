@@ -135,8 +135,9 @@ function mapMMAEvents(
   const results: MatchEvent[] = [];
 
   for (const event of data.events) {
-    // Card name, e.g. "UFC 326" or "UFC Fight Night 271"
-    const cardName = event.shortName || event.name?.split(':')?.[0]?.trim() || sportConfig.label;
+    // Full event name includes the main event, e.g. "UFC 326: Max Holloway vs. Charles Oliveira 2"
+    // Fall back to shortName ("UFC 326") if name is not available
+    const cardName = event.name || event.shortName || sportConfig.label;
     const { date, time } = utcToICT(event.date);
 
     const competitions = event.competitions ?? [];

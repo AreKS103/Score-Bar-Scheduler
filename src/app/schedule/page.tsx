@@ -77,6 +77,8 @@ export default function SchedulePage() {
     router.push('/login');
   }
   const [activeSortLeague, setActiveSortLeague] = useState<string | null>(null);
+  // Increments on every moveLeague call — guarantees html useMemo always recomputes
+  const [sortVersion, setSortVersion] = useState(0);
   const [headerHeight, setHeaderHeight] = useState(116);
   const hasFetchedRef = useRef(false);
   const prevSelectedCountRef = useRef(0);
@@ -85,6 +87,10 @@ export default function SchedulePage() {
   const toggleBtnRef = useRef<HTMLButtonElement>(null);
   const headerRef = useRef<HTMLElement>(null);
   const leagueItemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const sidebarScrollRef = useRef<HTMLDivElement>(null);
+  const htmlPreviewRef = useRef<HTMLDivElement>(null);
+  // Ref mirror of selectedByLeague so moveLeague never closes over stale data
+  const selectedByLeagueRef = useRef<Map<string, MatchEvent[]>>(new Map());
 
   // ─── Fetch all sports data via Server API (cached) ───────────────────────────
   const handleFetch = useCallback(async (forceRefresh = false) => {
@@ -247,11 +253,25 @@ export default function SchedulePage() {
     if (panelRef.current) panelRef.current.style.width = `${panelWidth}px`;
   }, [panelWidth]);
 
-  // Scroll active sort league into view when order changes
+  // Keep ref mirror of selectedByLeague up-to-date on every render
+  selectedByLeagueRef.current = selectedByLeague;
+
+  // Scroll active sort league into view (centered) when order changes
   useEffect(() => {
     if (!activeSortLeague) return;
+    const container = sidebarScrollRef.current;
     const el = leagueItemRefs.current.get(activeSortLeague);
-    el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    if (!el) return;
+    if (!container) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    // Center the moved league within the scroll container
+    const containerRect = container.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const relTop = elRect.top - containerRect.top + container.scrollTop;
+    const targetScroll = relTop - (container.clientHeight / 2) + (elRect.height / 2);
+    container.scrollTo({ top: Math.max(0, targetScroll), behavior: 'smooth' });
   }, [leagueOrder, activeSortLeague]);
 
   const orderedSelectedByLeague = useMemo(
@@ -265,12 +285,21 @@ export default function SchedulePage() {
 
   const moveLeague = useCallback((league: string, dir: -1 | 1) => {
     setActiveSortLeague(league);
+    setSortVersion((v) => v + 1); // Always different → html useMemo always recomputes
     setLeagueOrder((prev) => {
-      const idx = prev.indexOf(league);
-      const next = idx + dir;
-      if (next < 0 || next >= prev.length) return prev;
+      // Build the visible-only order from the current leagueOrder so we always
+      // swap with the correct visible neighbour (prev may contain non-selected
+      // IDs that haven't been pruned by the sync effect yet).
+      const visibleOrder = prev.filter((l) => selectedByLeagueRef.current.has(l));
+      const visIdx = visibleOrder.indexOf(league);
+      const nextVisIdx = visIdx + dir;
+      if (nextVisIdx < 0 || nextVisIdx >= visibleOrder.length) return prev;
+      const neighbor = visibleOrder[nextVisIdx];
       const arr = [...prev];
-      [arr[idx], arr[next]] = [arr[next], arr[idx]];
+      const idxA = arr.indexOf(league);
+      const idxB = arr.indexOf(neighbor);
+      if (idxA === -1 || idxB === -1) return prev;
+      [arr[idxA], arr[idxB]] = [arr[idxB], arr[idxA]];
       return arr;
     });
   }, []);
@@ -324,12 +353,16 @@ export default function SchedulePage() {
     setPreviewCheckedIds(new Set());
   }, [events, toggleSelected]);
 
-  // ─── HTML generation — ONLY when preview is open (avoids expensive work on every toggle) ─
+  // ─── HTML generation — recomputes whenever leagueOrder, events, or sortVersion changes ─
   const html = useMemo(
     () => selectedCount > 0 ? generateHTML(events, leagueOrder, featuredLeagues) : '',
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [events, leagueOrder, selectedCount, featuredLeagues]
+    [events, leagueOrder, sortVersion, selectedCount, featuredLeagues] // sortVersion is the safety net
   );
+
+  // Scroll HTML preview back to top whenever the league order changes so the reorder is visible
+  useEffect(() => {
+    if (htmlPreviewRef.current) htmlPreviewRef.current.scrollTop = 0;
+  }, [leagueOrder]);
   // Keep a ref for publish/copy so it always has the latest
   const htmlRef = useRef('');
   useEffect(() => { if (html) htmlRef.current = html; }, [html]);
@@ -728,7 +761,7 @@ export default function SchedulePage() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-2 space-y-3">
+            <div ref={sidebarScrollRef} className="flex-1 overflow-y-auto p-2 space-y-3">
               {selectedCount === 0 ? (
                 <p className="text-[10px] text-muted-foreground text-center pt-8">No matches selected</p>
               ) : (
@@ -825,7 +858,7 @@ export default function SchedulePage() {
           </aside>
 
           {/* Right: HTML preview */}
-          <div className="flex-1 overflow-y-auto" onPointerDown={() => setActiveSortLeague(null)}>
+          <div ref={htmlPreviewRef} className="flex-1 overflow-y-auto" onPointerDown={() => setActiveSortLeague(null)}>
             <div className="p-3 sm:p-6">
               <PreviewPanel
                 html={html}

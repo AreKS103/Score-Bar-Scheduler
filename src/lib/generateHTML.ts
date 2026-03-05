@@ -148,11 +148,13 @@ function generateMatchLine(event: MatchEvent): string {
  * For combat sports, uses the event-specific card name (e.g. "UFC 326") from leagueLabel.
  */
 function getLeagueAbbrev(sportId: string, label: string): string {
-  // For combat sports, the label is the card/event name (e.g. "UFC 326", "Boxing")
-  // Use it directly as the abbreviation line — this gives correct format:
+  // For combat sports, the leagueLabel is the full card name e.g.:
+  //   "UFC 326: Max Holloway vs. Charles Oliveira 2"
+  // Use only the part before ":" as the inline abbreviation so match lines stay compact:
   //   05:00 – UFC 326 – Holloway vs. Oliveira 2
   if (sportId === 'ufc' || sportId === 'bellator' || sportId === 'boxing') {
-    return label;
+    const colonIdx = label.indexOf(':');
+    return colonIdx > 0 ? label.substring(0, colonIdx).trim() : label;
   }
 
   const abbrevMap: Record<string, string> = {
@@ -235,10 +237,26 @@ export function generateHTML(events: MatchEvent[], leagueOrder?: string[], featu
     parts.push(highlightsHTML);
   }
 
-  // Sort categories
-  const sortedCategories = Array.from(grouped.keys()).sort(
-    (a, b) => categorySort(a) - categorySort(b)
-  );
+  // Sort categories — derive order from leagueOrder so cross-category
+  // reordering in the preview panel is reflected in the HTML output
+  const catOrderFromLeague = new Map<string, number>();
+  if (leagueOrder?.length) {
+    for (let i = 0; i < leagueOrder.length; i++) {
+      const ev = selected.find(e => e.sportId === leagueOrder[i]);
+      if (ev && !catOrderFromLeague.has(ev.category)) {
+        catOrderFromLeague.set(ev.category, i);
+      }
+    }
+  }
+
+  const sortedCategories = Array.from(grouped.keys()).sort((a, b) => {
+    if (catOrderFromLeague.size > 0) {
+      const ai = catOrderFromLeague.get(a) ?? 999;
+      const bi = catOrderFromLeague.get(b) ?? 999;
+      if (ai !== bi) return ai - bi;
+    }
+    return categorySort(a) - categorySort(b);
+  });
 
   for (const category of sortedCategories) {
     parts.push(`<h2>– ${escapeHTML(category)} –</h2>`);
@@ -280,15 +298,47 @@ export function generateHTML(events: MatchEvent[], leagueOrder?: string[], featu
       // Sort dates ascending
       const sortedDates = Array.from(dateMap.keys()).sort();
 
+      // Detect if this league has fight-card events (MMA/Boxing)
+      const isCombatLeague = ['ufc', 'bellator', 'boxing'].includes(leagueKey);
+
       for (const date of sortedDates) {
         const dayEvents = dateMap.get(date)!;
-        // Sort by time ascending
-        dayEvents.sort((a, b) => a.time.localeCompare(b.time));
+
+        let sortedEvents: MatchEvent[];
+
+        if (isCombatLeague && dayEvents.some((e) => e.fightOrder !== undefined)) {
+          // Combat sports: group by cardName, then within each card sort prelims first,
+          // main event last. Fights without fightOrder fall back to time sort.
+          const cardGroups = new Map<string, MatchEvent[]>();
+          const noCard: MatchEvent[] = [];
+          for (const e of dayEvents) {
+            const key = e.cardName ?? '';
+            if (!key) { noCard.push(e); continue; }
+            if (!cardGroups.has(key)) cardGroups.set(key, []);
+            cardGroups.get(key)!.push(e);
+          }
+          // Sort no-card events by time
+          noCard.sort((a, b) => a.time.localeCompare(b.time));
+          // Within each card: sort by fightOrder ascending
+          // → main event (fightOrder 0) at TOP, prelims (higher fightOrder) below
+          const cardSorted: MatchEvent[] = [];
+          for (const fights of Array.from(cardGroups.values()).sort(
+            // Sort cards by the earliest fight time
+            (a, b) => (a[0]?.time ?? '').localeCompare(b[0]?.time ?? '')
+          )) {
+            fights.sort((a, b) => (a.fightOrder ?? 0) - (b.fightOrder ?? 0));
+            cardSorted.push(...fights);
+          }
+          sortedEvents = [...noCard, ...cardSorted];
+        } else {
+          // Default: sort by time ascending
+          sortedEvents = [...dayEvents].sort((a, b) => a.time.localeCompare(b.time));
+        }
 
         const displayDate = formatDisplayDate(date);
 
         // Check if all matches on this date share the same round
-        const rounds = new Set(dayEvents.map((e) => e.round).filter(Boolean));
+        const rounds = new Set(sortedEvents.map((e) => e.round).filter(Boolean));
         const sharedRound = rounds.size === 1 ? Array.from(rounds)[0] : '';
 
         if (sharedRound) {
@@ -299,10 +349,15 @@ export function generateHTML(events: MatchEvent[], leagueOrder?: string[], featu
           parts.push(`<p><strong>${displayDate}</strong></p>`);
         }
 
-        const matchLines = dayEvents.map((event) => {
+        const matchLines = sortedEvents.map((event) => {
           // If round is shared, don't repeat it on each line
           const e = sharedRound ? { ...event, round: '' } : event;
-          return generateMatchLine(e);
+          const line = generateMatchLine(e);
+          // Indent prelim fights (non-main-card fights in combat leagues)
+          if (isCombatLeague && e.fightOrder !== undefined && !e.isMainCard) {
+            return `&nbsp;&nbsp;&nbsp;&nbsp;${line}`;
+          }
+          return line;
         });
 
         parts.push(`<p>\n${matchLines.join('<br/>\n')}\n</p>`);
