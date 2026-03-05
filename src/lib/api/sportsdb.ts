@@ -10,8 +10,57 @@ function sportsdbUrl(endpoint: string): string {
   return `/api/sportsdb?path=${encodeURIComponent(endpoint)}`;
 }
 
+/** Small delay helper to avoid hitting TheSportsDB rate limits */
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
- * Fetch events for a league season from TheSportsDB
+ * Fetch with retry on HTTP 429 (rate limit).
+ * Retries up to `maxRetries` times with exponential backoff.
+ */
+async function fetchWithRetry(
+  url: string,
+  maxRetries = 2,
+  baseDelayMs = 1500
+): Promise<Response> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetch(url);
+    if (res.status === 429 && attempt < maxRetries) {
+      const waitMs = baseDelayMs * Math.pow(2, attempt);
+      console.warn(
+        `[SportsDB] 429 rate-limited → retrying in ${waitMs}ms (attempt ${attempt + 1}/${maxRetries})`
+      );
+      await wait(waitMs);
+      continue;
+    }
+    return res;
+  }
+  // Fallback (shouldn't happen)
+  return fetch(url);
+}
+
+/**
+ * Determine the 2 most likely season formats for the current date.
+ *
+ * Most leagues use either:
+ * - Single year: "2026" (Jan–Dec seasons like NRL, NBL)
+ * - Split year: "2025-2026" (seasons spanning two years like CPL, European leagues)
+ *
+ * Before July → "YYYY" + "YYYY-1–YYYY"
+ * After June  → "YYYY" + "YYYY–YYYY+1"
+ */
+function getSmartSeasons(): string[] {
+  const year = new Date().getFullYear();
+  const month = new Date().getMonth() + 1;
+  if (month <= 6) {
+    return [`${year}`, `${year - 1}-${year}`];
+  }
+  return [`${year}`, `${year}-${year + 1}`];
+}
+
+/**
+ * Fetch events for a league season from TheSportsDB (with retry)
  */
 async function fetchLeagueSeason(
   leagueId: string,
@@ -19,12 +68,15 @@ async function fetchLeagueSeason(
 ): Promise<SportsDBEvent[]> {
   try {
     const url = sportsdbUrl(`eventsseason.php?id=${leagueId}&s=${season}`);
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`TheSportsDB returned ${res.status}`);
+    const res = await fetchWithRetry(url);
+    if (!res.ok) {
+      console.warn(`[SportsDB] eventsseason ${res.status} for league=${leagueId} s=${season}`);
+      return [];
+    }
     const data = await res.json();
     return data.events ?? [];
   } catch (err) {
-    console.warn(`TheSportsDB fetch failed for league ${leagueId}:`, err);
+    console.warn(`[SportsDB] eventsseason failed for league ${leagueId}:`, err);
     return [];
   }
 }
@@ -101,6 +153,8 @@ function mapSportsDBEvent(
  * Fetch events by iterating through rounds for a league season.
  * The free tier of eventsseason.php sometimes truncates results (~15 events).
  * This round-by-round approach fetches ALL events reliably.
+ *
+ * Includes retry logic for 429 and delays between requests.
  */
 async function fetchLeagueByRounds(
   leagueId: string,
@@ -113,18 +167,28 @@ async function fetchLeagueByRounds(
   for (let round = 1; round <= maxRounds; round++) {
     try {
       const url = sportsdbUrl(`eventsround.php?id=${leagueId}&r=${round}&s=${season}`);
-      const res = await fetch(url);
-      if (!res.ok) break;
+      const res = await fetchWithRetry(url, 2, 2000);
+
+      if (!res.ok) {
+        console.warn(
+          `[SportsDB] Round ${round} still failed (${res.status}) after retries – league ${leagueId}`
+        );
+        break;
+      }
+
       const data = await res.json();
       const events: SportsDBEvent[] = data.events ?? [];
+
       if (events.length === 0) {
         consecutiveEmpty++;
-        // Stop after 3 consecutive empty rounds — we've reached the end
         if (consecutiveEmpty >= 3) break;
       } else {
         consecutiveEmpty = 0;
         allEvents.push(...events);
       }
+
+      // Throttle: 200ms between round requests to stay under rate limit
+      if (round < maxRounds) await wait(200);
     } catch {
       break;
     }
@@ -133,7 +197,9 @@ async function fetchLeagueByRounds(
 }
 
 /**
- * Fetch events for a specific SportsDB-backed league within a date range
+ * Fetch events for a specific SportsDB-backed league within a date range.
+ * Uses smart season detection (2 formats instead of 4) and only falls
+ * back to round-by-round when eventsseason.php returned truncated data.
  */
 export async function fetchSportsDBLeague(
   sportId: string,
@@ -143,26 +209,23 @@ export async function fetchSportsDBLeague(
   const config = SPORTS_CONFIG.find((s) => s.id === sportId);
   if (!config || !config.sportsdbId) return [];
 
-  const currentYear = new Date().getFullYear();
-  // TheSportsDB uses different season formats.
-  const seasons = [
-    `${currentYear}`,
-    `${currentYear - 1}-${currentYear}`,
-    `${currentYear + 1}`,
-    `${currentYear}-${currentYear + 1}`,
-  ];
-
+  const seasons = getSmartSeasons();
   let allEvents: SportsDBEvent[] = [];
 
-  // Try eventsseason.php first for each season format
-  for (const season of seasons) {
-    const events = await fetchLeagueSeason(config.sportsdbId, season);
+  // Try eventsseason.php sequentially with a small gap between requests
+  for (let i = 0; i < seasons.length; i++) {
+    const events = await fetchLeagueSeason(config.sportsdbId, seasons[i]);
     allEvents = [...allEvents, ...events];
+    if (i < seasons.length - 1) await wait(150);
   }
 
-  // If eventsseason.php returned very few events (free-tier truncation),
-  // fall back to round-by-round fetching for the split-year seasons
-  if (allEvents.length <= 20) {
+  // Only fall back to round-by-round when eventsseason returned SOME but
+  // limited events (1-20 → free-tier truncation). 0 means the league
+  // simply doesn't exist in that season — no point fetching rounds.
+  if (allEvents.length > 0 && allEvents.length <= 20) {
+    console.log(
+      `[SportsDB] League ${config.sportsdbId} (${config.label}): ${allEvents.length} events from eventsseason → trying round-by-round`
+    );
     for (const season of seasons) {
       if (season.includes('-')) {
         const roundEvents = await fetchLeagueByRounds(config.sportsdbId, season);
@@ -186,7 +249,12 @@ export async function fetchSportsDBLeague(
 }
 
 /**
- * Fetch all SportsDB-backed leagues in parallel
+ * Fetch all SportsDB-backed leagues SEQUENTIALLY with delays.
+ *
+ * The free tier of TheSportsDB rate-limits aggressively (~15 req/min).
+ * Running all leagues in parallel caused HTTP 429 errors that killed
+ * round-by-round fallback (especially CPL).  Sequential with delays
+ * keeps us well under the limit.
  */
 export async function fetchAllSportsDBLeagues(
   startDate: string,
@@ -196,25 +264,24 @@ export async function fetchAllSportsDBLeagues(
     (s) => s.sportsdbId !== undefined
   );
 
-  const results = await Promise.allSettled(
-    sportsDBSports.map(async (sport) => {
-      const events = await fetchSportsDBLeague(
-        sport.id,
-        startDate,
-        endDate
-      );
-      return { sportId: sport.id, events };
-    })
-  );
+  const results: { sportId: string; events: MatchEvent[]; error?: string }[] = [];
 
-  return results.map((result, i) => {
-    if (result.status === 'fulfilled') {
-      return result.value;
+  for (const sport of sportsDBSports) {
+    try {
+      const events = await fetchSportsDBLeague(sport.id, startDate, endDate);
+      results.push({ sportId: sport.id, events });
+      console.log(`[SportsDB] ✓ ${sport.label}: ${events.length} events`);
+    } catch (err: any) {
+      results.push({
+        sportId: sport.id,
+        events: [],
+        error: err?.message || 'Unknown error',
+      });
+      console.warn(`[SportsDB] ✗ ${sport.label}: ${err?.message}`);
     }
-    return {
-      sportId: sportsDBSports[i].id,
-      events: [],
-      error: result.reason?.message || 'Unknown error',
-    };
-  });
+    // 300ms between leagues to stay under rate limit
+    await wait(300);
+  }
+
+  return results;
 }

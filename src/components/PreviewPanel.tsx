@@ -53,17 +53,21 @@ export default function PreviewPanel({
         </div>
       </div>
 
-      {/* HTML preview styled like Score Bar website — always dark */}
+      {/* HTML preview — adapts to current theme */}
       <div
-        className="bg-zinc-900 border border-zinc-700/60 rounded-lg p-8 overflow-y-auto prose prose-invert prose-sm max-w-none
-          [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-white [&_h2]:mt-8 [&_h2]:mb-4
-          [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-zinc-200 [&_h3]:mt-5 [&_h3]:mb-3
-          [&_hr]:border-zinc-700 [&_hr]:my-6
+        className="bg-card border border-border rounded-lg p-8 overflow-y-auto prose prose-sm max-w-none
+          dark:prose-invert
+          [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mt-8 [&_h2]:mb-4
+          [&_h2]:text-zinc-800 dark:[&_h2]:text-white
+          [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-5 [&_h3]:mb-3
+          [&_h3]:text-zinc-700 dark:[&_h3]:text-zinc-200
+          [&_hr]:border-border [&_hr]:my-6
           [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1.5
-          [&_li]:text-zinc-300 [&_li]:leading-relaxed
-          [&_p]:text-zinc-300 [&_p]:leading-relaxed [&_p]:my-3
-          [&_strong]:text-white
-          [&_em]:not-italic [&_em]:text-xs [&_em]:bg-blue-500/15 [&_em]:text-blue-300 [&_em]:px-1.5 [&_em]:py-0.5 [&_em]:rounded
+          [&_li]:leading-relaxed [&_li]:text-zinc-600 dark:[&_li]:text-zinc-300
+          [&_p]:leading-relaxed [&_p]:my-3 [&_p]:text-zinc-600 dark:[&_p]:text-zinc-300
+          [&_strong]:text-zinc-900 dark:[&_strong]:text-white
+          [&_em]:not-italic [&_em]:text-xs [&_em]:px-1.5 [&_em]:py-0.5 [&_em]:rounded
+          [&_em]:bg-primary/10 [&_em]:text-primary
           [&_img]:inline [&_img]:h-8 [&_img]:w-auto [&_img]:my-0
           [&_br]:leading-8
         "
