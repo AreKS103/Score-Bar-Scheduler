@@ -15,8 +15,21 @@ export const useThemeStore = create<ThemeState>()(
   persist(
     (set, get) => ({
       theme: 'light',
-      setTheme: (theme) => set({ theme }),
-      toggleTheme: () => set({ theme: get().theme === 'light' ? 'dark' : 'light' }),
+      setTheme: (theme) => {
+        if (typeof window !== 'undefined') {
+          document.documentElement.classList.toggle('dark', theme === 'dark');
+          document.documentElement.style.colorScheme = theme;
+        }
+        set({ theme });
+      },
+      toggleTheme: () => {
+        const next = get().theme === 'light' ? 'dark' : 'light';
+        if (typeof window !== 'undefined') {
+          document.documentElement.classList.toggle('dark', next === 'dark');
+          document.documentElement.style.colorScheme = next;
+        }
+        set({ theme: next });
+      },
     }),
     { name: 'score-theme' }
   )

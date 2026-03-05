@@ -28,7 +28,7 @@ const MatchCard = memo(function MatchCard({
         'flex items-start gap-2 p-2 rounded-lg border transition-all duration-150 cursor-pointer select-none',
         event.isSelected
           ? 'bg-card border-border hover:border-ring/40'
-          : 'bg-secondary/30 border-border/50 opacity-50 hover:opacity-75'
+          : 'bg-secondary/20 border-border/40 opacity-65 hover:opacity-85'
       )}
     >
       {/* Checkbox */}

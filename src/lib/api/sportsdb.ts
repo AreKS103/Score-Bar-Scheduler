@@ -2,7 +2,13 @@ import type { MatchEvent, SportsDBEvent } from '@/types';
 import { SPORTS_CONFIG } from '@/lib/config';
 import { sportsDBToICT } from '@/lib/timezone';
 
-const SPORTSDB_BASE = 'https://www.thesportsdb.com/api/v1/json/3';
+/**
+ * Build a URL that routes through our server-side proxy to avoid CORS.
+ * The proxy at /api/sportsdb forwards to TheSportsDB server-side.
+ */
+function sportsdbUrl(endpoint: string): string {
+  return `/api/sportsdb?path=${encodeURIComponent(endpoint)}`;
+}
 
 /**
  * Fetch events for a league season from TheSportsDB
@@ -12,7 +18,7 @@ async function fetchLeagueSeason(
   season: string
 ): Promise<SportsDBEvent[]> {
   try {
-    const url = `${SPORTSDB_BASE}/eventsseason.php?id=${leagueId}&s=${season}`;
+    const url = sportsdbUrl(`eventsseason.php?id=${leagueId}&s=${season}`);
     const res = await fetch(url);
     if (!res.ok) throw new Error(`TheSportsDB returned ${res.status}`);
     const data = await res.json();
@@ -106,7 +112,7 @@ async function fetchLeagueByRounds(
 
   for (let round = 1; round <= maxRounds; round++) {
     try {
-      const url = `${SPORTSDB_BASE}/eventsround.php?id=${leagueId}&r=${round}&s=${season}`;
+      const url = sportsdbUrl(`eventsround.php?id=${leagueId}&r=${round}&s=${season}`);
       const res = await fetch(url);
       if (!res.ok) break;
       const data = await res.json();

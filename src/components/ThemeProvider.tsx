@@ -1,34 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useThemeStore } from '@/lib/themeStore';
 
 export default function ThemeProvider({ children }: { children: React.ReactNode }) {
   const theme = useThemeStore((s) => s.theme);
-  const [mounted, setMounted] = useState(false);
 
+  // Keep DOM in sync if the store changes (e.g. from another tab)
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    if (theme === 'dark') {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
-    root.style.colorScheme = theme;
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    document.documentElement.style.colorScheme = theme;
   }, [theme]);
-
-  // Prevent flash of wrong theme on hydration
-  if (!mounted) {
-    return (
-      <div suppressHydrationWarning style={{ visibility: 'hidden' }}>
-        {children}
-      </div>
-    );
-  }
 
   return <>{children}</>;
 }

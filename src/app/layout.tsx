@@ -16,6 +16,14 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Inline script: set theme class before React hydrates to prevent flash */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var t=JSON.parse(localStorage.getItem('score-theme')||'{}')?.state?.theme||'light';if(t==='dark'){document.documentElement.classList.add('dark');}document.documentElement.style.colorScheme=t;}catch(e){}`,
+          }}
+        />
+      </head>
       <body className="bg-background text-foreground antialiased">
         <ThemeProvider>
           <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
