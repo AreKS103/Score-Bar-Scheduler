@@ -65,8 +65,16 @@ export async function fetchSportsDBLeague(
   if (!config || !config.sportsdbId) return [];
 
   const currentYear = new Date().getFullYear();
-  // TheSportsDB uses different season formats—try current year
-  const seasons = [`${currentYear}`, `${currentYear - 1}-${currentYear}`];
+  // TheSportsDB uses different season formats.
+  // Try current calendar year, current split-year season, next split-year season, and previous year
+  // Note: Some leagues (e.g. Cambodia C-League) may have incomplete data for the current season
+  // if SportsDB contributors haven't entered later rounds yet.
+  const seasons = [
+    `${currentYear}`,
+    `${currentYear - 1}-${currentYear}`,
+    `${currentYear + 1}`,
+    `${currentYear}-${currentYear + 1}`,
+  ];
 
   let allEvents: SportsDBEvent[] = [];
   for (const season of seasons) {
