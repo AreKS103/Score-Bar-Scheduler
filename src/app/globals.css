@@ -4,8 +4,46 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* ── Dark-first theme for SCORE Sports Bar ───────────────────────────────────── */
+/* ── Light theme (default) for SCORE Sports Bar ──────────────────────────────── */
 :root {
+  --background: oklch(0.985 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.523 0.214 259);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.94 0.005 260);
+  --secondary-foreground: oklch(0.205 0.015 260);
+  --muted: oklch(0.94 0.005 260);
+  --muted-foreground: oklch(0.46 0.015 260);
+  --accent: oklch(0.94 0.005 260);
+  --accent-foreground: oklch(0.205 0.015 260);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0 0 0 / 10%);
+  --input: oklch(0 0 0 / 10%);
+  --ring: oklch(0.523 0.214 259);
+  --radius: 0.5rem;
+  --sidebar: oklch(0.97 0.003 260);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-border: oklch(0 0 0 / 8%);
+  --sidebar-primary: oklch(0.523 0.214 259);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.94 0.005 260);
+  --sidebar-accent-foreground: oklch(0.205 0.015 260);
+  --sidebar-ring: oklch(0.523 0.214 259);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  color-scheme: light;
+}
+
+/* ── Dark theme ──────────────────────────────────────────────────────────────── */
+.dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.178 0.005 285);
@@ -25,7 +63,6 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.623 0.214 259);
-  --radius: 0.5rem;
   --sidebar: oklch(0.13 0.005 260);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 8%);
@@ -34,31 +71,25 @@
   --sidebar-accent: oklch(0.25 0.005 260);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-ring: oklch(0.623 0.214 259);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-}
-
-html {
   color-scheme: dark;
 }
 
 /* ── Scrollbar ───────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: oklch(0.35 0 0); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: oklch(0.45 0 0); }
+::-webkit-scrollbar-thumb { background: oklch(0.78 0 0); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: oklch(0.68 0 0); }
+.dark ::-webkit-scrollbar-thumb { background: oklch(0.35 0 0); }
+.dark ::-webkit-scrollbar-thumb:hover { background: oklch(0.45 0 0); }
 
 /* ── Checkbox ────────────────────────────────────────────────────────────────── */
 input[type='checkbox'] { accent-color: oklch(0.623 0.214 259); }
 
-/* ── Date/time input fixes for dark mode ─────────────────────────────────────── */
-input[type='date'],
-input[type='time'] { color-scheme: dark; }
-input[type='date']::-webkit-calendar-picker-indicator,
-input[type='time']::-webkit-calendar-picker-indicator { filter: invert(1); }
+/* ── Date/time input fixes ───────────────────────────────────────────────────── */
+.dark input[type='date'],
+.dark input[type='time'] { color-scheme: dark; }
+.dark input[type='date']::-webkit-calendar-picker-indicator,
+.dark input[type='time']::-webkit-calendar-picker-indicator { filter: invert(1); }
 
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);

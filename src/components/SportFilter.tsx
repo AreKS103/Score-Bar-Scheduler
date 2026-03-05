@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronRight, Globe, Star } from 'lucide-react';
 import { getCategories, getLeaguesByCategory, CATEGORY_LOGOS, SPORTS_CONFIG } from '@/lib/config';
 import { useFavoritesStore } from '@/lib/favoritesStore';
@@ -374,42 +375,43 @@ export default function SportFilter({
       )}
 
       {/* ═══════════════════════════════════════════════════════════════════════
-          CONTEXT MENU
+          CONTEXT MENU — portaled to body so sidebar overflow can't clip it
       ═══════════════════════════════════════════════════════════════════════ */}
-      {contextMenu && (
+      {contextMenu && typeof document !== 'undefined' && createPortal(
         <div
           className={cn(
-            'fixed z-[999] min-w-[190px] rounded-lg border border-border',
-            'bg-popover/95 backdrop-blur-sm shadow-2xl py-1 overflow-hidden'
+            'fixed z-[9999] min-w-[160px] rounded-md border border-border',
+            'bg-popover shadow-lg py-0.5 overflow-hidden'
           )}
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onClick={(e) => e.stopPropagation()}
         >
           {isFavorite(contextMenu.sportId) ? (
             <button
-              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 hover:bg-accent text-sm transition-colors text-left"
+              className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-accent text-xs transition-colors text-left"
               onClick={() => {
                 removeFavorite(contextMenu.sportId);
                 setContextMenu(null);
               }}
             >
-              <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0" />
+              <Star className="w-3 h-3 text-amber-400 fill-amber-400 shrink-0" />
               <span>Remove from Favorites</span>
             </button>
           ) : (
             <button
-              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 hover:bg-accent text-sm transition-colors text-left"
+              className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-accent text-xs transition-colors text-left"
               onClick={() => {
                 addFavorite(contextMenu.sportId);
                 setContextMenu(null);
-                setActiveTab('favorites'); // auto-switch on first add
+                setActiveTab('favorites');
               }}
             >
-              <Star className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              <Star className="w-3 h-3 text-muted-foreground shrink-0" />
               <span>Add to Favorites</span>
             </button>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

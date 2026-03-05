@@ -55,7 +55,7 @@ export default function PreviewPanel({
 
       {/* HTML preview styled like Score Bar website */}
       <div
-        className="bg-[#1a1a2e] border border-border rounded-lg p-8 text-foreground overflow-y-auto prose prose-invert prose-sm max-w-none
+        className="bg-card border border-border rounded-lg p-8 text-foreground overflow-y-auto prose prose-sm dark:prose-invert max-w-none
           [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-white [&_h2]:mt-8 [&_h2]:mb-4
           [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-gray-200 [&_h3]:mt-5 [&_h3]:mb-3
           [&_hr]:border-border [&_hr]:my-6

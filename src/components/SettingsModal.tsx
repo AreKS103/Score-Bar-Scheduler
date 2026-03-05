@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Wifi, WifiOff, Loader2, ShieldCheck, Server, Navigation, Globe } from 'lucide-react';
+import { X, Wifi, WifiOff, Loader2, ShieldCheck, Server, Navigation, Globe, Moon, Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { useTimezoneStore, formatTimezoneDisplay } from '@/lib/timezoneStore';
+import { useThemeStore } from '@/lib/themeStore';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -21,6 +22,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   } | null>(null);
 
   const { timezone, useLocal, setUseLocal } = useTimezoneStore();
+  const { theme, toggleTheme } = useThemeStore();
+  const isDark = theme === 'dark';
   const [detectedTz, setDetectedTz] = useState('');
 
   useEffect(() => {
@@ -64,14 +67,14 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     >
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={onClose}
       />
 
       {/* Modal */}
-      <div className="relative z-10 w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-background shadow-2xl shadow-black/60 animate-in fade-in-0 zoom-in-95">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+      <div className="relative z-10 w-full max-w-lg max-h-[85vh] flex flex-col rounded-2xl border border-border bg-background shadow-2xl shadow-black/30 animate-in fade-in-0 zoom-in-95">
+        {/* Sticky Header */}
+        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-border bg-background rounded-t-2xl shrink-0">
           <h2 className="text-lg font-bold text-foreground">Settings</h2>
           <button
             onClick={onClose}
@@ -81,13 +84,53 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-6 space-y-6">
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+          {/* Appearance card */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                {isDark ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+                Appearance
+              </CardTitle>
+              <CardDescription>
+                Switch between light and dark modes.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-medium text-foreground">Dark Mode</div>
+                  <div className="text-xs text-muted-foreground">
+                    {isDark ? 'Dark theme is active' : 'Light theme is active'}
+                  </div>
+                </div>
+                <button
+                  onClick={toggleTheme}
+                  className={cn(
+                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                    isDark ? 'bg-primary' : 'bg-secondary border border-border'
+                  )}
+                  role="switch"
+                  aria-checked={isDark}
+                  aria-label="Toggle dark mode"
+                >
+                  <span
+                    className={cn(
+                      'inline-block h-4 w-4 rounded-full bg-white shadow transition-transform',
+                      isDark ? 'translate-x-6' : 'translate-x-1'
+                    )}
+                  />
+                </button>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Timezone card */}
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Globe className="w-5 h-5" />
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Globe className="w-4 h-4" />
                 Timezone
               </CardTitle>
               <CardDescription>
@@ -149,9 +192,9 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
           {/* WordPress connection card */}
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Server className="w-5 h-5" />
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Server className="w-4 h-4" />
                 WordPress Connection
               </CardTitle>
               <CardDescription>
@@ -161,7 +204,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             </CardHeader>
             <CardContent className="space-y-5">
               {/* Security badge */}
-              <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-sm">
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-sm">
                 <ShieldCheck className="w-4 h-4 shrink-0" />
                 Credentials are stored server-side only — never exposed to the browser.
               </div>
@@ -188,8 +231,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   className={cn(
                     'flex items-center gap-2 p-3 rounded-lg text-sm',
                     testResult.ok
-                      ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-300'
-                      : 'bg-destructive/10 border border-destructive/30 text-red-300'
+                      ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
+                      : 'bg-destructive/10 border border-destructive/30 text-red-700 dark:text-red-300'
                   )}
                 >
                   {testResult.ok ? (

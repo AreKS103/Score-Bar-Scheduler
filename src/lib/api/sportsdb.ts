@@ -92,6 +92,41 @@ function mapSportsDBEvent(
 }
 
 /**
+ * Fetch events by iterating through rounds for a league season.
+ * The free tier of eventsseason.php sometimes truncates results (~15 events).
+ * This round-by-round approach fetches ALL events reliably.
+ */
+async function fetchLeagueByRounds(
+  leagueId: string,
+  season: string,
+  maxRounds: number = 38
+): Promise<SportsDBEvent[]> {
+  const allEvents: SportsDBEvent[] = [];
+  let consecutiveEmpty = 0;
+
+  for (let round = 1; round <= maxRounds; round++) {
+    try {
+      const url = `${SPORTSDB_BASE}/eventsround.php?id=${leagueId}&r=${round}&s=${season}`;
+      const res = await fetch(url);
+      if (!res.ok) break;
+      const data = await res.json();
+      const events: SportsDBEvent[] = data.events ?? [];
+      if (events.length === 0) {
+        consecutiveEmpty++;
+        // Stop after 3 consecutive empty rounds — we've reached the end
+        if (consecutiveEmpty >= 3) break;
+      } else {
+        consecutiveEmpty = 0;
+        allEvents.push(...events);
+      }
+    } catch {
+      break;
+    }
+  }
+  return allEvents;
+}
+
+/**
  * Fetch events for a specific SportsDB-backed league within a date range
  */
 export async function fetchSportsDBLeague(
@@ -104,9 +139,6 @@ export async function fetchSportsDBLeague(
 
   const currentYear = new Date().getFullYear();
   // TheSportsDB uses different season formats.
-  // Try current calendar year, current split-year season, next split-year season, and previous year
-  // Note: Some leagues (e.g. Cambodia C-League) may have incomplete data for the current season
-  // if SportsDB contributors haven't entered later rounds yet.
   const seasons = [
     `${currentYear}`,
     `${currentYear - 1}-${currentYear}`,
@@ -115,9 +147,22 @@ export async function fetchSportsDBLeague(
   ];
 
   let allEvents: SportsDBEvent[] = [];
+
+  // Try eventsseason.php first for each season format
   for (const season of seasons) {
     const events = await fetchLeagueSeason(config.sportsdbId, season);
     allEvents = [...allEvents, ...events];
+  }
+
+  // If eventsseason.php returned very few events (free-tier truncation),
+  // fall back to round-by-round fetching for the split-year seasons
+  if (allEvents.length <= 20) {
+    for (const season of seasons) {
+      if (season.includes('-')) {
+        const roundEvents = await fetchLeagueByRounds(config.sportsdbId, season);
+        allEvents = [...allEvents, ...roundEvents];
+      }
+    }
   }
 
   // Deduplicate by event ID

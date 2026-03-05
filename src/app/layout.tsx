@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import ThemeProvider from '@/components/ThemeProvider';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -14,9 +15,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
       <body className="bg-background text-foreground antialiased">
-        <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
+        <ThemeProvider>
+          <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
