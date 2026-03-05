@@ -1,7 +1,7 @@
 'use client';
 
-import { memo, useMemo } from 'react';
-import { Star, CheckSquare, Square, MinusSquare } from 'lucide-react';
+import { memo, useMemo, useState } from 'react';
+import { Star, CheckSquare, Square, MinusSquare, ChevronDown, ChevronRight } from 'lucide-react';
 import type { MatchEvent, ScreenTag } from '@/types';
 import { getSportConfig } from '@/lib/config';
 import MatchCard from '@/components/MatchCard';
@@ -21,6 +21,99 @@ interface LeagueSectionProps {
   onBulkSelectLeague?: (sportId: string, selectAll: boolean) => void;
 }
 
+/** Groups MMA/boxing fights by cardName into { main, undercards } */
+function groupFightCard(events: MatchEvent[]): { main: MatchEvent; undercards: MatchEvent[] }[] {
+  const cardMap = new Map<string, MatchEvent[]>();
+  const nonCardEvents: MatchEvent[] = [];
+
+  for (const ev of events) {
+    if (ev.cardName) {
+      if (!cardMap.has(ev.cardName)) cardMap.set(ev.cardName, []);
+      cardMap.get(ev.cardName)!.push(ev);
+    } else {
+      nonCardEvents.push(ev);
+    }
+  }
+
+  const cards: { main: MatchEvent; undercards: MatchEvent[] }[] = [];
+  for (const [, fights] of cardMap) {
+    // Sort by fightOrder — 0 = main event first
+    fights.sort((a, b) => (a.fightOrder ?? 0) - (b.fightOrder ?? 0));
+    const main = fights[0];
+    const undercards = fights.slice(1);
+    cards.push({ main, undercards });
+  }
+
+  // Non-card events become standalone entries
+  for (const ev of nonCardEvents) {
+    cards.push({ main: ev, undercards: [] });
+  }
+
+  return cards;
+}
+
+/** Sub-component: renders a fight card with expandable undercards */
+const FightCardGroup = memo(function FightCardGroup({
+  main,
+  undercards,
+  onToggleSelected,
+  onToggleFeatured,
+  onToggleTag,
+}: {
+  main: MatchEvent;
+  undercards: MatchEvent[];
+  onToggleSelected: (id: string) => void;
+  onToggleFeatured: (id: string) => void;
+  onToggleTag: (id: string, tag: ScreenTag) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (undercards.length === 0) {
+    return (
+      <MatchCard
+        event={main}
+        onToggleSelected={onToggleSelected}
+        onToggleFeatured={onToggleFeatured}
+        onToggleTag={onToggleTag}
+      />
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-border/60 overflow-hidden">
+      {/* Main event */}
+      <MatchCard
+        event={main}
+        onToggleSelected={onToggleSelected}
+        onToggleFeatured={onToggleFeatured}
+        onToggleTag={onToggleTag}
+      />
+      {/* Undercard toggle */}
+      <button
+        onClick={() => setExpanded(prev => !prev)}
+        className="w-full flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold text-muted-foreground hover:text-foreground bg-secondary/30 border-t border-border/40 transition-colors"
+      >
+        {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        {undercards.length} undercard bout{undercards.length !== 1 ? 's' : ''}
+      </button>
+      {/* Undercard fights (indented) */}
+      {expanded && (
+        <div className="pl-4 pr-1 py-1 space-y-1 bg-secondary/10 border-t border-border/30">
+          {undercards.map(fight => (
+            <MatchCard
+              key={fight.id}
+              event={fight}
+              onToggleSelected={onToggleSelected}
+              onToggleFeatured={onToggleFeatured}
+              onToggleTag={onToggleTag}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+});
+
 const LeagueSection = memo(function LeagueSection({
   sportId,
   events,
@@ -34,6 +127,12 @@ const LeagueSection = memo(function LeagueSection({
   onBulkSelectLeague,
 }: LeagueSectionProps) {
   const config = getSportConfig(sportId);
+
+  // Detect if this league contains fight card events (MMA/boxing)
+  const isFightSport = useMemo(
+    () => events.some(e => e.cardName != null),
+    [events]
+  );
 
   const { sortedDates, byDate } = useMemo(() => {
     const map = new Map<string, MatchEvent[]>();
@@ -138,15 +237,27 @@ const LeagueSection = memo(function LeagueSection({
               {displayDate}
             </div>
             <div className="space-y-2">
-              {dayEvents.map((event) => (
-                <MatchCard
-                  key={event.id}
-                  event={event}
-                  onToggleSelected={onToggleSelected}
-                  onToggleFeatured={onToggleFeatured}
-                  onToggleTag={onToggleTag}
-                />
-              ))}
+              {isFightSport
+                ? groupFightCard(dayEvents).map(({ main, undercards }) => (
+                    <FightCardGroup
+                      key={main.id}
+                      main={main}
+                      undercards={undercards}
+                      onToggleSelected={onToggleSelected}
+                      onToggleFeatured={onToggleFeatured}
+                      onToggleTag={onToggleTag}
+                    />
+                  ))
+                : dayEvents.map((event) => (
+                    <MatchCard
+                      key={event.id}
+                      event={event}
+                      onToggleSelected={onToggleSelected}
+                      onToggleFeatured={onToggleFeatured}
+                      onToggleTag={onToggleTag}
+                    />
+                  ))
+              }
             </div>
           </div>
         );

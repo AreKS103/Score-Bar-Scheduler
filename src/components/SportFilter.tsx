@@ -380,7 +380,7 @@ export default function SportFilter({
       {contextMenu && typeof document !== 'undefined' && createPortal(
         <div
           className={cn(
-            'fixed z-[9999] min-w-[160px] rounded-md border border-border',
+            'fixed z-9999 min-w-40 rounded-md border border-border',
             'bg-popover shadow-lg py-0.5 overflow-hidden'
           )}
           style={{ top: contextMenu.y, left: contextMenu.x }}

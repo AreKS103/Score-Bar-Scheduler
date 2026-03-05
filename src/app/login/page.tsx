@@ -41,7 +41,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-[380px] bg-card rounded-2xl p-[2.5rem_2rem] border border-border shadow-2xl shadow-black/20"
+        className="w-full max-w-95 bg-card rounded-2xl p-[2.5rem_2rem] border border-border shadow-2xl shadow-black/20"
       >
         {/* Header */}
         <div className="text-center mb-8">

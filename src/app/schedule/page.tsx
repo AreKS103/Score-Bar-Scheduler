@@ -20,7 +20,7 @@ import {
   LogOut,
 } from 'lucide-react';
 import { useScheduleStore } from '@/lib/store';
-import { fetchAllSports } from '@/lib/fetchAllSports';
+import { getCachedEvents, setCachedEvents } from '@/lib/clientCache';
 import { generateHTML } from '@/lib/generateHTML';
 import { SPORTS_CONFIG, getCategories, ALL_SCREEN_TAGS } from '@/lib/config';
 import { formatDisplayDate } from '@/lib/timezone';
@@ -86,33 +86,73 @@ export default function SchedulePage() {
   const headerRef = useRef<HTMLElement>(null);
   const leagueItemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
-  // ─── Fetch all sports data ──────────────────────────────────────────────────
-  const handleFetch = useCallback(async () => {
+  // ─── Fetch all sports data via Server API (cached) ───────────────────────────
+  const handleFetch = useCallback(async (forceRefresh = false) => {
+    // Try to load from client cache first for instant display
+    if (!forceRefresh && events.length === 0) {
+      const cached = getCachedEvents(dateRange);
+      if (cached && cached.length > 0) {
+        console.log(`[Schedule] Instant load: ${cached.length} events from local cache`);
+        setEvents(cached);
+        // Still fetch fresh data in background
+      }
+    }
+
     setIsFetching(true);
     SPORTS_CONFIG.forEach((s) =>
       setFetchStatus(s.id, { loading: true, error: null })
     );
 
     try {
-      const results = await fetchAllSports(dateRange.start, dateRange.end);
-      const allEventsRaw = results.flatMap((r) => r.events);
-      // Safety dedup by ID (prevents duplicate-key warnings if cross-reference misses anything)
-      const seenIds = new Set<string>();
-      const allEvents = allEventsRaw.filter((e) => {
-        if (seenIds.has(e.id)) return false;
-        seenIds.add(e.id);
-        return true;
+      // Use new cached API endpoint
+      const url = `/api/events?start=${dateRange.start}&end=${dateRange.end}`;
+      const res = await fetch(url);
+      
+      if (!res.ok) {
+        throw new Error(`API error: ${res.status}`);
+      }
+
+      const data = await res.json();
+      const allEventsRaw = data.events ?? [];
+      
+      // Preserve user selections from existing events
+      const existingSelections = new Map(
+        events.map(e => [e.id, { isSelected: e.isSelected, isFeatured: e.isFeatured, tags: e.tags }])
+      );
+      
+      // Merge with preserved selections
+      const allEvents = allEventsRaw.map((e: MatchEvent) => {
+        const existing = existingSelections.get(e.id);
+        if (existing) {
+          return { ...e, ...existing };
+        }
+        return e;
       });
+
       setEvents(allEvents);
-      results.forEach((r) => {
-        setFetchStatus(r.sportId, { loading: false, error: r.error || null });
-      });
+      
+      // Save to client cache (without selection state for clean cache)
+      setCachedEvents(dateRange, allEventsRaw);
+      
+      // Mark all leagues as loaded
+      SPORTS_CONFIG.forEach((s) =>
+        setFetchStatus(s.id, { loading: false, error: null })
+      );
+
+      if (data.cached) {
+        console.log(`[Schedule] Loaded ${allEvents.length} events (server cached, age: ${data.age}s${data.stale ? ', stale' : ''})`);
+      } else {
+        console.log(`[Schedule] Loaded ${allEvents.length} events (fresh from APIs)`);
+      }
     } catch (err) {
       console.error('Fetch failed:', err);
+      SPORTS_CONFIG.forEach((s) =>
+        setFetchStatus(s.id, { loading: false, error: 'Fetch failed' })
+      );
     } finally {
       setIsFetching(false);
     }
-  }, [dateRange, setEvents, setFetchStatus]);
+  }, [dateRange, events, setEvents, setFetchStatus]);
 
   // ─── Auto-fetch on mount ───────────────────────────────────────────────────
   useEffect(() => {
@@ -368,7 +408,7 @@ export default function SchedulePage() {
       {/* ── Mobile sidebar backdrop ───────────────────────────────────────────── */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-[150] bg-black/60 backdrop-blur-sm md:hidden"
+          className="fixed inset-0 z-150 bg-black/60 backdrop-blur-sm md:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -379,7 +419,7 @@ export default function SchedulePage() {
           // Desktop: static sidebar
           'w-64 shrink-0 border-r border-border bg-sidebar overflow-y-auto overflow-x-hidden',
           // Mobile: slide-out drawer
-          'fixed inset-y-0 left-0 z-[160] transition-transform duration-200 ease-in-out md:static md:translate-x-0',
+          'fixed inset-y-0 left-0 z-160 transition-transform duration-200 ease-in-out md:static md:translate-x-0',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
@@ -447,12 +487,12 @@ export default function SchedulePage() {
                 startDate={dateRange.start}
                 endDate={dateRange.end}
                 onChange={setDateRange}
-                onDone={handleFetch}
+                onDone={() => handleFetch(true)}
               />
 
               {/* Fetch button */}
               <Button
-                onClick={handleFetch}
+                onClick={() => handleFetch(true)}
                 disabled={isFetching}
                 size="default"
               >
@@ -571,7 +611,7 @@ export default function SchedulePage() {
               <p className="text-sm text-muted-foreground mb-6 max-w-md">
                 Sports data is loading automatically. If nothing appears, check your date range and try refreshing.
               </p>
-              <Button onClick={handleFetch}>
+              <Button onClick={() => handleFetch(true)}>
                 <Loader2 className="w-4 h-4" />
                 Fetch Matches
               </Button>

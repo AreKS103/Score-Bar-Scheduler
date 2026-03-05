@@ -15,10 +15,14 @@ export interface MatchEvent {
   away: string;            // Away team (empty for F1/UFC)
   homeLogo?: string;       // URL to home team logo (ESPN)
   awayLogo?: string;       // URL to away team logo (ESPN)
-  round: string;           // e.g. 'Quarter Final (Leg 1)' — optional
+  round: string;           // e.g. 'Quarter Final (Leg 1)' or weight class for MMA
   tags: ScreenTag[];       // Screen/viewing tags
   isFeatured: boolean;     // Star toggle — appears in highlights
   isSelected: boolean;     // Whether included in the published schedule
+  // ── MMA / Boxing fight card fields ──
+  isMainCard?: boolean;    // true = main event, false = undercard
+  cardName?: string;       // e.g. "UFC 326" — groups fights under one card
+  fightOrder?: number;     // 0 = main event, 1+ = undercard order
 }
 
 // ─── Sports Configuration ────────────────────────────────────────────────────
