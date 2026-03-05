@@ -1,0 +1,151 @@
+// ─── Core Data Model ─────────────────────────────────────────────────────────
+
+export type ScreenTag = 'Live Big Screen' | 'Sound On' | 'TV Only' | 'No Sound';
+
+export interface MatchEvent {
+  id: string;
+  source: 'espn' | 'openf1' | 'sportsdb' | 'manual';
+  sportId: string;         // e.g. 'soccer-epl'
+  category: string;        // e.g. 'Football', 'Motorsport'
+  leagueLabel: string;     // e.g. 'EPL', 'Formula 1'
+  leagueLogo: string;      // URL to logo image
+  date: string;            // YYYY-MM-DD in ICT
+  time: string;            // HH:mm in ICT (24hr)
+  home: string;            // Home team or event name
+  away: string;            // Away team (empty for F1/UFC)
+  homeLogo?: string;       // URL to home team logo (ESPN)
+  awayLogo?: string;       // URL to away team logo (ESPN)
+  round: string;           // e.g. 'Quarter Final (Leg 1)' — optional
+  tags: ScreenTag[];       // Screen/viewing tags
+  isFeatured: boolean;     // Star toggle — appears in highlights
+  isSelected: boolean;     // Whether included in the published schedule
+}
+
+// ─── Sports Configuration ────────────────────────────────────────────────────
+
+export interface SportConfig {
+  id: string;
+  label: string;
+  category: string;
+  espnSlug: string | null;
+  sportsdbId?: string;
+  openf1?: boolean;
+  logo: string;
+}
+
+// ─── WordPress ───────────────────────────────────────────────────────────────
+
+export interface WPConfig {
+  siteUrl: string;
+  username: string;
+  appPassword: string;
+}
+
+// ─── API Response Types ──────────────────────────────────────────────────────
+
+export interface ESPNCompetitor {
+  homeAway: 'home' | 'away';
+  team: {
+    displayName: string;
+    shortDisplayName: string;
+    logo?: string;
+  };
+  score?: string;
+}
+
+export interface ESPNCompetition {
+  competitors: ESPNCompetitor[];
+  venue?: {
+    fullName: string;
+    address?: {
+      city: string;
+      country: string;
+    };
+  };
+}
+
+export interface ESPNEvent {
+  id: string;
+  name: string;
+  shortName: string;
+  date: string;
+  competitions: ESPNCompetition[];
+  season?: { slug: string };
+  status: {
+    type: {
+      description: string;
+      name: string;
+    };
+  };
+}
+
+export interface ESPNScoreboardResponse {
+  events: ESPNEvent[];
+  leagues?: Array<{
+    name: string;
+    slug: string;
+    logos?: Array<{ href: string }>;
+  }>;
+}
+
+export interface OpenF1Meeting {
+  meeting_key: number;
+  meeting_name: string;
+  meeting_official_name: string;
+  country_name: string;
+  date_start: string;
+  year: number;
+}
+
+export interface OpenF1Session {
+  session_key: number;
+  session_name: string;
+  session_type: string;
+  date_start: string;
+  date_end: string;
+  meeting_key: number;
+}
+
+export interface SportsDBEvent {
+  idEvent: string;
+  strEvent: string;
+  dateEvent: string;     // YYYY-MM-DD
+  strTime: string;       // HH:mm:ss
+  strHomeTeam: string;
+  strAwayTeam: string;
+  strRound: string;
+  strLeague: string;
+  strSeason: string;
+  strThumb?: string;
+}
+
+// ─── Store Types ─────────────────────────────────────────────────────────────
+
+export interface FetchStatus {
+  loading: boolean;
+  error: string | null;
+}
+
+export interface ScheduleStore {
+  events: MatchEvent[];
+  fetchStatuses: Record<string, FetchStatus>;
+  dateRange: { start: string; end: string };
+  activeSportFilter: string;
+
+  setEvents: (events: MatchEvent[]) => void;
+  addEvents: (events: MatchEvent[]) => void;
+  removeEvent: (id: string) => void;
+  updateEvent: (id: string, updates: Partial<MatchEvent>) => void;
+  toggleSelected: (id: string) => void;
+  toggleFeatured: (id: string) => void;
+  toggleTag: (id: string, tag: ScreenTag) => void;
+  selectAll: () => void;
+  deselectAll: () => void;
+  batchSetSelected: (ids: string[], selected: boolean) => void;
+  bulkSetTags: (ids: string[], tags: ScreenTag[]) => void;
+  setFetchStatus: (key: string, status: FetchStatus) => void;
+  setDateRange: (start: string, end: string) => void;
+  setActiveSportFilter: (filter: string) => void;
+  getSelectedEvents: () => MatchEvent[];
+  getFeaturedEvents: () => MatchEvent[];
+}

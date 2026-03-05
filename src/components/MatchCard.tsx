@@ -1,0 +1,113 @@
+'use client';
+
+import { memo } from 'react';
+import { Star } from 'lucide-react';
+import type { MatchEvent, ScreenTag } from '@/types';
+import { ALL_SCREEN_TAGS } from '@/lib/config';
+import { cn } from '@/lib/utils';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
+
+interface MatchCardProps {
+  event: MatchEvent;
+  onToggleSelected: (id: string) => void;
+  onToggleFeatured: (id: string) => void;
+  onToggleTag: (id: string, tag: ScreenTag) => void;
+}
+
+const MatchCard = memo(function MatchCard({
+  event,
+  onToggleSelected,
+  onToggleFeatured,
+  onToggleTag,
+}: MatchCardProps) {
+  return (
+    <div
+      onClick={() => onToggleSelected(event.id)}
+      className={cn(
+        'flex items-start gap-2 p-2 rounded-lg border transition-all duration-150 cursor-pointer select-none',
+        event.isSelected
+          ? 'bg-card border-border hover:border-ring/40'
+          : 'bg-secondary/30 border-border/50 opacity-50 hover:opacity-75'
+      )}
+    >
+      {/* Checkbox */}
+      <div className="mt-1 pointer-events-none">
+        <Checkbox
+          checked={event.isSelected}
+          tabIndex={-1}
+        />
+      </div>
+
+      {/* Star */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onToggleFeatured(event.id); }}
+        className={cn(
+          'mt-0.5 transition-colors',
+          event.isFeatured
+            ? 'text-amber-400 hover:text-amber-300'
+            : 'text-muted-foreground/40 hover:text-muted-foreground'
+        )}
+        title={event.isFeatured ? 'Remove from highlights' : 'Add to highlights'}
+      >
+        <Star className="w-3.5 h-3.5" fill={event.isFeatured ? 'currentColor' : 'none'} />
+      </button>
+
+      {/* Main content */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-xs font-mono font-semibold text-primary whitespace-nowrap">
+            {event.time}
+          </span>
+          <Badge variant="secondary" className="text-[9px] font-medium uppercase px-1.5 py-0 h-4">
+            {event.source}
+          </Badge>
+        </div>
+
+        {/* Teams with logos */}
+        <div className="flex items-center gap-1.5 text-[11px] font-medium text-foreground">
+          {event.homeLogo && (
+            <img src={event.homeLogo} alt="" className="w-4 h-4 object-contain" />
+          )}
+          <span>{event.home}</span>
+          {event.away && (
+            <>
+              <span className="text-muted-foreground mx-0.5">vs</span>
+              {event.awayLogo && (
+                <img src={event.awayLogo} alt="" className="w-4 h-4 object-contain" />
+              )}
+              <span>{event.away}</span>
+            </>
+          )}
+        </div>
+
+        {event.round && (
+          <div className="text-[10px] text-muted-foreground mt-0.5">{event.round}</div>
+        )}
+
+        {/* Screen tags */}
+        <div className="flex flex-wrap gap-1 mt-1.5">
+          {ALL_SCREEN_TAGS.map((tag) => {
+            const isActive = event.tags.includes(tag);
+            return (
+              <button
+                key={tag}
+                onClick={(e) => { e.stopPropagation(); onToggleTag(event.id, tag); }}
+                className={cn(
+                  'text-[10px] px-1.5 py-0 rounded-full border transition-all',
+                  isActive
+                    ? 'bg-primary/15 border-primary/40 text-primary'
+                    : 'bg-transparent border-border text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground/70'
+                )}
+              >
+                {tag}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+export default MatchCard;
