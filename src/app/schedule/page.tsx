@@ -15,6 +15,7 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
+  Menu,
 } from 'lucide-react';
 import { useScheduleStore } from '@/lib/store';
 import { fetchAllSports } from '@/lib/fetchAllSports';
@@ -64,6 +65,7 @@ export default function SchedulePage() {
   const [deleteAllConfirm, setDeleteAllConfirm] = useState(false);
   const [panelWidth, setPanelWidth] = useState(700);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [featuredLeagues, setFeaturedLeagues] = useState<Map<string, string>>(new Map());
   const [activeSortLeague, setActiveSortLeague] = useState<string | null>(null);
   const [headerHeight, setHeaderHeight] = useState(116);
@@ -71,6 +73,7 @@ export default function SchedulePage() {
   const prevSelectedCountRef = useRef(0);
   const widthRef = useRef(700);
   const panelRef = useRef<HTMLDivElement>(null);
+  const toggleBtnRef = useRef<HTMLButtonElement>(null);
   const headerRef = useRef<HTMLElement>(null);
   const leagueItemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
@@ -106,6 +109,12 @@ export default function SchedulePage() {
   useEffect(() => {
     if (!hasFetchedRef.current) {
       hasFetchedRef.current = true;
+      // Set panel width to full viewport on mobile
+      if (window.innerWidth < 768) {
+        const vw = window.innerWidth;
+        setPanelWidth(vw);
+        widthRef.current = vw;
+      }
       handleFetch();
     }
   }, [handleFetch]);
@@ -325,9 +334,14 @@ export default function SchedulePage() {
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
     const onMove = (ev: PointerEvent) => {
-      const newW = Math.max(420, Math.min(1400, startW + startX - ev.clientX));
+      const vw = window.innerWidth;
+      const minW = vw < 768 ? vw : 420;
+      const maxW = vw < 768 ? vw : 1400;
+      const newW = Math.max(minW, Math.min(maxW, startW + startX - ev.clientX));
       widthRef.current = newW;
       if (panel) panel.style.width = `${newW}px`;
+      // Move the toggle button in sync with the panel edge
+      if (toggleBtnRef.current) toggleBtnRef.current.style.right = `${newW}px`;
     };
     const onUp = () => {
       document.body.style.cursor = '';
@@ -342,8 +356,24 @@ export default function SchedulePage() {
 
   return (
     <div className="flex h-screen bg-background text-foreground">
+      {/* ── Mobile sidebar backdrop ───────────────────────────────────────────── */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-[150] bg-black/60 backdrop-blur-sm md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* ── Left Sidebar ──────────────────────────────────────────────────────── */}
-      <aside className="w-64 shrink-0 border-r border-border bg-sidebar overflow-y-auto overflow-x-hidden">
+      <aside
+        className={cn(
+          // Desktop: static sidebar
+          'w-64 shrink-0 border-r border-border bg-sidebar overflow-y-auto overflow-x-hidden',
+          // Mobile: slide-out drawer
+          'fixed inset-y-0 left-0 z-[160] transition-transform duration-200 ease-in-out md:static md:translate-x-0',
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        )}
+      >
         <div className="pt-2 pb-1">
           <img
             src="/Score WEB White Transp.png"
@@ -358,7 +388,7 @@ export default function SchedulePage() {
         <div className="px-2 pt-2">
           <SportFilter
             activeFilter={activeSportFilter}
-            onFilterChange={setActiveSportFilter}
+            onFilterChange={(f) => { setActiveSportFilter(f); setSidebarOpen(false); }}
             events={events}
           />
         </div>
@@ -367,7 +397,7 @@ export default function SchedulePage() {
 
         <div className="p-3 space-y-0.5">
           <button
-            onClick={() => setSettingsOpen(true)}
+            onClick={() => { setSettingsOpen(true); setSidebarOpen(false); }}
             className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-all text-muted-foreground hover:text-foreground hover:bg-accent"
           >
             <Settings className="w-4 h-4" />
@@ -379,14 +409,23 @@ export default function SchedulePage() {
       {/* ── Main Area ─────────────────────────────────────────────────────────── */}
       <main className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
-        <header ref={headerRef} className="shrink-0 border-b border-border bg-background/95 backdrop-blur-sm px-6 py-3 relative z-100">
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <div className="flex items-center gap-3">
+        <header ref={headerRef} className="shrink-0 border-b border-border bg-background/95 backdrop-blur-sm px-3 sm:px-6 py-3 relative z-100">
+          <div className="flex items-center justify-between flex-wrap gap-2 sm:gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
+              {/* Mobile hamburger */}
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="md:hidden p-2 -ml-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                aria-label="Open sidebar"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
               {/* Date range calendar */}
               <DateRangeCalendar
                 startDate={dateRange.start}
                 endDate={dateRange.end}
                 onChange={setDateRange}
+                onDone={handleFetch}
               />
 
               {/* Fetch button */}
@@ -414,22 +453,22 @@ export default function SchedulePage() {
           </div>
 
           {/* Toolbar */}
-          <div className="flex items-center gap-3 mt-3 flex-wrap">
+          <div className="flex items-center gap-2 sm:gap-3 mt-3 flex-wrap">
             {/* Search */}
-            <div className="w-64">
+            <div className="w-full sm:w-64">
               <SearchField
                 events={events}
                 onFilteredChange={setSearchFilterIds}
               />
             </div>
 
-            <Separator orientation="vertical" className="h-5" />
+            <Separator orientation="vertical" className="h-5 hidden sm:block" />
 
             <span className="text-xs text-muted-foreground">
               {selectedCount}/{totalCount} selected · {selectedLeagues} leagues
             </span>
 
-            <Separator orientation="vertical" className="h-5" />
+            <Separator orientation="vertical" className="h-5 hidden sm:block" />
 
             <Button variant="ghost" size="xs" onClick={selectAll}>
               <CheckSquare className="w-3.5 h-3.5" /> Select All
@@ -438,7 +477,7 @@ export default function SchedulePage() {
               <Square className="w-3.5 h-3.5" /> Deselect
             </Button>
 
-            <Separator orientation="vertical" className="h-5" />
+            <Separator orientation="vertical" className="h-5 hidden sm:block" />
 
             {/* Bulk tag */}
             <div className="relative">
@@ -491,7 +530,7 @@ export default function SchedulePage() {
               )}
             </div>
 
-            <Separator orientation="vertical" className="h-5" />
+            <Separator orientation="vertical" className="h-5 hidden sm:block" />
 
             <Button variant="secondary" size="xs" onClick={() => setIsAddModalOpen(true)}>
               <Plus className="w-3.5 h-3.5" /> Add Custom Event
@@ -500,7 +539,7 @@ export default function SchedulePage() {
         </header>
 
         {/* Match list */}
-        <div className="flex-1 overflow-y-auto px-6 pb-4">
+        <div className="flex-1 overflow-y-auto px-3 sm:px-6 pb-4">
           {events.length === 0 && !isFetching && (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <div className="text-6xl mb-4">🏟️</div>
@@ -554,10 +593,15 @@ export default function SchedulePage() {
       {/* ── Preview panel (custom resizable, no overlay) ────────────────────── */}
       {selectedCount > 0 && (
         <button
+          ref={toggleBtnRef}
           onClick={() => { setPreviewOpen((o) => !o); setDeleteAllConfirm(false); }}
           title={previewOpen ? 'Close preview' : 'Open preview'}
           style={{ right: previewOpen ? panelWidth : 0 }}
-          className="fixed z-99 top-1/2 -translate-y-1/2 flex flex-col items-center justify-center bg-secondary border border-border border-r-0 rounded-l-md px-1 py-3 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          className={cn(
+            "fixed z-99 top-1/2 -translate-y-1/2 flex flex-col items-center justify-center bg-secondary border border-border border-r-0 rounded-l-md px-1 py-3 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors",
+            // On mobile, hide when preview open (panel is full-width, button would clip off-screen)
+            previewOpen && "max-md:hidden"
+          )}
         >
           {previewOpen ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
         </button>
@@ -590,11 +634,11 @@ export default function SchedulePage() {
           </button>
         </div>
 
-        {/* Two-column body */}
-        <div className="flex flex-1 overflow-hidden">
+        {/* Two-column body (stacks on narrow panels) */}
+        <div className="flex flex-col sm:flex-row flex-1 overflow-hidden">
 
           {/* Left: match list */}
-          <aside className="w-60 shrink-0 border-r border-border bg-sidebar flex flex-col overflow-hidden relative">
+          <aside className="w-full sm:w-60 shrink-0 border-b sm:border-b-0 sm:border-r border-border bg-sidebar flex flex-col overflow-hidden relative max-h-[40vh] sm:max-h-none">
             <div className="shrink-0 px-3 py-2 border-b border-border">
               <div className="flex items-center justify-between">
                 <div className="flex gap-3 text-[10px] text-muted-foreground">
@@ -720,7 +764,7 @@ export default function SchedulePage() {
 
           {/* Right: HTML preview */}
           <div className="flex-1 overflow-y-auto" onPointerDown={() => setActiveSortLeague(null)}>
-            <div className="p-6">
+            <div className="p-3 sm:p-6">
               <PreviewPanel
                 html={html}
                 matchCount={selectedCount}

@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronRight } from 'lucide-react';
-import { getCategories, getLeaguesByCategory } from '@/lib/config';
+import { ChevronRight, Globe } from 'lucide-react';
+import { getCategories, getLeaguesByCategory, CATEGORY_LOGOS } from '@/lib/config';
 import type { MatchEvent } from '@/types';
 import { cn } from '@/lib/utils';
 
@@ -12,21 +12,22 @@ interface SportFilterProps {
   events: MatchEvent[];
 }
 
-const CATEGORY_EMOJI: Record<string, string> = {
-  'All':                 '🌍',
-  'Football':            '⚽',
-  'Basketball':          '🏀',
-  'American Football':   '🏈',
-  'Baseball':            '⚾',
-  'Ice Hockey':          '🏒',
-  'Cricket':             '🏏',
-  'Motorsport':          '🏎️',
-  'Combat Sports':       '🥊',
-  'Rugby':               '🏉',
-  'Australian Football': '🏉',
-  'Tennis':              '🎾',
-  'Golf':               '⛳',
-};
+/** Small inline logo or fallback icon */
+function CategoryIcon({ category }: { category: string }) {
+  const logoUrl = CATEGORY_LOGOS[category];
+  if (logoUrl) {
+    return (
+      <img
+        src={logoUrl}
+        alt=""
+        className="w-4 h-4 object-contain shrink-0"
+        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+      />
+    );
+  }
+  // Fallback: use a small colored dot
+  return <span className="w-4 h-4 shrink-0 rounded-full bg-muted-foreground/20 inline-block" />;
+}
 
 export default function SportFilter({
   activeFilter,
@@ -66,7 +67,7 @@ export default function SportFilter({
         )}
       >
         <span className="flex items-center gap-2.5">
-          <span className="text-base">🌍</span>
+          <Globe className="w-4 h-4 shrink-0" />
           <span>All Sports</span>
         </span>
         <span className={cn(
@@ -97,11 +98,11 @@ export default function SportFilter({
                   : 'text-muted-foreground hover:bg-accent hover:text-foreground'
               )}
             >
-              <span className="flex items-center gap-2.5">
-                <span className="text-base">{CATEGORY_EMOJI[cat] || '🏆'}</span>
+              <span className="flex items-center gap-2.5 min-w-0">
+                <CategoryIcon category={cat} />
                 <span className="truncate">{cat}</span>
                 <ChevronRight className={cn(
-                  'w-3 h-3 transition-transform opacity-0 group-hover:opacity-100',
+                  'w-3 h-3 shrink-0 transition-transform opacity-0 group-hover:opacity-100',
                   isExpanded && 'rotate-90 opacity-100'
                 )} />
               </span>
@@ -126,13 +127,23 @@ export default function SportFilter({
                       key={league.id}
                       onClick={() => onFilterChange(league.id)}
                       className={cn(
-                        'w-full flex items-center justify-between px-2 py-1.5 rounded text-xs transition-all',
+                        'w-full flex items-center justify-between px-2 py-1.5 rounded text-xs transition-all gap-1',
                         isLeagueActive
                           ? 'bg-accent text-foreground font-medium'
                           : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
                       )}
                     >
-                      <span className="truncate">{league.label}</span>
+                      <span className="flex items-center gap-2 min-w-0">
+                        {league.logo && (
+                          <img
+                            src={league.logo}
+                            alt=""
+                            className="w-3.5 h-3.5 object-contain shrink-0"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                          />
+                        )}
+                        <span className="truncate">{league.label}</span>
+                      </span>
                       <span className="text-[10px] text-muted-foreground shrink-0 ml-2">
                         {count || ''}
                       </span>

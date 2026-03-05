@@ -12,12 +12,14 @@ interface DateRangeCalendarProps {
   startDate: string;   // YYYY-MM-DD
   endDate: string;     // YYYY-MM-DD
   onChange: (start: string, end: string) => void;
+  onDone?: () => void;
 }
 
 export default function DateRangeCalendar({
   startDate,
   endDate,
   onChange,
+  onDone,
 }: DateRangeCalendarProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -99,7 +101,7 @@ export default function DateRangeCalendar({
                 'Click a start date, then an end date'
               )}
             </div>
-            <Button size="sm" variant="secondary" onClick={() => setOpen(false)}>
+            <Button size="sm" variant="secondary" onClick={() => { setOpen(false); onDone?.(); }}>
               Done
             </Button>
           </div>
