@@ -403,7 +403,6 @@ export default function SportFilter({
               onClick={() => {
                 addFavorite(contextMenu.sportId);
                 setContextMenu(null);
-                setActiveTab('favorites');
               }}
             >
               <Star className="w-3 h-3 text-muted-foreground shrink-0" />
