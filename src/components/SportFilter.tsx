@@ -50,6 +50,9 @@ export default function SportFilter({
   // ── Context menu state ─────────────────────────────────────────────────────
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
+  // ── Unfavorite confirmation (Favorites tab) ────────────────────────────────
+  const [unfavoriteConfirm, setUnfavoriteConfirm] = useState<string | null>(null);
+
   // ── Drag state (Favorites tab only) ───────────────────────────────────────
   const [draggedId, setDraggedId]   = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -194,6 +197,7 @@ export default function SportFilter({
                       const isActive     = activeFilter === league.id;
                       const isDragging   = draggedId === league.id;
                       const isDropTarget = dragOverId === league.id;
+                      const isConfirming = unfavoriteConfirm === league.id;
 
                       return (
                         <div key={league.id}>
@@ -201,6 +205,28 @@ export default function SportFilter({
                           {isDropTarget && (
                             <div className="h-0.5 mx-2 rounded-full bg-primary/70 my-0.5" />
                           )}
+                          {isConfirming ? (
+                            /* ── Inline unfavorite confirmation ──────────────── */
+                            <div className="mx-1 my-0.5 p-2 rounded-md bg-destructive/10 border border-destructive/30 animate-in fade-in-0 zoom-in-95 duration-150">
+                              <p className="text-[10px] text-muted-foreground mb-1.5 text-center">
+                                Remove <span className="font-semibold text-foreground">{league.label}</span>?
+                              </p>
+                              <div className="flex gap-1.5">
+                                <button
+                                  onClick={() => setUnfavoriteConfirm(null)}
+                                  className="flex-1 text-[10px] px-2 py-1 rounded bg-secondary hover:bg-accent text-foreground transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  onClick={() => { removeFavorite(league.id); setUnfavoriteConfirm(null); }}
+                                  className="flex-1 text-[10px] px-2 py-1 rounded bg-destructive hover:bg-destructive/80 text-white transition-colors"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
                           <div
                             draggable
                             onDragStart={(e) => onDragStart(e, league.id)}
@@ -213,7 +239,7 @@ export default function SportFilter({
                             tabIndex={0}
                             onKeyDown={(e) => { if (e.key === 'Enter') onFilterChange(league.id); }}
                             className={cn(
-                              'w-full flex items-center justify-between px-2 py-1.5 rounded text-xs',
+                              'w-full flex items-center justify-between px-2 py-1.5 rounded text-xs group/fav',
                               'transition-all duration-150 cursor-grab active:cursor-grabbing select-none',
                               'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                               isActive
@@ -239,10 +265,19 @@ export default function SportFilter({
                               {count > 0 && (
                                 <span className="text-[10px] text-muted-foreground">{count}</span>
                               )}
+                              {/* Unfavorite star button — visible on hover */}
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setUnfavoriteConfirm(league.id); }}
+                                className="text-amber-400 hover:text-destructive opacity-0 group-hover/fav:opacity-100 transition-all"
+                                title="Remove from favorites"
+                              >
+                                <Star className="w-3 h-3 fill-current" />
+                              </button>
                               {/* Drag handle hint */}
                               <span className="text-muted-foreground/30 text-[11px] leading-none" aria-hidden>⠿</span>
                             </span>
                           </div>
+                          )}
                         </div>
                       );
                     })}
