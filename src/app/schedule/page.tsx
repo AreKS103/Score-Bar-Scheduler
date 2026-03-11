@@ -74,6 +74,22 @@ export default function SchedulePage() {
   const [flashKey, setFlashKey] = useState(0);
   const router = useRouter();
 
+  // ─── Client-side auth guard ─────────────────────────────────────────────────
+  // Redirect to /login if the Supabase session has expired or been revoked.
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    const supabase = createClient();
+    // Check on mount
+    supabase.auth.getUser().then(({ error }) => {
+      if (error) router.push('/login');
+    });
+    // Listen for sign-out / token-refresh failures
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') router.push('/login');
+    });
+    return () => subscription.unsubscribe();
+  }, [router]);
+
   async function handleLogout() {
     if (isSupabaseConfigured()) {
       const supabase = createClient();
@@ -100,12 +116,23 @@ export default function SchedulePage() {
 
   // ─── Fetch all sports data via Server API (cached) ───────────────────────────
   const handleFetch = useCallback(async (forceRefresh = false) => {
+    // IMPORTANT: Capture saved selection state BEFORE any cache loading triggers
+    // the debounced save effect (which would overwrite localStorage with empty data).
+    const savedState = loadSelectionState();
+    const savedSel = savedState?.selections ?? {};
+
     // Try to load from client cache first for instant display
     if (!forceRefresh && events.length === 0) {
       const cached = getCachedEvents(dateRange);
       if (cached && cached.length > 0) {
         console.log(`[Schedule] Instant load: ${cached.length} events from local cache`);
-        setEvents(cached);
+        // Merge cached events with saved selections so user sees picks immediately
+        const mergedCached = cached.map(e => {
+          const saved = savedSel[e.id];
+          if (saved) return { ...e, ...saved };
+          return e;
+        });
+        setEvents(mergedCached);
         // Still fetch fresh data in background
       }
     }
@@ -127,18 +154,17 @@ export default function SchedulePage() {
       const data = await res.json();
       const allEventsRaw = data.events ?? [];
       
-      // Build selection maps — in-memory (for refreshes) + localStorage (for page reloads)
+      // Build in-memory selection map (for manual refresh while page is open)
       const memSel = new Map(
         events.map(e => [e.id, { isSelected: e.isSelected, isFeatured: e.isFeatured, tags: e.tags }])
       );
-      const savedSel = loadSelectionState()?.selections ?? {};
       
-      // Merge with preserved selections
+      // Merge with preserved selections (in-memory > localStorage > default)
       const allEvents = allEventsRaw.map((e: MatchEvent) => {
         // In-memory takes priority (user is actively using the page)
         const mem = memSel.get(e.id);
         if (mem && (mem.isSelected || mem.isFeatured || mem.tags.length > 0)) return { ...e, ...mem };
-        // Fall back to localStorage (restores state after page reload)
+        // Fall back to captured localStorage (restores state after page reload)
         const saved = savedSel[e.id];
         if (saved) return { ...e, ...saved };
         return e;
@@ -254,9 +280,10 @@ export default function SchedulePage() {
 
   // ─── Auto-save selection state (debounced 800ms) ──────────────────────────
   // Persists selections, tags, league order, and featured leagues to localStorage
-  // so they survive page refreshes.
+  // so they survive page refreshes. Skips while fetching to avoid overwriting
+  // saved state with intermediate (unmerged) event data.
   useEffect(() => {
-    if (events.length === 0) return;
+    if (events.length === 0 || isFetching) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       const selections: SavedSelectionState['selections'] = {};
@@ -273,7 +300,7 @@ export default function SchedulePage() {
       });
     }, 800);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [events, leagueOrder, featuredLeagues]);
+  }, [events, leagueOrder, featuredLeagues, isFetching]);
 
   // ─── Auto-show panel on first selection; auto-hide when none ─────────────
   useEffect(() => {
