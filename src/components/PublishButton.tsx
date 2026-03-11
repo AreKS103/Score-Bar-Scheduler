@@ -1,36 +1,75 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Upload, CheckCircle, AlertCircle, Loader2, ChevronDown, Trash2 } from 'lucide-react';
+import { Upload, CheckCircle, AlertCircle, Loader2, ChevronDown, Trash2, History } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+interface ScheduleSummary {
+  id: string;
+  week_label: string;
+  published_at: string;
+}
 
 interface PublishButtonProps {
   getHTML: () => string;
   disabled?: boolean;
   onSuccess?: (timestamp: string) => void;
   onDeleteSchedule?: () => Promise<void>;
+  /** Data needed to save a schedule snapshot on publish */
+  getSnapshotData?: () => {
+    weekLabel: string;
+    dateRangeStart: string;
+    dateRangeEnd: string;
+    eventsSnapshot: unknown[];
+    leagueOrder: string[];
+    featuredLeagues: Record<string, string>;
+  };
+  onRestoreSchedule?: (scheduleId: string) => void;
+  hasCurrentSelections?: boolean;
 }
 
-export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSchedule }: PublishButtonProps) {
+export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSchedule, getSnapshotData, onRestoreSchedule, hasCurrentSelections }: PublishButtonProps) {
   const [status, setStatus] = useState<'idle' | 'pushing' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyItems, setHistoryItems] = useState<ScheduleSummary[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [restoreConfirm, setRestoreConfirm] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const historyRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown on outside click
   useEffect(() => {
-    if (!dropdownOpen) return;
+    if (!dropdownOpen && !historyOpen) return;
     function handler(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      if (dropdownOpen && dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setDropdownOpen(false);
         setDeleteConfirm(false);
+      }
+      if (historyOpen && historyRef.current && !historyRef.current.contains(e.target as Node)) {
+        setHistoryOpen(false);
+        setRestoreConfirm(null);
       }
     }
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [dropdownOpen]);
+  }, [dropdownOpen, historyOpen]);
+
+  const fetchHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const res = await fetch('/api/schedule-history');
+      if (res.ok) {
+        const data = await res.json();
+        setHistoryItems(data.schedules ?? []);
+      }
+    } catch { /* ignore */ } finally {
+      setHistoryLoading(false);
+    }
+  };
 
   const handlePush = async () => {
     if (disabled) return;
@@ -56,6 +95,17 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
       setStatus('success');
       setMessage(`Published at ${result.updated}`);
       onSuccess?.(result.updated);
+
+      // Save snapshot to Supabase (fire-and-forget)
+      if (getSnapshotData) {
+        const snapshot = getSnapshotData();
+        fetch('/api/schedule-history', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...snapshot, htmlContent: html }),
+        }).catch(() => {});
+      }
+
       setTimeout(() => { setStatus('idle'); setMessage(''); }, 5000);
     } catch (err) {
       setStatus('error');
@@ -86,6 +136,83 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
 
   return (
     <div className="flex items-center gap-2">
+      {/* History button — LEFT of Publish */}
+      <div className="relative" ref={historyRef}>
+        <button
+          onClick={() => {
+            setHistoryOpen((o) => !o);
+            setRestoreConfirm(null);
+            if (!historyOpen) fetchHistory();
+          }}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md border border-border bg-secondary text-foreground hover:bg-accent transition-colors"
+          title="Past schedules"
+        >
+          <History className="w-4 h-4" />
+          <span className="hidden sm:inline">History</span>
+        </button>
+
+        {historyOpen && (
+          <div className="absolute top-full left-0 mt-1.5 z-200 bg-popover border border-border rounded-lg shadow-2xl shadow-black/40 w-72 overflow-hidden animate-in fade-in-0 zoom-in-95">
+            <div className="px-3 py-2 border-b border-border">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Past Schedules</span>
+            </div>
+            {historyLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+              </div>
+            ) : historyItems.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-6">No published schedules yet</p>
+            ) : (
+              <div className="max-h-60 overflow-y-auto">
+                {historyItems.map((item) => (
+                  <div key={item.id}>
+                    {restoreConfirm === item.id ? (
+                      <div className="p-3 space-y-2 bg-muted/50">
+                        <p className="text-xs text-muted-foreground">
+                          {hasCurrentSelections
+                            ? 'Loading this schedule will replace your current selections. Continue?'
+                            : 'Load this past schedule into preview?'}
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setRestoreConfirm(null)}
+                            className="flex-1 text-xs px-3 py-1.5 rounded-md bg-secondary hover:bg-accent transition-colors text-foreground"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => {
+                              onRestoreSchedule?.(item.id);
+                              setHistoryOpen(false);
+                              setRestoreConfirm(null);
+                            }}
+                            className="flex-1 text-xs px-3 py-1.5 rounded-md bg-primary hover:bg-primary/90 transition-colors text-primary-foreground"
+                          >
+                            Load
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setRestoreConfirm(item.id)}
+                        className="w-full text-left px-3 py-2.5 hover:bg-accent transition-colors flex items-center justify-between"
+                      >
+                        <div>
+                          <p className="text-sm text-foreground">{item.week_label}</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {new Date(item.published_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        </div>
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="relative" ref={dropdownRef}>
         {/* Split button */}
         <div className={cn('flex rounded-md overflow-hidden border text-sm font-medium', colorClass)}>

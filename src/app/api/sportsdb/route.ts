@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { rateLimitedFetch, getRateLimitStatus } from '@/lib/rate-limiter';
+import { createClient } from '@/lib/supabase/server';
 
 const SPORTSDB_ORIGIN = 'https://www.thesportsdb.com/api/v1/json/3';
+
+// Allowlist of permitted SportsDB path prefixes — prevents SSRF abuse
+const ALLOWED_PATH_PREFIXES = [
+  'eventsseason.php',
+  'eventsnextleague.php',
+  'eventspastleague.php',
+  'eventsnext.php',
+  'eventslast.php',
+];
 
 /**
  * Server-side proxy for TheSportsDB to avoid CORS issues in the browser.
@@ -12,9 +22,21 @@ const SPORTSDB_ORIGIN = 'https://www.thesportsdb.com/api/v1/json/3';
  * Error responses (especially 429) are never cached.
  */
 export async function GET(req: NextRequest) {
+  // Require authenticated session
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const path = req.nextUrl.searchParams.get('path');
   if (!path) {
     return NextResponse.json({ error: 'Missing path param' }, { status: 400 });
+  }
+
+  // SSRF protection: only allow known SportsDB endpoints
+  const decodedPath = decodeURIComponent(path);
+  const isAllowed = ALLOWED_PATH_PREFIXES.some(prefix => decodedPath.startsWith(prefix));
+  if (!isAllowed) {
+    return NextResponse.json({ error: 'Forbidden path' }, { status: 403 });
   }
 
   // Check rate limit status before making request

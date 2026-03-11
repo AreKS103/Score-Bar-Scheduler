@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { MatchEvent } from '@/types';
+import { createClient } from '@/lib/supabase/server';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SERVER-SIDE CACHE — Stores fetched events in memory with TTL
@@ -13,14 +14,14 @@ interface CacheEntry {
 
 // In-memory cache (persists across requests in same Node process)
 const CACHE = new Map<string, CacheEntry>();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-const STALE_OK_TTL = 15 * 60 * 1000; // Serve stale data for up to 15 minutes while refreshing
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutes – fresh window; serve immediately
+const STALE_OK_TTL = 45 * 60 * 1000; // 45 minutes – serve stale + background-refresh
 
 // Fetch lock to prevent thundering herd
 let fetchPromise: Promise<MatchEvent[]> | null = null;
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ESPN API — Batched fetching with controlled concurrency
+// ESPN API
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports';
@@ -212,13 +213,15 @@ interface ESPNCompetitorRaw {
   homeAway?: string;
   order?: number;
   team?: { displayName?: string; logo?: string };
-  athlete?: { displayName?: string; fullName?: string };
+  athlete?: { displayName?: string; fullName?: string; flag?: { href: string; alt: string } };
 }
 
 interface ESPNCompetitionRaw {
   date?: string;
   competitors?: ESPNCompetitorRaw[];
-  type?: { abbreviation?: string };
+  type?: { abbreviation?: string; text?: string; slug?: string };
+  round?: { id?: string; displayName?: string };
+  status?: { type: { state?: string; description?: string } };
 }
 
 interface ESPNEvent {
@@ -227,6 +230,10 @@ interface ESPNEvent {
   shortName?: string;
   date: string;
   competitions?: ESPNCompetitionRaw[];
+  groupings?: {
+    grouping: { id: string; slug: string; displayName: string };
+    competitions: ESPNCompetitionRaw[];
+  }[];
 }
 
 // ── Helper: extract competitor name from ESPN competitor object ───────────────
@@ -345,6 +352,60 @@ function mapMotorsportSessions(
   return results;
 }
 
+// ── Tennis mapper — flattens groupings→competitions into individual matches ──
+function mapTennisMatches(
+  events: ESPNEvent[],
+  league: { id: string; slug: string },
+  meta: { label: string; category: string; logo: string }
+): MatchEvent[] {
+  const results: MatchEvent[] = [];
+
+  for (const event of events) {
+    const tournamentName = event.shortName || event.name || meta.label;
+
+    for (const group of event.groupings ?? []) {
+      const drawSlug = group.grouping.slug || '';
+      // Skip doubles — ESPN often has missing athlete names for doubles
+      if (drawSlug.includes('doubles')) continue;
+
+      for (const comp of group.competitions ?? []) {
+        const competitors = comp.competitors ?? [];
+        const p1 = competitors.find(c => c.order === 1) ?? competitors[0];
+        const p2 = competitors.find(c => c.order === 2) ?? competitors[1];
+        const p1Name = p1 ? getCompName(p1) : '';
+        const p2Name = p2 ? getCompName(p2) : '';
+        if (!p1Name || !p2Name) continue;
+
+        const matchTime = comp.date ? utcToICT(comp.date) : utcToICT(event.date);
+        const roundName = comp.round?.displayName || '';
+        const drawLabel = group.grouping.displayName || '';
+        const round = roundName ? `${drawLabel} – ${roundName}` : drawLabel;
+
+        results.push({
+          id: `espn-${league.id}-${event.id}-${comp.competitors?.[0]?.athlete?.displayName || ''}-${comp.competitors?.[1]?.athlete?.displayName || ''}`.replace(/\s+/g, '-'),
+          source: 'espn',
+          sportId: league.id,
+          category: meta.category,
+          leagueLabel: `${meta.label}: ${tournamentName}`,
+          leagueLogo: meta.logo,
+          date: matchTime.date,
+          time: matchTime.time,
+          home: p1Name,
+          away: p2Name,
+          homeLogo: p1?.athlete?.flag?.href || '',
+          awayLogo: p2?.athlete?.flag?.href || '',
+          round,
+          tags: [],
+          isFeatured: false,
+          isSelected: false,
+        });
+      }
+    }
+  }
+
+  return results;
+}
+
 // ── Default team-sport mapper (soccer, basketball, etc.) ─────────────────────
 function mapTeamSportEvents(
   events: ESPNEvent[],
@@ -405,13 +466,13 @@ async function fetchESPNLeague(
   const meta = LEAGUE_METADATA[league.id];
   if (!meta) return [];
 
-  const isMMA = league.slug.startsWith('mma/') || league.slug.startsWith('boxing/');
-  const isMotorsport = league.slug.startsWith('racing/');
-
   try {
+    const isMMA = league.slug.startsWith('mma/') || league.slug.startsWith('boxing/');
+    const isMotorsport = league.slug.startsWith('racing/');
+    const isTennis = league.slug.startsWith('tennis/');
     const dateParam = espnDateRange(startDate, endDate);
     const url = `${ESPN_BASE}/${league.slug}/scoreboard?dates=${dateParam}&limit=1000`;
-    
+
     const data = await espnFetchWithRetry(url, 10_000);
 
     if (!data?.events) {
@@ -432,6 +493,8 @@ async function fetchESPNLeague(
       parsed = mapMMAFights(events, league, meta);
     } else if (isMotorsport) {
       parsed = mapMotorsportSessions(events, league, meta);
+    } else if (isTennis) {
+      parsed = mapTennisMatches(events, league, meta);
     } else {
       parsed = mapTeamSportEvents(events, league, meta);
     }
@@ -440,13 +503,13 @@ async function fetchESPNLeague(
       pathCache.set(league.id, { events: parsed, fetchedAt: Date.now() });
     }
     return parsed;
-  } catch (err: any) {
+  } catch (err) {
     const stale = pathCache.get(league.id);
     if (stale && Date.now() - stale.fetchedAt < PATH_STALE_MAX_MS) {
       console.log(`[ESPN] ${league.id} error → serving ${stale.events.length} stale events`);
       return stale.events;
     }
-    console.warn(`[ESPN] ${league.id} failed:`, err.message);
+    console.warn(`[ESPN] ${league.id} failed:`, (err as Error).message);
     return [];
   }
 }
@@ -853,14 +916,20 @@ async function fetchSportsDBLeague(
 }
 
 async function fetchAllSportsDB(startDate: string, endDate: string): Promise<MatchEvent[]> {
+  // Fetch all leagues in parallel — each league's internal sleeps still rate-limit
+  // its own sequential season requests; running leagues concurrently is safe.
+  const settled = await Promise.allSettled(
+    SPORTSDB_ONLY_LEAGUES.map(league => fetchSportsDBLeague(league, startDate, endDate))
+  );
+
   const results: MatchEvent[] = [];
-  
-  for (const league of SPORTSDB_ONLY_LEAGUES) {
-    const events = await fetchSportsDBLeague(league, startDate, endDate);
-    results.push(...events);
-    console.log(`[SportsDB] ✓ ${league.label}: ${events.length} events`);
+  for (const outcome of settled) {
+    if (outcome.status === 'fulfilled') {
+      results.push(...outcome.value);
+    } else {
+      console.warn('[SportsDB] league fetch failed:', outcome.reason);
+    }
   }
-  
   return results;
 }
 
@@ -911,6 +980,11 @@ async function fetchAllEvents(startDate: string, endDate: string): Promise<Match
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export async function GET(req: NextRequest) {
+  // Require authenticated session — prevents external abuse of the fetch pipeline
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const { searchParams } = new URL(req.url);
   const startDate = searchParams.get('start');
   const endDate = searchParams.get('end');
@@ -932,7 +1006,7 @@ export async function GET(req: NextRequest) {
       events: cached.data,
       cached: true,
       age: Math.round((now - cached.timestamp) / 1000),
-    });
+    }, { headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600' } });
   }
 
   // Return stale data while refreshing in background
@@ -953,7 +1027,7 @@ export async function GET(req: NextRequest) {
       cached: true,
       stale: true,
       age: Math.round((now - cached.timestamp) / 1000),
-    });
+    }, { headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=300' } });
   }
 
   // Need fresh data
@@ -970,7 +1044,9 @@ export async function GET(req: NextRequest) {
     CACHE.set(cacheKey, { data: events, timestamp: Date.now(), fetchInProgress: false });
     fetchPromise = null;
 
-    return NextResponse.json({ events, cached: false });
+    return NextResponse.json({ events, cached: false }, {
+      headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600' },
+    });
   } catch (err) {
     fetchPromise = null;
     console.error('[Events API] Fetch failed:', err);

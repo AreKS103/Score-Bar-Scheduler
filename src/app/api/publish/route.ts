@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
 
 /** Maximum HTML payload size (500 KB) — prevents abuse */
 const MAX_BODY_BYTES = 512_000;
@@ -14,6 +15,10 @@ const MAX_BODY_BYTES = 512_000;
  */
 export async function POST(req: NextRequest) {
   try {
+    // Require authenticated session
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     // Validate content type
     const ct = req.headers.get('content-type') ?? '';
     if (!ct.includes('application/json')) {

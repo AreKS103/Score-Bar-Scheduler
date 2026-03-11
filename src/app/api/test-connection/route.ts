@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
 
 /**
  * Server-side API route to test WordPress connection.
  * Uses server-side env vars only — credentials never reach the browser.
  */
 export async function GET(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ ok: false, message: 'Unauthorized' }, { status: 401 });
+
   const siteUrl = process.env.WP_SITE_URL || 'https://scorekh.com';
   const username = process.env.WP_USERNAME;
   const appPassword = process.env.WP_APP_PASSWORD;
