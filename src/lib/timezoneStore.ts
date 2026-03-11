@@ -1,6 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
+import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 
 /** IANA identifier — must use underscore for date-fns-tz */
 const DEFAULT_TIMEZONE = 'Asia/Phnom_Penh';
@@ -11,6 +12,7 @@ export interface TimezoneState {
   useLocal: boolean;
   setTimezone: (tz: string) => void;
   setUseLocal: (val: boolean) => void;
+  loadFromSupabase: () => Promise<void>;
 }
 
 function loadFromStorage(): { timezone: string; useLocal: boolean } {
@@ -35,6 +37,29 @@ function saveToStorage(state: { timezone: string; useLocal: boolean }) {
   } catch { /* ignore */ }
 }
 
+let tzSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function debouncedSaveTimezone(state: { timezone: string; useLocal: boolean }) {
+  saveToStorage(state);
+  if (tzSaveTimer) clearTimeout(tzSaveTimer);
+  tzSaveTimer = setTimeout(async () => {
+    if (!isSupabaseConfigured()) return;
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      await supabase.from('user_preferences').upsert({
+        user_id: user.id,
+        key: 'timezone',
+        value: { timezone: state.timezone, useLocal: state.useLocal },
+        updated_at: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn('[TimezoneStore] Failed to save to Supabase:', e);
+    }
+  }, 500);
+}
+
 const initial = loadFromStorage();
 
 export const useTimezoneStore = create<TimezoneState>((set) => ({
@@ -44,7 +69,7 @@ export const useTimezoneStore = create<TimezoneState>((set) => ({
   setTimezone: (tz: string) =>
     set((state) => {
       const next = { ...state, timezone: tz, useLocal: false };
-      saveToStorage(next);
+      debouncedSaveTimezone(next);
       return next;
     }),
 
@@ -53,9 +78,34 @@ export const useTimezoneStore = create<TimezoneState>((set) => ({
       const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone || DEFAULT_TIMEZONE;
       const tz = val ? localTz : DEFAULT_TIMEZONE;
       const next = { ...state, useLocal: val, timezone: tz };
-      saveToStorage(next);
+      debouncedSaveTimezone(next);
       return next;
     }),
+
+  loadFromSupabase: async () => {
+    if (!isSupabaseConfigured()) return;
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from('user_preferences')
+        .select('value')
+        .eq('user_id', user.id)
+        .eq('key', 'timezone')
+        .single();
+      if (data?.value) {
+        const val = data.value as { timezone?: string; useLocal?: boolean };
+        const useLocal = !!val.useLocal;
+        const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone || DEFAULT_TIMEZONE;
+        const timezone = useLocal ? localTz : (val.timezone || DEFAULT_TIMEZONE);
+        saveToStorage({ timezone, useLocal });
+        set({ timezone, useLocal });
+      }
+    } catch (e) {
+      console.warn('[TimezoneStore] Failed to load from Supabase:', e);
+    }
+  },
 }));
 
 /**

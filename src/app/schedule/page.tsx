@@ -22,6 +22,8 @@ import {
 import { useScheduleStore } from '@/lib/store';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { useFavoritesStore } from '@/lib/favoritesStore';
+import { useThemeStore } from '@/lib/themeStore';
+import { useTimezoneStore } from '@/lib/timezoneStore';
 import { getCachedEvents, setCachedEvents, saveSelectionToSupabase, loadSelectionFromSupabase, loadSelectionState, type SavedSelectionState } from '@/lib/clientCache';
 import { generateHTML } from '@/lib/generateHTML';
 import { SPORTS_CONFIG, getCategories, ALL_SCREEN_TAGS } from '@/lib/config';
@@ -215,6 +217,8 @@ export default function SchedulePage() {
       }
       handleFetch();
       useFavoritesStore.getState().loadFromSupabase();
+      useThemeStore.getState().loadFromSupabase();
+      useTimezoneStore.getState().loadFromSupabase();
       // After initial fetch, try to load from Supabase (may override localStorage)
       loadSelectionFromSupabase().then(supaState => {
         if (!supaState) return;
