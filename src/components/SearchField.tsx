@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect } from 'react';
-import Fuse, { type IFuseOptions } from 'fuse.js';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Search, X } from 'lucide-react';
 import type { MatchEvent } from '@/types';
 import { Input } from '@/components/ui/input';
@@ -12,19 +11,22 @@ interface SearchFieldProps {
   placeholder?: string;
 }
 
-const FUSE_OPTIONS: IFuseOptions<MatchEvent> = {
-  keys: [
-    { name: 'home', weight: 0.35 },
-    { name: 'away', weight: 0.35 },
-    { name: 'leagueLabel', weight: 0.15 },
-    { name: 'category', weight: 0.1 },
-    { name: 'round', weight: 0.05 },
-  ],
-  threshold: 0.35,
-  ignoreLocation: true,
-  includeScore: true,
-  minMatchCharLength: 2,
-};
+/** Fast plain-text search — no fuzzy matching, just case-insensitive substring */
+function searchEvents(events: MatchEvent[], query: string): Set<string> {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return new Set();
+
+  const ids = new Set<string>();
+  for (const event of events) {
+    // Build a single searchable string per event (cached on first build)
+    const haystack = `${event.home} ${event.away} ${event.leagueLabel} ${event.category} ${event.round} ${event.sportId}`.toLowerCase();
+    // Every search term must appear somewhere in the haystack
+    if (terms.every(term => haystack.includes(term))) {
+      ids.add(event.id);
+    }
+  }
+  return ids;
+}
 
 export default function SearchField({
   events,
@@ -33,24 +35,31 @@ export default function SearchField({
 }: SearchFieldProps) {
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fuse = useMemo(() => new Fuse(events, FUSE_OPTIONS), [events]);
+  // Stable ref to callback so we don't trigger effect on every render
+  const onFilteredChangeRef = useRef(onFilteredChange);
+  onFilteredChangeRef.current = onFilteredChange;
 
-  // Update filtered results as user types
-  useEffect(() => {
-    if (!query.trim()) {
-      onFilteredChange(null);
+  const doSearch = useCallback((q: string, evts: MatchEvent[]) => {
+    if (!q.trim()) {
+      onFilteredChangeRef.current(null);
       return;
     }
+    const ids = searchEvents(evts, q.trim());
+    onFilteredChangeRef.current(ids);
+  }, []);
 
-    const results = fuse.search(query.trim());
-    const ids = new Set(results.map(r => r.item.id));
-    onFilteredChange(ids);
-  }, [query, fuse, onFilteredChange]);
+  // Debounced search — 120ms after user stops typing
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => doSearch(query, events), 120);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [query, events, doSearch]);
 
   const handleClear = () => {
     setQuery('');
-    onFilteredChange(null);
+    onFilteredChangeRef.current(null);
     inputRef.current?.focus();
   };
 

@@ -126,6 +126,79 @@ export function loadSelectionState(): SavedSelectionState | null {
   }
 }
 
+// ─── Supabase Selection Sync ──────────────────────────────────────────────────
+// Mirrors selection state to Supabase `user_selections` table for cross-device persistence.
+
+import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
+
+let supabaseSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Save selection state to Supabase (debounced 2s).
+ * Also writes to localStorage immediately via saveSelectionState.
+ */
+export function saveSelectionToSupabase(state: SavedSelectionState): void {
+  // Always save to localStorage first (instant)
+  saveSelectionState(state);
+
+  if (!isSupabaseConfigured()) return;
+  if (supabaseSaveTimer) clearTimeout(supabaseSaveTimer);
+  supabaseSaveTimer = setTimeout(async () => {
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      await supabase.from('user_selections').upsert({
+        user_id: user.id,
+        selections: state.selections,
+        league_order: state.leagueOrder,
+        featured_leagues: state.featuredLeagues,
+        updated_at: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn('[SelectionSync] Failed to save to Supabase:', e);
+    }
+  }, 2000);
+}
+
+/**
+ * Load selection state from Supabase. Falls back to localStorage.
+ */
+export async function loadSelectionFromSupabase(): Promise<SavedSelectionState | null> {
+  // Try Supabase first
+  if (isSupabaseConfigured()) {
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase
+          .from('user_selections')
+          .select('selections, league_order, featured_leagues, updated_at')
+          .eq('user_id', user.id)
+          .single();
+
+        if (data) {
+          const state: SavedSelectionState = {
+            selections: data.selections ?? {},
+            leagueOrder: data.league_order ?? [],
+            featuredLeagues: data.featured_leagues ?? {},
+            savedAt: new Date(data.updated_at).getTime(),
+          };
+          // Sync to localStorage too
+          saveSelectionState(state);
+          return state;
+        }
+      }
+    } catch (e) {
+      console.warn('[SelectionSync] Failed to load from Supabase, falling back to localStorage:', e);
+    }
+  }
+
+  // Fall back to localStorage
+  return loadSelectionState();
+}
+
 /** Get cache metadata without loading full data */
 export function getCacheInfo(): { age: number; eventCount: number } | null {
   if (typeof window === 'undefined') return null;

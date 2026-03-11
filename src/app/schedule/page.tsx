@@ -22,7 +22,7 @@ import {
 import { useScheduleStore } from '@/lib/store';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { useFavoritesStore } from '@/lib/favoritesStore';
-import { getCachedEvents, setCachedEvents, saveSelectionState, loadSelectionState, type SavedSelectionState } from '@/lib/clientCache';
+import { getCachedEvents, setCachedEvents, saveSelectionToSupabase, loadSelectionFromSupabase, loadSelectionState, type SavedSelectionState } from '@/lib/clientCache';
 import { generateHTML } from '@/lib/generateHTML';
 import { SPORTS_CONFIG, getCategories, ALL_SCREEN_TAGS } from '@/lib/config';
 import { formatDisplayDate } from '@/lib/timezone';
@@ -118,6 +118,7 @@ export default function SchedulePage() {
   const handleFetch = useCallback(async (forceRefresh = false) => {
     // IMPORTANT: Capture saved selection state BEFORE any cache loading triggers
     // the debounced save effect (which would overwrite localStorage with empty data).
+    // Use sync localStorage load first (instant), Supabase will override on mount.
     const savedState = loadSelectionState();
     const savedSel = savedState?.selections ?? {};
 
@@ -199,7 +200,7 @@ export default function SchedulePage() {
   useEffect(() => {
     if (!hasFetchedRef.current) {
       hasFetchedRef.current = true;
-      // Restore league order + featured leagues from last session before fetching
+      // Restore league order + featured leagues from localStorage first (instant)
       const saved = loadSelectionState();
       if (saved) {
         if (saved.leagueOrder.length > 0) setLeagueOrder(saved.leagueOrder);
@@ -214,6 +215,14 @@ export default function SchedulePage() {
       }
       handleFetch();
       useFavoritesStore.getState().loadFromSupabase();
+      // After initial fetch, try to load from Supabase (may override localStorage)
+      loadSelectionFromSupabase().then(supaState => {
+        if (!supaState) return;
+        if (supaState.leagueOrder.length > 0) setLeagueOrder(supaState.leagueOrder);
+        if (Object.keys(supaState.featuredLeagues).length > 0) {
+          setFeaturedLeagues(new Map(Object.entries(supaState.featuredLeagues)));
+        }
+      });
     }
   }, [handleFetch]);
 
@@ -292,7 +301,7 @@ export default function SchedulePage() {
           selections[e.id] = { isSelected: e.isSelected, isFeatured: e.isFeatured, tags: e.tags };
         }
       }
-      saveSelectionState({
+      saveSelectionToSupabase({
         selections,
         leagueOrder,
         featuredLeagues: Object.fromEntries(featuredLeagues),
