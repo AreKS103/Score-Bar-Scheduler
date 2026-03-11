@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Upload, CheckCircle, AlertCircle, Loader2, ChevronDown, Trash2, History } from 'lucide-react';
+import { Upload, CheckCircle, AlertCircle, Loader2, ChevronDown, Trash2, History, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ScheduleSummary {
@@ -38,10 +38,20 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
   const [historyItems, setHistoryItems] = useState<ScheduleSummary[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [restoreConfirm, setRestoreConfirm] = useState<string | null>(null);
+  // 5-second publish countdown (null = not counting, 0 = fire, 1-5 = counting)
+  const [countdown, setCountdown] = useState<number | null>(null);
+  // Undo toast state
+  const [undoToast, setUndoToast] = useState<{ prevHTML: string } | null>(null);
+
   const dropdownRef = useRef<HTMLDivElement>(null);
   const historyRef = useRef<HTMLDivElement>(null);
+  // Stores previous live HTML fetched just before publish starts (for undo)
+  const prevHTMLRef = useRef('');
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Ref to publish function so the countdown effect always calls the freshest closure
+  const doPublishRef = useRef<(() => Promise<void>) | undefined>(undefined);
 
-  // Close dropdown on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
     if (!dropdownOpen && !historyOpen) return;
     function handler(e: MouseEvent) {
@@ -58,6 +68,21 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
     return () => document.removeEventListener('mousedown', handler);
   }, [dropdownOpen, historyOpen]);
 
+  // Countdown tick — calls doPublishRef.current when it reaches 0
+  useEffect(() => {
+    if (countdown === null) return;
+    if (countdown === 0) {
+      setCountdown(null);
+      doPublishRef.current?.();
+      return;
+    }
+    const t = setTimeout(() => setCountdown(c => c !== null ? c - 1 : null), 1000);
+    return () => clearTimeout(t);
+  }, [countdown]);
+
+  // Clean up undo timer on unmount
+  useEffect(() => () => { if (undoTimerRef.current) clearTimeout(undoTimerRef.current); }, []);
+
   const fetchHistory = async () => {
     setHistoryLoading(true);
     try {
@@ -71,8 +96,8 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
     }
   };
 
-  const handlePush = async () => {
-    if (disabled) return;
+  // Core publish logic — refreshed into ref on every render so countdown always fires fresh
+  const doPublish = async () => {
     const html = getHTML();
     if (!html) return;
 
@@ -93,7 +118,6 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
 
       const result = await res.json();
       setStatus('success');
-      setMessage(`Published at ${result.updated}`);
       onSuccess?.(result.updated);
 
       // Save snapshot to Supabase (fire-and-forget)
@@ -106,10 +130,68 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
         }).catch(() => {});
       }
 
-      setTimeout(() => { setStatus('idle'); setMessage(''); }, 5000);
+      // Show undo toast — captures prevHTML at moment of success
+      const capturedPrev = prevHTMLRef.current;
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+      setUndoToast({ prevHTML: capturedPrev });
+      undoTimerRef.current = setTimeout(() => setUndoToast(null), 8000);
+
+      // Return button to idle after animation
+      setTimeout(() => { setStatus('idle'); }, 4000);
     } catch (err) {
       setStatus('error');
       setMessage(err instanceof Error ? err.message : 'Publish failed — check server logs');
+    }
+  };
+  // Must update ref on every render so useEffect always has the latest closure
+  doPublishRef.current = doPublish;
+
+  /** Called when Publish button is clicked — starts the 5-second countdown */
+  const handlePublishClick = () => {
+    if (disabled || countdown !== null || status === 'pushing') return;
+
+    // Prefetch the previous schedule HTML concurrently with the countdown
+    // so it's ready by the time publish succeeds (~6-8 seconds later).
+    prevHTMLRef.current = '';
+    fetch('/api/schedule-history')
+      .then(r => r.json())
+      .then(async (data) => {
+        const latest = data.schedules?.[0];
+        if (latest?.id) {
+          const r2 = await fetch(`/api/schedule-history/${latest.id}`);
+          if (r2.ok) {
+            const { schedule } = await r2.json();
+            prevHTMLRef.current = schedule?.html_content ?? '';
+          }
+        }
+      })
+      .catch(() => {});
+
+    setCountdown(5);
+  };
+
+  const handleCancelCountdown = () => setCountdown(null);
+
+  /** Reverts WordPress to the schedule that was live before the last publish */
+  const handleUndo = async () => {
+    const prevHTML = undoToast?.prevHTML;
+    if (!prevHTML) return;
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setUndoToast(null);
+    setStatus('pushing');
+    setMessage('');
+    try {
+      const res = await fetch('/api/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ html: prevHTML }),
+      });
+      if (!res.ok) throw new Error('Revert failed');
+      setStatus('success');
+      setTimeout(() => setStatus('idle'), 3000);
+    } catch {
+      setStatus('error');
+      setMessage('Revert failed');
     }
   };
 
@@ -213,84 +295,122 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
         )}
       </div>
 
-      <div className="relative" ref={dropdownRef}>
-        {/* Split button */}
-        <div className={cn('flex rounded-md overflow-hidden border text-sm font-medium', colorClass)}>
-          {/* Main publish action */}
+      {/* Countdown view (replaces split button during 5-second window) */}
+      {countdown !== null ? (
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-orange-500/40 bg-orange-500/10 text-sm text-orange-500 font-medium tabular-nums">
+            <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+            Publishing in {countdown}s…
+          </div>
           <button
-            onClick={handlePush}
-            disabled={disabled || status === 'pushing'}
-            className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 transition-colors',
-              !disabled && status === 'idle' && 'hover:bg-orange-500',
-              status === 'success' && 'hover:bg-emerald-500',
-              status === 'error' && 'hover:bg-destructive/90',
-              (disabled || status === 'pushing') && 'opacity-60 cursor-not-allowed'
-            )}
+            onClick={handleCancelCountdown}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md border border-border bg-secondary text-foreground hover:bg-accent transition-colors"
           >
-            {status === 'pushing' && <Loader2 className="w-4 h-4 animate-spin" />}
-            {status === 'success' && <CheckCircle className="w-4 h-4" />}
-            {status === 'error' && <AlertCircle className="w-4 h-4" />}
-            {status === 'idle' && <Upload className="w-4 h-4" />}
-            {status === 'pushing' ? 'Publishing…' : 'Publish'}
-          </button>
-
-          {/* Divider */}
-          <div className="w-px bg-white/20 self-stretch" />
-
-          {/* Dropdown trigger */}
-          <button
-            onClick={() => { setDropdownOpen((o) => !o); setDeleteConfirm(false); }}
-            className="flex items-center px-2 py-1.5 hover:bg-white/10 transition-colors"
-            aria-label="More publish options"
-          >
-            <ChevronDown className={cn('w-3.5 h-3.5 transition-transform duration-150', dropdownOpen && 'rotate-180')} />
+            <X className="w-3.5 h-3.5" />
+            Cancel
           </button>
         </div>
+      ) : (
+        <div className="relative" ref={dropdownRef}>
+          {/* Split button */}
+          <div className={cn('flex rounded-md overflow-hidden border text-sm font-medium', colorClass)}>
+            {/* Main publish action */}
+            <button
+              onClick={handlePublishClick}
+              disabled={disabled || status === 'pushing'}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 transition-colors',
+                !disabled && status === 'idle' && 'hover:bg-orange-500',
+                status === 'success' && 'hover:bg-emerald-500',
+                status === 'error' && 'hover:bg-destructive/90',
+                (disabled || status === 'pushing') && 'opacity-60 cursor-not-allowed'
+              )}
+            >
+              {status === 'pushing' && <Loader2 className="w-4 h-4 animate-spin" />}
+              {status === 'success' && <CheckCircle className="w-4 h-4" />}
+              {status === 'error' && <AlertCircle className="w-4 h-4" />}
+              {status === 'idle' && <Upload className="w-4 h-4" />}
+              {status === 'pushing' ? 'Publishing…' : 'Publish'}
+            </button>
 
-        {/* Dropdown */}
-        {dropdownOpen && (
-          <div className="absolute top-full right-0 mt-1.5 z-200 bg-popover border border-border rounded-lg shadow-2xl shadow-black/40 min-w-55 overflow-hidden animate-in fade-in-0 zoom-in-95">
-            {!deleteConfirm ? (
-              <button
-                onClick={() => setDeleteConfirm(true)}
-                className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-destructive hover:bg-destructive/10 transition-colors"
-              >
-                <Trash2 className="w-4 h-4 shrink-0" />
-                Delete current schedule
-              </button>
-            ) : (
-              <div className="p-3 space-y-2">
-                <p className="text-xs text-muted-foreground">Delete the published schedule from WordPress?</p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setDeleteConfirm(false)}
-                    className="flex-1 text-xs px-3 py-1.5 rounded-md bg-secondary hover:bg-accent transition-colors text-foreground"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleDelete}
-                    disabled={isDeleting}
-                    className="flex-1 text-xs px-3 py-1.5 rounded-md bg-destructive hover:bg-destructive/80 transition-colors text-white flex items-center justify-center gap-1.5 disabled:opacity-60"
-                  >
-                    {isDeleting && <Loader2 className="w-3 h-3 animate-spin" />}
-                    Delete
-                  </button>
-                </div>
-              </div>
-            )}
+            {/* Divider */}
+            <div className="w-px bg-white/20 self-stretch" />
+
+            {/* Dropdown trigger */}
+            <button
+              onClick={() => { setDropdownOpen((o) => !o); setDeleteConfirm(false); }}
+              className="flex items-center px-2 py-1.5 hover:bg-white/10 transition-colors"
+              aria-label="More publish options"
+            >
+              <ChevronDown className={cn('w-3.5 h-3.5 transition-transform duration-150', dropdownOpen && 'rotate-180')} />
+            </button>
           </div>
-        )}
-      </div>
 
-      {message && (
-        <span className={cn(
-          'text-xs max-w-50 truncate',
-          status === 'success' ? 'text-emerald-400' : 'text-destructive'
-        )}>
+          {/* Dropdown */}
+          {dropdownOpen && (
+            <div className="absolute top-full right-0 mt-1.5 z-200 bg-popover border border-border rounded-lg shadow-2xl shadow-black/40 min-w-55 overflow-hidden animate-in fade-in-0 zoom-in-95">
+              {!deleteConfirm ? (
+                <button
+                  onClick={() => setDeleteConfirm(true)}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-destructive hover:bg-destructive/10 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4 shrink-0" />
+                  Delete current schedule
+                </button>
+              ) : (
+                <div className="p-3 space-y-2">
+                  <p className="text-xs text-muted-foreground">Delete the published schedule from WordPress?</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setDeleteConfirm(false)}
+                      className="flex-1 text-xs px-3 py-1.5 rounded-md bg-secondary hover:bg-accent transition-colors text-foreground"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleDelete}
+                      disabled={isDeleting}
+                      className="flex-1 text-xs px-3 py-1.5 rounded-md bg-destructive hover:bg-destructive/80 transition-colors text-white flex items-center justify-center gap-1.5 disabled:opacity-60"
+                    >
+                      {isDeleting && <Loader2 className="w-3 h-3 animate-spin" />}
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Error message */}
+      {message && status === 'error' && (
+        <span className="text-xs max-w-50 truncate text-destructive">
           {message}
         </span>
+      )}
+
+      {/* ── Undo toast (fixed, bottom-right) ───────────────────────────────── */}
+      {undoToast && (
+        <div className="fixed bottom-5 right-5 z-[400] flex items-center gap-3 bg-neutral-900 dark:bg-zinc-800 border border-white/10 text-white px-4 py-3 rounded-xl shadow-2xl animate-in slide-in-from-bottom-3 fade-in-0 duration-300">
+          <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span className="text-sm font-medium">Schedule published</span>
+          {undoToast.prevHTML ? (
+            <button
+              onClick={handleUndo}
+              className="text-sm font-semibold text-orange-400 hover:text-orange-300 underline underline-offset-2 decoration-dotted transition-colors"
+            >
+              Undo
+            </button>
+          ) : null}
+          <button
+            onClick={() => { if (undoTimerRef.current) clearTimeout(undoTimerRef.current); setUndoToast(null); }}
+            className="ml-1 text-white/40 hover:text-white/80 transition-colors"
+            aria-label="Dismiss"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
       )}
     </div>
   );

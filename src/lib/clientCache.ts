@@ -84,6 +84,48 @@ export function clearCachedEvents(): void {
   } catch {}
 }
 
+// ─── Selection Persistence ────────────────────────────────────────────────────
+// Saves which events are selected/featured/tagged so page refreshes don't lose state.
+
+const SELECTIONS_KEY = 'sportglobe_selections_v1';
+const SELECTIONS_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+import type { ScreenTag } from '@/types';
+
+export interface SavedSelectionState {
+  /** Map of event ID → selection flags */
+  selections: Record<string, { isSelected: boolean; isFeatured: boolean; tags: ScreenTag[] }>;
+  /** Preserved league order from the preview sidebar */
+  leagueOrder: string[];
+  /** Preserved featured leagues (sportId → label override) */
+  featuredLeagues: Record<string, string>;
+  savedAt: number;
+}
+
+export function saveSelectionState(state: SavedSelectionState): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(SELECTIONS_KEY, JSON.stringify(state));
+  } catch { /* quota exceeded — ignore */ }
+}
+
+export function loadSelectionState(): SavedSelectionState | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(SELECTIONS_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw) as SavedSelectionState;
+    // Expire after 7 days
+    if (Date.now() - data.savedAt > SELECTIONS_MAX_AGE_MS) {
+      localStorage.removeItem(SELECTIONS_KEY);
+      return null;
+    }
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 /** Get cache metadata without loading full data */
 export function getCacheInfo(): { age: number; eventCount: number } | null {
   if (typeof window === 'undefined') return null;

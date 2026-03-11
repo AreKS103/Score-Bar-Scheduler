@@ -20,7 +20,9 @@ import {
   LogOut,
 } from 'lucide-react';
 import { useScheduleStore } from '@/lib/store';
-import { getCachedEvents, setCachedEvents } from '@/lib/clientCache';
+import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
+import { useFavoritesStore } from '@/lib/favoritesStore';
+import { getCachedEvents, setCachedEvents, saveSelectionState, loadSelectionState, type SavedSelectionState } from '@/lib/clientCache';
 import { generateHTML } from '@/lib/generateHTML';
 import { SPORTS_CONFIG, getCategories, ALL_SCREEN_TAGS } from '@/lib/config';
 import { formatDisplayDate } from '@/lib/timezone';
@@ -73,7 +75,10 @@ export default function SchedulePage() {
   const router = useRouter();
 
   async function handleLogout() {
-    await fetch('/api/auth/logout', { method: 'POST' });
+    if (isSupabaseConfigured()) {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    }
     router.push('/login');
   }
   const [activeSortLeague, setActiveSortLeague] = useState<string | null>(null);
@@ -82,6 +87,7 @@ export default function SchedulePage() {
   const [headerHeight, setHeaderHeight] = useState(116);
   const hasFetchedRef = useRef(false);
   const prevSelectedCountRef = useRef(0);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const widthRef = useRef(700);
   const panelRef = useRef<HTMLDivElement>(null);
   const toggleBtnRef = useRef<HTMLButtonElement>(null);
@@ -121,17 +127,20 @@ export default function SchedulePage() {
       const data = await res.json();
       const allEventsRaw = data.events ?? [];
       
-      // Preserve user selections from existing events
-      const existingSelections = new Map(
+      // Build selection maps — in-memory (for refreshes) + localStorage (for page reloads)
+      const memSel = new Map(
         events.map(e => [e.id, { isSelected: e.isSelected, isFeatured: e.isFeatured, tags: e.tags }])
       );
+      const savedSel = loadSelectionState()?.selections ?? {};
       
       // Merge with preserved selections
       const allEvents = allEventsRaw.map((e: MatchEvent) => {
-        const existing = existingSelections.get(e.id);
-        if (existing) {
-          return { ...e, ...existing };
-        }
+        // In-memory takes priority (user is actively using the page)
+        const mem = memSel.get(e.id);
+        if (mem && (mem.isSelected || mem.isFeatured || mem.tags.length > 0)) return { ...e, ...mem };
+        // Fall back to localStorage (restores state after page reload)
+        const saved = savedSel[e.id];
+        if (saved) return { ...e, ...saved };
         return e;
       });
 
@@ -164,13 +173,21 @@ export default function SchedulePage() {
   useEffect(() => {
     if (!hasFetchedRef.current) {
       hasFetchedRef.current = true;
-      // Set panel width to full viewport on mobile
+      // Restore league order + featured leagues from last session before fetching
+      const saved = loadSelectionState();
+      if (saved) {
+        if (saved.leagueOrder.length > 0) setLeagueOrder(saved.leagueOrder);
+        if (Object.keys(saved.featuredLeagues).length > 0) {
+          setFeaturedLeagues(new Map(Object.entries(saved.featuredLeagues)));
+        }
+      }
       if (window.innerWidth < 768) {
         const vw = window.innerWidth;
         setPanelWidth(vw);
         widthRef.current = vw;
       }
       handleFetch();
+      useFavoritesStore.getState().loadFromSupabase();
     }
   }, [handleFetch]);
 
@@ -234,6 +251,29 @@ export default function SchedulePage() {
       return [...existing, ...added];
     });
   }, [selectedByLeague]);
+
+  // ─── Auto-save selection state (debounced 800ms) ──────────────────────────
+  // Persists selections, tags, league order, and featured leagues to localStorage
+  // so they survive page refreshes.
+  useEffect(() => {
+    if (events.length === 0) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      const selections: SavedSelectionState['selections'] = {};
+      for (const e of events) {
+        if (e.isSelected || e.isFeatured || e.tags.length > 0) {
+          selections[e.id] = { isSelected: e.isSelected, isFeatured: e.isFeatured, tags: e.tags };
+        }
+      }
+      saveSelectionState({
+        selections,
+        leagueOrder,
+        featuredLeagues: Object.fromEntries(featuredLeagues),
+        savedAt: Date.now(),
+      });
+    }, 800);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [events, leagueOrder, featuredLeagues]);
 
   // ─── Auto-show panel on first selection; auto-hide when none ─────────────
   useEffect(() => {
@@ -436,6 +476,33 @@ export default function SchedulePage() {
     window.addEventListener('pointerup', onUp);
   }, []);
 
+  const getSnapshotData = useCallback(() => ({
+    weekLabel: `${formatDisplayDate(dateRange.start)} – ${formatDisplayDate(dateRange.end)}`,
+    dateRangeStart: dateRange.start,
+    dateRangeEnd: dateRange.end,
+    eventsSnapshot: events.filter((e) => e.isSelected),
+    leagueOrder,
+    featuredLeagues: Object.fromEntries(featuredLeagues),
+  }), [dateRange, events, leagueOrder, featuredLeagues]);
+
+  const handleRestoreSchedule = useCallback(async (scheduleId: string) => {
+    try {
+      const res = await fetch(`/api/schedule-history/${scheduleId}`);
+      if (!res.ok) return;
+      const { schedule } = await res.json();
+      if (!schedule) return;
+
+      const restored: MatchEvent[] = schedule.events_snapshot;
+      setEvents(restored);
+      setLeagueOrder(schedule.league_order || []);
+      const fl = new Map<string, string>(Object.entries(schedule.featured_leagues || {}));
+      setFeaturedLeagues(fl);
+      setPreviewOpen(true);
+    } catch (e) {
+      console.error('Failed to restore schedule:', e);
+    }
+  }, [setEvents]);
+
   return (
     <div className="flex h-screen bg-background text-foreground">
       {/* ── Mobile sidebar backdrop ───────────────────────────────────────────── */}
@@ -543,6 +610,9 @@ export default function SchedulePage() {
                 getHTML={getHTML}
                 disabled={selectedCount === 0}
                 onDeleteSchedule={handleDeleteSchedule}
+                getSnapshotData={getSnapshotData}
+                onRestoreSchedule={handleRestoreSchedule}
+                hasCurrentSelections={selectedCount > 0}
               />
             </div>
           </div>
