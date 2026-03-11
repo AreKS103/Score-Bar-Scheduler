@@ -114,6 +114,8 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
   // Fetch pending scheduled publishes on mount
   const fetchPendingSchedules = async () => {
     try {
+      // Trigger execution of any past-due scheduled publishes
+      await fetch('/api/scheduled-publish', { method: 'PATCH' }).catch(() => {});
       const res = await fetch('/api/scheduled-publish');
       if (res.ok) {
         const data = await res.json();
