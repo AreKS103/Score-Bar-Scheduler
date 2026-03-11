@@ -31,6 +31,7 @@ interface AddMatchModalProps {
 
 export default function AddMatchModal({ isOpen, onClose, onAdd }: AddMatchModalProps) {
   const [sportId, setSportId] = useState(SPORTS_CONFIG[0].id);
+  const [customLeague, setCustomLeague] = useState('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [home, setHome] = useState('');
@@ -51,13 +52,17 @@ export default function AddMatchModal({ isOpen, onClose, onAdd }: AddMatchModalP
     e.preventDefault();
     if (!date || !time || !home) return;
 
+    const useCustom = customLeague.trim().length > 0;
+    const leagueLabel = useCustom ? customLeague.trim() : selectedSport.label;
+    const leagueId = useCustom ? `custom-${customLeague.trim().toLowerCase().replace(/\s+/g, '-')}` : sportId;
+
     const newEvent: MatchEvent = {
       id: `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       source: 'manual',
-      sportId,
-      category: selectedSport.category,
-      leagueLabel: selectedSport.label,
-      leagueLogo: selectedSport.logo,
+      sportId: leagueId,
+      category: useCustom ? 'Custom' : selectedSport.category,
+      leagueLabel,
+      leagueLogo: useCustom ? '' : selectedSport.logo,
       date,
       time,
       home,
@@ -74,6 +79,7 @@ export default function AddMatchModal({ isOpen, onClose, onAdd }: AddMatchModalP
     setRound('');
     setTags([]);
     setIsFeatured(false);
+    setCustomLeague('');
     onClose();
   };
 
@@ -88,20 +94,32 @@ export default function AddMatchModal({ isOpen, onClose, onAdd }: AddMatchModalP
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <Label>Sport / League</Label>
-            <Select value={sportId} onValueChange={setSportId}>
-              <SelectTrigger className="mt-1.5 w-full">
-                <SelectValue placeholder="Select sport / league" />
-              </SelectTrigger>
-              <SelectContent>
-                {SPORTS_CONFIG.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.category} — {s.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex gap-3">
+            <div className="flex-[3]">
+              <Label>Sport / League</Label>
+              <Select value={sportId} onValueChange={(v) => { setSportId(v); setCustomLeague(''); }}>
+                <SelectTrigger className="mt-1.5 w-full">
+                  <SelectValue placeholder="Select sport / league" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SPORTS_CONFIG.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.category} — {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex-[2]">
+              <Label>Custom League <span className="text-muted-foreground">(optional)</span></Label>
+              <Input
+                type="text"
+                value={customLeague}
+                onChange={(e) => setCustomLeague(e.target.value)}
+                placeholder="e.g. Ligue 2"
+                className="mt-1.5"
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

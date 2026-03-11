@@ -42,22 +42,16 @@ function footballLeagueSort(sportId: string): number {
 }
 
 /**
- * Group events by category → league → date
+ * Group events by league → date
  */
-function groupEvents(events: MatchEvent[]): Map<string, Map<string, Map<string, MatchEvent[]>>> {
-  const grouped = new Map<string, Map<string, Map<string, MatchEvent[]>>>();
+function groupByLeague(events: MatchEvent[]): Map<string, Map<string, MatchEvent[]>> {
+  const grouped = new Map<string, Map<string, MatchEvent[]>>();
 
   for (const event of events) {
-    if (!grouped.has(event.category)) {
-      grouped.set(event.category, new Map());
+    if (!grouped.has(event.sportId)) {
+      grouped.set(event.sportId, new Map());
     }
-    const catMap = grouped.get(event.category)!;
-
-    const leagueKey = event.sportId;
-    if (!catMap.has(leagueKey)) {
-      catMap.set(leagueKey, new Map());
-    }
-    const leagueMap = catMap.get(leagueKey)!;
+    const leagueMap = grouped.get(event.sportId)!;
 
     if (!leagueMap.has(event.date)) {
       leagueMap.set(event.date, []);
@@ -75,53 +69,40 @@ function groupEvents(events: MatchEvent[]): Map<string, Map<string, Map<string, 
 function generateHighlights(
   featured: MatchEvent[],
   featuredLeagues: Map<string, string>,
-  allSelected: MatchEvent[],
 ): string {
-  const hasMatchHighlights = featured.length > 0;
-  const hasLeagueHighlights = featuredLeagues.size > 0;
-  if (!hasMatchHighlights && !hasLeagueHighlights) return '';
+  if (!featured.length && !featuredLeagues.size) return '';
 
   const parts: string[] = [
     '<h2>This Week\'s Highlights at SCORE</h2>',
     '',
   ];
 
-  // Individual starred match highlights
-  if (hasMatchHighlights) {
-    const items = featured
-      .sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time))
-      .map((e) => {
-        const displayDate = formatDisplayDate(e.date);
-        const name = e.away
-          ? `${escapeHTML(e.home)} vs ${escapeHTML(e.away)}`
-          : escapeHTML(e.home);
-        const roundStr = e.round ? ` \u2013 ${escapeHTML(e.round)}` : '';
-        return `  <li><strong>${escapeHTML(e.leagueLabel)}</strong> \u2013 ${name}${roundStr} \u2013 ${displayDate} \u2013 ${e.time}</li>`;
-      });
-    parts.push('<ul>');
-    parts.push(...items);
-    parts.push('</ul>');
-    parts.push('');
-  }
+  // All highlights in a single <ul> — match stars and league stars share the same bullet style
+  const listItems: string[] = [];
 
-  // League-level spotlights — include all selected matches in the league
-  for (const [sportId, customLabel] of featuredLeagues) {
-    const leagueEvents = allSelected
-      .filter((e) => e.sportId === sportId)
-      .sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
-    if (!leagueEvents.length) continue;
-    const defaultLabel = leagueEvents[0].leagueLabel;
-    const label = customLabel.trim() || defaultLabel;
-    const lines = leagueEvents.map((e) => {
+  // Individual starred match highlights — no date or time
+  featured
+    .sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time))
+    .forEach((e) => {
       const name = e.away
         ? `${escapeHTML(e.home)} vs ${escapeHTML(e.away)}`
         : escapeHTML(e.home);
       const roundStr = e.round ? ` \u2013 ${escapeHTML(e.round)}` : '';
-      return `  ${formatDisplayDate(e.date)} \u2013 ${e.time} \u2013 ${name}${roundStr}`;
+      listItems.push(`  <li><strong>${escapeHTML(e.leagueLabel)}</strong> \u2013 ${name}${roundStr}</li>`);
     });
-    parts.push(`<p><strong>\uD83C\uDFC6 ${escapeHTML(label)}</strong><br/>`);
-    parts.push(lines.join('<br/>\n'));
-    parts.push('</p>');
+
+  // League-level spotlights — same bullet, league title only
+  for (const [sportId, customLabel] of featuredLeagues) {
+    const config = SPORTS_CONFIG.find((s) => s.id === sportId);
+    const defaultLabel = config?.label || sportId;
+    const label = customLabel.trim() || defaultLabel;
+    listItems.push(`  <li><strong>${escapeHTML(label)}</strong></li>`);
+  }
+
+  if (listItems.length) {
+    parts.push('<ul>');
+    parts.push(...listItems);
+    parts.push('</ul>');
     parts.push('');
   }
 
@@ -170,12 +151,10 @@ function getLeagueAbbrev(sportId: string, label: string): string {
     'soccer-ligue1': 'L1',
     'soccer-laliga': 'LaLiga',
     'soccer-seriea': 'Serie A',
-    'soccer-belgian': 'JPL',
     'soccer-spfl': 'SPFL',
     'soccer-eredivisie': 'Eredivisie',
     'soccer-ligaportugal': 'Liga PT',
     'soccer-mls': 'MLS',
-    'soccer-ligamx': 'Liga MX',
     'soccer-superlig': 'Süper Lig',
     'soccer-aleague': 'A-League',
     'soccer-saudipro': 'SPL',
@@ -220,149 +199,145 @@ function getLeagueAbbrev(sportId: string, label: string): string {
 /**
  * Main HTML generation function.
  * Converts selected MatchEvents to the WordPress-ready HTML format.
+ * Leagues are emitted in the exact order of leagueOrder; a category <h2>
+ * header appears only when the category changes from the previous league,
+ * so the preview always mirrors the sort panel order exactly.
  */
 export function generateHTML(events: MatchEvent[], leagueOrder?: string[], featuredLeagues?: Map<string, string>): string {
   const selected = events.filter((e) => e.isSelected);
   if (!selected.length) return '<p>No matches selected for this week.</p>';
 
-  const featured = selected.filter((e) => e.isFeatured);
-  const grouped = groupEvents(selected);
+  // Featured events: show even if not in the selected list
+  const featured = events.filter((e) => e.isFeatured);
   const leagueSpotlights = featuredLeagues ?? new Map<string, string>();
 
   const parts: string[] = [];
 
   // Highlights section
-  const highlightsHTML = generateHighlights(featured, leagueSpotlights, selected);
+  const highlightsHTML = generateHighlights(featured, leagueSpotlights);
   if (highlightsHTML) {
     parts.push(highlightsHTML);
   }
 
-  // Sort categories — derive order from leagueOrder so cross-category
-  // reordering in the preview panel is reflected in the HTML output
-  const catOrderFromLeague = new Map<string, number>();
+  // Group events by league → date (flat, no category nesting)
+  const byLeague = groupByLeague(selected);
+
+  // Build the ordered league list: user-defined order first, then any remaining
+  const allLeagueIds = Array.from(byLeague.keys());
+  const ordered: string[] = [];
   if (leagueOrder?.length) {
-    for (let i = 0; i < leagueOrder.length; i++) {
-      const ev = selected.find(e => e.sportId === leagueOrder[i]);
-      if (ev && !catOrderFromLeague.has(ev.category)) {
-        catOrderFromLeague.set(ev.category, i);
-      }
+    for (const id of leagueOrder) {
+      if (byLeague.has(id)) ordered.push(id);
     }
   }
-
-  const sortedCategories = Array.from(grouped.keys()).sort((a, b) => {
-    if (catOrderFromLeague.size > 0) {
-      const ai = catOrderFromLeague.get(a) ?? 999;
-      const bi = catOrderFromLeague.get(b) ?? 999;
-      if (ai !== bi) return ai - bi;
-    }
-    return categorySort(a) - categorySort(b);
+  // Append leagues not in leagueOrder using default category/football sort
+  const remaining = allLeagueIds.filter((id) => !ordered.includes(id));
+  remaining.sort((a, b) => {
+    const evA = selected.find((e) => e.sportId === a);
+    const evB = selected.find((e) => e.sportId === b);
+    const catA = evA?.category ?? '';
+    const catB = evB?.category ?? '';
+    if (catA !== catB) return categorySort(catA) - categorySort(catB);
+    if (catA === 'Football') return footballLeagueSort(a) - footballLeagueSort(b);
+    return a.localeCompare(b);
   });
+  ordered.push(...remaining);
 
-  for (const category of sortedCategories) {
-    parts.push(`<h2>– ${escapeHTML(category)} –</h2>`);
+  // Emit leagues in order; insert a category <h2> only when category changes
+  let lastCategory = '';
+
+  for (const leagueKey of ordered) {
+    const dateMap = byLeague.get(leagueKey)!;
+    const firstEvent = Array.from(dateMap.values())[0]?.[0];
+    const category = firstEvent?.category ?? '';
+
+    if (category !== lastCategory) {
+      if (lastCategory !== '') parts.push('');
+      parts.push(`<h2>– ${escapeHTML(category)} –</h2>`);
+      parts.push('');
+      lastCategory = category;
+    }
+
+    const config = SPORTS_CONFIG.find((s) => s.id === leagueKey);
+    const leagueLabel = config?.label || firstEvent?.leagueLabel || leagueKey;
+    const leagueLogo = config?.logo || '';
+
+    // League header with logo
+    if (leagueLogo) {
+      parts.push(
+        `<img src="${leagueLogo}" alt="${escapeHTML(leagueLabel)}" style="height:40px;vertical-align:middle;margin-right:8px;" onerror="this.style.display='none'" />`
+      );
+    }
+    parts.push(`<h3>${escapeHTML(leagueLabel)}</h3>`);
     parts.push('');
 
-    const leagueMap = grouped.get(category)!;
+    // Sort dates ascending
+    const sortedDates = Array.from(dateMap.keys()).sort();
 
-    // Sort leagues within category (user-defined order takes priority)
-    const sortedLeagues = Array.from(leagueMap.keys()).sort((a, b) => {
-      if (leagueOrder?.length) {
-        const ai = leagueOrder.indexOf(a);
-        const bi = leagueOrder.indexOf(b);
-        if (ai !== -1 && bi !== -1) return ai - bi;
-        if (ai !== -1) return -1;
-        if (bi !== -1) return 1;
+    // Detect if this league has fight-card events (MMA/Boxing)
+    const isCombatLeague = ['ufc', 'bellator', 'boxing'].includes(leagueKey);
+
+    for (const date of sortedDates) {
+      const dayEvents = dateMap.get(date)!;
+
+      let sortedEvents: MatchEvent[];
+
+      if (isCombatLeague && dayEvents.some((e) => e.fightOrder !== undefined)) {
+        // Combat sports: group by cardName, then within each card sort prelims first,
+        // main event last. Fights without fightOrder fall back to time sort.
+        const cardGroups = new Map<string, MatchEvent[]>();
+        const noCard: MatchEvent[] = [];
+        for (const e of dayEvents) {
+          const key = e.cardName ?? '';
+          if (!key) { noCard.push(e); continue; }
+          if (!cardGroups.has(key)) cardGroups.set(key, []);
+          cardGroups.get(key)!.push(e);
+        }
+        // Sort no-card events by time
+        noCard.sort((a, b) => a.time.localeCompare(b.time));
+        // Within each card: sort by fightOrder ascending
+        // → main event (fightOrder 0) at TOP, prelims (higher fightOrder) below
+        const cardSorted: MatchEvent[] = [];
+        for (const fights of Array.from(cardGroups.values()).sort(
+          // Sort cards by the earliest fight time
+          (a, b) => (a[0]?.time ?? '').localeCompare(b[0]?.time ?? '')
+        )) {
+          fights.sort((a, b) => (a.fightOrder ?? 0) - (b.fightOrder ?? 0));
+          cardSorted.push(...fights);
+        }
+        sortedEvents = [...noCard, ...cardSorted];
+      } else {
+        // Default: sort by time ascending
+        sortedEvents = [...dayEvents].sort((a, b) => a.time.localeCompare(b.time));
       }
-      if (category === 'Football') {
-        return footballLeagueSort(a) - footballLeagueSort(b);
-      }
-      return a.localeCompare(b);
-    });
 
-    for (const leagueKey of sortedLeagues) {
-      const config = SPORTS_CONFIG.find((s) => s.id === leagueKey);
-      const leagueLabel = config?.label || leagueKey;
-      const leagueLogo = config?.logo || '';
+      const displayDate = formatDisplayDate(date);
 
-      // League header with logo
-      if (leagueLogo) {
+      // Check if all matches on this date share the same round
+      const rounds = new Set(sortedEvents.map((e) => e.round).filter(Boolean));
+      const sharedRound = rounds.size === 1 ? Array.from(rounds)[0] : '';
+
+      if (sharedRound) {
         parts.push(
-          `<img src="${leagueLogo}" alt="${escapeHTML(leagueLabel)}" style="height:40px;vertical-align:middle;margin-right:8px;" onerror="this.style.display='none'" />`
+          `<p><strong>${displayDate} – ${escapeHTML(sharedRound)}</strong></p>`
         );
+      } else {
+        parts.push(`<p><strong>${displayDate}</strong></p>`);
       }
-      parts.push(`<h3>${escapeHTML(leagueLabel)}</h3>`);
+
+      const matchLines = sortedEvents.map((event) => {
+        // If round is shared, don't repeat it on each line
+        const e = sharedRound ? { ...event, round: '' } : event;
+        const line = generateMatchLine(e);
+        // Indent prelim fights (non-main-card fights in combat leagues)
+        if (isCombatLeague && e.fightOrder !== undefined && !e.isMainCard) {
+          return `&nbsp;&nbsp;&nbsp;&nbsp;${line}`;
+        }
+        return line;
+      });
+
+      parts.push(`<p>\n${matchLines.join('<br/>\n')}\n</p>`);
       parts.push('');
-
-      const dateMap = leagueMap.get(leagueKey)!;
-
-      // Sort dates ascending
-      const sortedDates = Array.from(dateMap.keys()).sort();
-
-      // Detect if this league has fight-card events (MMA/Boxing)
-      const isCombatLeague = ['ufc', 'bellator', 'boxing'].includes(leagueKey);
-
-      for (const date of sortedDates) {
-        const dayEvents = dateMap.get(date)!;
-
-        let sortedEvents: MatchEvent[];
-
-        if (isCombatLeague && dayEvents.some((e) => e.fightOrder !== undefined)) {
-          // Combat sports: group by cardName, then within each card sort prelims first,
-          // main event last. Fights without fightOrder fall back to time sort.
-          const cardGroups = new Map<string, MatchEvent[]>();
-          const noCard: MatchEvent[] = [];
-          for (const e of dayEvents) {
-            const key = e.cardName ?? '';
-            if (!key) { noCard.push(e); continue; }
-            if (!cardGroups.has(key)) cardGroups.set(key, []);
-            cardGroups.get(key)!.push(e);
-          }
-          // Sort no-card events by time
-          noCard.sort((a, b) => a.time.localeCompare(b.time));
-          // Within each card: sort by fightOrder ascending
-          // → main event (fightOrder 0) at TOP, prelims (higher fightOrder) below
-          const cardSorted: MatchEvent[] = [];
-          for (const fights of Array.from(cardGroups.values()).sort(
-            // Sort cards by the earliest fight time
-            (a, b) => (a[0]?.time ?? '').localeCompare(b[0]?.time ?? '')
-          )) {
-            fights.sort((a, b) => (a.fightOrder ?? 0) - (b.fightOrder ?? 0));
-            cardSorted.push(...fights);
-          }
-          sortedEvents = [...noCard, ...cardSorted];
-        } else {
-          // Default: sort by time ascending
-          sortedEvents = [...dayEvents].sort((a, b) => a.time.localeCompare(b.time));
-        }
-
-        const displayDate = formatDisplayDate(date);
-
-        // Check if all matches on this date share the same round
-        const rounds = new Set(sortedEvents.map((e) => e.round).filter(Boolean));
-        const sharedRound = rounds.size === 1 ? Array.from(rounds)[0] : '';
-
-        if (sharedRound) {
-          parts.push(
-            `<p><strong>${displayDate} – ${escapeHTML(sharedRound)}</strong></p>`
-          );
-        } else {
-          parts.push(`<p><strong>${displayDate}</strong></p>`);
-        }
-
-        const matchLines = sortedEvents.map((event) => {
-          // If round is shared, don't repeat it on each line
-          const e = sharedRound ? { ...event, round: '' } : event;
-          const line = generateMatchLine(e);
-          // Indent prelim fights (non-main-card fights in combat leagues)
-          if (isCombatLeague && e.fightOrder !== undefined && !e.isMainCard) {
-            return `&nbsp;&nbsp;&nbsp;&nbsp;${line}`;
-          }
-          return line;
-        });
-
-        parts.push(`<p>\n${matchLines.join('<br/>\n')}\n</p>`);
-        parts.push('');
-      }
     }
   }
 

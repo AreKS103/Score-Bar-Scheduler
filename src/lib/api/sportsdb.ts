@@ -271,13 +271,13 @@ export async function fetchAllSportsDBLeagues(
       const events = await fetchSportsDBLeague(sport.id, startDate, endDate);
       results.push({ sportId: sport.id, events });
       console.log(`[SportsDB] ✓ ${sport.label}: ${events.length} events`);
-    } catch (err: any) {
+    } catch (err) {
       results.push({
         sportId: sport.id,
         events: [],
-        error: err?.message || 'Unknown error',
+        error: (err as Error)?.message || 'Unknown error',
       });
-      console.warn(`[SportsDB] ✗ ${sport.label}: ${err?.message}`);
+      console.warn(`[SportsDB] ✗ ${sport.label}: ${(err as Error)?.message}`);
     }
     // 300ms between leagues to stay under rate limit
     await wait(300);

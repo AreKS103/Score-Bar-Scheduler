@@ -1,65 +1,110 @@
 'use client';
 /**
- * Favorites store — persisted to localStorage via Zustand persist middleware.
- * Future: swap the 'localStorage' storage implementation for a Supabase adapter
- * to sync favorites per user account.
+ * Favorites store — persisted to Supabase with localStorage fallback.
  */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 
 interface FavoritesState {
-  /** Ordered list of favorited sportIds (order follows drag reordering) */
   favoriteOrder: string[];
-
-  /** Add a league to favorites (appends to end) */
+  _loaded: boolean;
   addFavorite: (sportId: string) => void;
-
-  /** Remove a league from favorites */
   removeFavorite: (sportId: string) => void;
-
-  /** Toggle favorite status */
   toggleFavorite: (sportId: string) => void;
-
-  /** Reorder favorites (called after drag-and-drop) */
   reorderFavorites: (newOrder: string[]) => void;
-
-  /** Check if a league is favorited */
   isFavorite: (sportId: string) => boolean;
+  loadFromSupabase: () => Promise<void>;
+}
+
+let _saveTimer: ReturnType<typeof setTimeout> | null = null;
+function debouncedSave(order: string[]) {
+  if (_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(async () => {
+    if (!isSupabaseConfigured()) return;
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      await supabase.from('favorites').upsert({
+        user_id: user.id,
+        favorite_order: order,
+        updated_at: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error('[Favorites] save failed:', e);
+    }
+  }, 500);
 }
 
 export const useFavoritesStore = create<FavoritesState>()(
   persist(
     (set, get) => ({
       favoriteOrder: [],
+      _loaded: false,
 
       addFavorite: (sportId) =>
         set((state) => {
           if (state.favoriteOrder.includes(sportId)) return state;
-          return { favoriteOrder: [...state.favoriteOrder, sportId] };
+          const next = [...state.favoriteOrder, sportId];
+          debouncedSave(next);
+          return { favoriteOrder: next };
         }),
 
       removeFavorite: (sportId) =>
-        set((state) => ({
-          favoriteOrder: state.favoriteOrder.filter((id) => id !== sportId),
-        })),
+        set((state) => {
+          const next = state.favoriteOrder.filter((id) => id !== sportId);
+          debouncedSave(next);
+          return { favoriteOrder: next };
+        }),
 
       toggleFavorite: (sportId) => {
         const { favoriteOrder, addFavorite, removeFavorite } = get();
-        if (favoriteOrder.includes(sportId)) {
-          removeFavorite(sportId);
-        } else {
-          addFavorite(sportId);
-        }
+        if (favoriteOrder.includes(sportId)) removeFavorite(sportId);
+        else addFavorite(sportId);
       },
 
-      reorderFavorites: (newOrder) => set({ favoriteOrder: newOrder }),
+      reorderFavorites: (newOrder) => {
+        debouncedSave(newOrder);
+        set({ favoriteOrder: newOrder });
+      },
 
       isFavorite: (sportId) => get().favoriteOrder.includes(sportId),
+
+      loadFromSupabase: async () => {
+        if (!isSupabaseConfigured()) { set({ _loaded: true }); return; }
+        try {
+          const supabase = createClient();
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return;
+          const { data } = await supabase
+            .from('favorites')
+            .select('favorite_order')
+            .eq('user_id', user.id)
+            .single();
+          if (data?.favorite_order) {
+            set({ favoriteOrder: data.favorite_order, _loaded: true });
+          } else {
+            // Push current localStorage favorites up to Supabase
+            const current = get().favoriteOrder;
+            if (current.length > 0) {
+              await supabase.from('favorites').upsert({
+                user_id: user.id,
+                favorite_order: current,
+                updated_at: new Date().toISOString(),
+              });
+            }
+            set({ _loaded: true });
+          }
+        } catch (e) {
+          console.error('[Favorites] load failed:', e);
+          set({ _loaded: true });
+        }
+      },
     }),
     {
-      name: 'score-favorites', // localStorage key
-      // TODO: swap storage for Supabase when ready:
-      // storage: createSupabaseStorage(supabaseClient, userId),
+      name: 'score-favorites',
+      partialize: (state) => ({ favoriteOrder: state.favoriteOrder }),
     }
   )
 );

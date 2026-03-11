@@ -4,7 +4,7 @@ import ThemeProvider from '@/components/ThemeProvider';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'SCORE Sports Bar — Schedule Admin',
+  title: 'SCORE Schedule Admin',
   description:
     'Admin tool for SCORE Sports Bar & Grill. Fetch, curate, and publish weekly sports schedules to WordPress.',
 };

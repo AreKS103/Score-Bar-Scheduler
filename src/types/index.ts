@@ -1,6 +1,6 @@
 // ─── Core Data Model ─────────────────────────────────────────────────────────
 
-export type ScreenTag = 'Live Big Screen' | 'Sound On' | 'TV Only' | 'No Sound';
+export type ScreenTag = 'Live Big Screen' | 'Recorded' | 'Sound On' | 'TV Only' | 'No Sound';
 
 export interface MatchEvent {
   id: string;
