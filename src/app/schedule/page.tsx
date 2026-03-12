@@ -313,7 +313,7 @@ export default function SchedulePage() {
 
   // ─── Auto-show panel on first selection; auto-hide when none ─────────────
   useEffect(() => {
-    if (prevSelectedCountRef.current === 0 && selectedCount > 0) {
+    if (selectedCount > prevSelectedCountRef.current) {
       setPreviewOpen(true);
     }
     if (selectedCount === 0) {

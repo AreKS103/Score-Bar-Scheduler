@@ -117,10 +117,8 @@ const FightCardGroup = memo(function FightCardGroup({
               />
             ))}
             {mainCardUndercards.length > 0 && prelimUndercards.length > 0 && (
-              <div className="flex items-center gap-2 py-1">
-                <div className="flex-1 border-t border-border/40" />
-                <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60 px-1">Prelims</span>
-                <div className="flex-1 border-t border-border/40" />
+              <div className="py-1 pl-1">
+                <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60">— Prelims</span>
               </div>
             )}
             {prelimUndercards.map(fight => (
