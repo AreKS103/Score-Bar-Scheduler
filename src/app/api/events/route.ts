@@ -265,8 +265,19 @@ function mapMMAFights(
       .map(c => c.date || event.date)
       .reduce((latest, t) => (t > latest ? t : latest), '');
 
-    // ESPN orders prelims first, main event last — reverse so main event displays first.
-    const orderedComps = [...competitions].reverse();
+    // ESPN competitions are NOT cleanly ordered: some events have prelims and
+    // main card fights interleaved. Sort by comp.date descending (later = main card)
+    // then by original index descending (ESPN always lists the main event last).
+    // This guarantees: main event → rest of main card → prelims, regardless of ESPN ordering.
+    const orderedComps = [...competitions]
+      .map((comp, idx) => ({ comp, idx }))
+      .sort((a, b) => {
+        const aTime = a.comp.date || event.date;
+        const bTime = b.comp.date || event.date;
+        if (aTime !== bTime) return bTime.localeCompare(aTime); // later time first
+        return b.idx - a.idx; // same time group: higher original index first (main event)
+      })
+      .map(({ comp }) => comp);
 
     // Build one MatchEvent per competition (fight)
     const fights: MatchEvent[] = [];
@@ -570,10 +581,8 @@ const SPORTSDB_ONLY_LEAGUES = [
   { id: 'soccer-cpl', sportsdbId: '4793', label: 'C-League Cambodia', category: 'Football', logo: '/CPL.png' },
   { id: 'motogp', sportsdbId: '4407', label: 'MotoGP', category: 'Motorsport', logo: '/motogp.png' },
   // Combat Sports — fetched via eventsseason.php (eventsnextleague is broken for these IDs)
-  // UFC: ESPN is primary source (individual fights), SportsDB is fallback only.
-  // If ESPN returns fights for UFC on a given date, the dedup step in fetchAllEvents
-  // will discard these SportsDB entries automatically.
-  { id: 'ufc', sportsdbId: '4443', label: 'UFC / MMA', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/bewnz31717531281.png' },
+  // Boxing only — UFC is fetched from ESPN with individual fights and correct times.
+  // Adding UFC here gave the wrong prelim start time (4am) as a fallback and was misleading.
   { id: 'boxing', sportsdbId: '4445', label: 'Boxing', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/6enin21740228549.png' },
 ];
 
