@@ -76,6 +76,22 @@ export function setCachedEvents(
   }
 }
 
+/** Append a new event to the existing local cache (e.g. after adding a custom event) */
+export function appendCachedEvent(event: MatchEvent): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return;
+    const cache: CacheData = JSON.parse(raw);
+    if (cache.version !== CACHE_VERSION) return;
+    // Don't add duplicates
+    if (cache.events.some(e => e.id === event.id)) return;
+    cache.events.push(event);
+    cache.timestamp = Date.now(); // refresh TTL
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+  } catch {}
+}
+
 /** Clear the local cache */
 export function clearCachedEvents(): void {
   if (typeof window === 'undefined') return;

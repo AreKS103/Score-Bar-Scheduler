@@ -23,7 +23,7 @@ import {
 import { useScheduleStore } from '@/lib/store';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { useFavoritesStore } from '@/lib/favoritesStore';
-import { getCachedEvents, setCachedEvents, saveSelectionToSupabase, loadSelectionFromSupabase, loadSelectionState, type SavedSelectionState } from '@/lib/clientCache';
+import { getCachedEvents, setCachedEvents, appendCachedEvent, saveSelectionToSupabase, loadSelectionFromSupabase, loadSelectionState, saveSelectionState, type SavedSelectionState } from '@/lib/clientCache';
 import { generateHTML } from '@/lib/generateHTML';
 import { SPORTS_CONFIG, getCategories, ALL_SCREEN_TAGS } from '@/lib/config';
 import { formatDisplayDate } from '@/lib/timezone';
@@ -222,6 +222,16 @@ export default function SchedulePage() {
       // After initial fetch, try to load from Supabase (may override localStorage)
       loadSelectionFromSupabase().then(supaState => {
         if (!supaState) return;
+        // Apply event-level selections from Supabase (may be fresher than localStorage)
+        const currentEvents = useScheduleStore.getState().events;
+        if (currentEvents.length > 0 && Object.keys(supaState.selections).length > 0) {
+          const merged = currentEvents.map(e => {
+            const sel = supaState.selections[e.id];
+            if (sel) return { ...e, ...sel };
+            return e;
+          });
+          setEvents(merged);
+        }
         if (supaState.leagueOrder.length > 0) setLeagueOrder(supaState.leagueOrder);
         if (Object.keys(supaState.featuredLeagues).length > 0) {
           setFeaturedLeagues(new Map(Object.entries(supaState.featuredLeagues)));
@@ -314,6 +324,29 @@ export default function SchedulePage() {
     }, 800);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [events, leagueOrder, featuredLeagues, isFetching]);
+
+  // ─── Flush selection state on page unload (prevents losing recent changes) ─
+  // The debounced save above may not fire if the user refreshes within 800ms.
+  // This ensures the latest state is persisted synchronously before the page dies.
+  useEffect(() => {
+    const flush = () => {
+      if (events.length === 0) return;
+      const selections: SavedSelectionState['selections'] = {};
+      for (const e of events) {
+        if (e.isSelected || e.isFeatured || e.tags.length > 0) {
+          selections[e.id] = { isSelected: e.isSelected, isFeatured: e.isFeatured, tags: e.tags };
+        }
+      }
+      saveSelectionState({
+        selections,
+        leagueOrder,
+        featuredLeagues: Object.fromEntries(featuredLeagues),
+        savedAt: Date.now(),
+      });
+    };
+    window.addEventListener('beforeunload', flush);
+    return () => window.removeEventListener('beforeunload', flush);
+  }, [events, leagueOrder, featuredLeagues]);
 
   // ─── Auto-show panel on first selection; auto-hide when none ─────────────
   useEffect(() => {
@@ -916,35 +949,39 @@ export default function SchedulePage() {
                         return (
                           <div
                             key={m.id}
-                            onClick={() => togglePreviewCheck(m.id)}
                             className={cn(
-                            'group flex items-start gap-1.5 text-[10px] rounded-md px-1.5 py-1 leading-snug cursor-pointer select-none transition-all border',
+                            'group flex items-stretch text-[10px] rounded-md leading-snug select-none transition-all border overflow-hidden',
                               checked
                                 ? 'bg-destructive/10 border-destructive/40'
                                 : 'bg-secondary/40 border-transparent hover:bg-secondary/70'
                             )}
                           >
-                            <div className={cn(
-                              'mt-0.5 w-3 h-3 shrink-0 rounded-sm border flex items-center justify-center transition-all',
-                              checked ? 'bg-destructive border-destructive' : 'border-border'
-                            )}>
-                              {checked && <X className="w-1.5 h-1.5 text-white" />}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="font-medium truncate text-foreground">
-                                {m.home}{m.away ? ' vs ' : ''}{m.away}
+                            <div
+                              onClick={() => togglePreviewCheck(m.id)}
+                              className="flex items-start gap-1.5 px-1.5 py-1 cursor-pointer flex-1 min-w-0"
+                            >
+                              <div className={cn(
+                                'mt-0.5 w-3 h-3 shrink-0 rounded-sm border flex items-center justify-center transition-all',
+                                checked ? 'bg-destructive border-destructive' : 'border-border'
+                              )}>
+                                {checked && <X className="w-1.5 h-1.5 text-white" />}
                               </div>
-                              <div className="text-muted-foreground mt-0.5">
-                                {formatDisplayDate(m.date)} · {m.time}
-                                {m.isFeatured && <span className="ml-1 text-yellow-400">⭐</span>}
-                                {m.tags.length > 0 && (
-                                  <span className="ml-1 text-primary/70">{m.tags.join(', ')}</span>
-                                )}
+                              <div className="min-w-0 flex-1">
+                                <div className="font-medium truncate text-foreground">
+                                  {m.home}{m.away ? ' vs ' : ''}{m.away}
+                                </div>
+                                <div className="text-muted-foreground mt-0.5">
+                                  {formatDisplayDate(m.date)} · {m.time}
+                                  {m.isFeatured && <span className="ml-1 text-yellow-400">⭐</span>}
+                                  {m.tags.length > 0 && (
+                                    <span className="ml-1 text-primary/70">{m.tags.join(', ')}</span>
+                                  )}
+                                </div>
                               </div>
                             </div>
                             <button
                               onClick={(e) => { e.stopPropagation(); setEditingEvent(m); }}
-                              className="shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-primary/10"
+                              className="shrink-0 w-[10%] min-w-[24px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity border-l border-border/50 hover:bg-primary/10"
                               title="Edit match"
                             >
                               <Pencil className="w-3 h-3 text-muted-foreground" />
@@ -995,6 +1032,22 @@ export default function SchedulePage() {
         onClose={() => setIsAddModalOpen(false)}
         onAdd={async (event) => {
           addEvents([event]);
+          // Append to local cache so it survives the instant cache load on refresh
+          appendCachedEvent(event);
+          // Immediately save selection state (don't wait for 800ms debounce)
+          const allEvents = useScheduleStore.getState().events;
+          const selections: SavedSelectionState['selections'] = {};
+          for (const e of allEvents) {
+            if (e.isSelected || e.isFeatured || e.tags.length > 0) {
+              selections[e.id] = { isSelected: e.isSelected, isFeatured: e.isFeatured, tags: e.tags };
+            }
+          }
+          saveSelectionToSupabase({
+            selections,
+            leagueOrder,
+            featuredLeagues: Object.fromEntries(featuredLeagues),
+            savedAt: Date.now(),
+          });
           // Persist to Supabase so it survives page refreshes (expires in 2 weeks)
           await fetch('/api/custom-events', {
             method: 'POST',

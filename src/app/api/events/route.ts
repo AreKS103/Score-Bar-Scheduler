@@ -59,8 +59,6 @@ const ESPN_SECONDARY_LEAGUES = [
   { id: 'soccer-aleague', slug: 'soccer/aus.1' },
   { id: 'soccer-saudipro', slug: 'soccer/ksa.1' },
   { id: 'soccer-jleague', slug: 'soccer/jpn.1' },
-  { id: 'soccer-afc', slug: 'soccer/afc.champions' },
-  { id: 'soccer-afc2', slug: 'soccer/afc.cup' },
   { id: 'soccer-copam', slug: 'soccer/conmebol.libertadores' },
   // Other US sports
   { id: 'basketball-wnba', slug: 'basketball/wnba' },
@@ -110,8 +108,11 @@ const LEAGUE_METADATA: Record<string, { label: string; category: string; logo: s
   'soccer-aleague': { label: 'A-League', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/1003.png' },
   'soccer-saudipro': { label: 'Saudi Pro League', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/4710.png' },
   'soccer-jleague': { label: 'J-League', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/3j8bni1675170553.png' },
-  'soccer-afc': { label: 'AFC Champions League Elite', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/33.png' },
-  'soccer-afc2': { label: 'AFC Champions League Two', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/ctg73b1721497942.png' },
+  'soccer-afc': { label: 'AFC Champions League Elite', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/gsbq4k1719686780.png' },
+  'soccer-afc2': { label: 'AFC Champions League Two', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/sfg2dl1719686962.png' },
+  'soccer-afccl': { label: 'AFC Challenge League', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/ctg73b1721497942.png' },
+  'soccer-afc-asian-cup': { label: 'AFC Asian Cup', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/0a86rp1710997941.png' },
+  'soccer-asian-cup-women': { label: 'Asian Cup Women', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/m0scwf1726416187.png' },
   'soccer-copam': { label: 'Copa Libertadores', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/26.png' },
   'soccer-cpl': { label: 'Cambodian Premier League', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/fdhux61655121747.png' },
   'basketball-nba': { label: 'NBA', category: 'Basketball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/nba.png' },
@@ -131,12 +132,12 @@ const LEAGUE_METADATA: Record<string, { label: string; category: string; logo: s
   'bellator': { label: 'PFL / Bellator', category: 'Combat Sports', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/pfl.png' },
   'boxing': { label: 'Boxing', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/6enin21740228549.png' },
   'rugby-superrugby': { label: 'Super Rugby Pacific', category: 'Rugby', logo: 'https://r2.thesportsdb.com/images/media/league/badge/gz76v11717091774.png' },
-  'rugby-sixnations': { label: 'Six Nations', category: 'Rugby', logo: '' },
+  'rugby-sixnations': { label: 'Six Nations', category: 'Rugby', logo: 'https://r2.thesportsdb.com/images/media/league/badge/7h1wr91738670253.png' },
   'rugby-premship': { label: 'Premiership Rugby', category: 'Rugby', logo: 'https://r2.thesportsdb.com/images/media/league/badge/r59qxy1755025703.png' },
-  'rugby-top14': { label: 'Top 14', category: 'Rugby', logo: '' },
-  'rugby-urc': { label: 'United Rugby Championship', category: 'Rugby', logo: '' },
-  'rugby-champscup': { label: 'Champions Cup', category: 'Rugby', logo: '' },
-  'rugby-rc': { label: 'The Rugby Championship', category: 'Rugby', logo: '' },
+  'rugby-top14': { label: 'Top 14', category: 'Rugby', logo: 'https://r2.thesportsdb.com/images/media/league/badge/xrsqtw1452903237.png' },
+  'rugby-urc': { label: 'United Rugby Championship', category: 'Rugby', logo: 'https://r2.thesportsdb.com/images/media/league/badge/o6dhfo1716481482.png' },
+  'rugby-champscup': { label: 'Champions Cup', category: 'Rugby', logo: 'https://r2.thesportsdb.com/images/media/league/badge/kohne11716546580.png' },
+  'rugby-rc': { label: 'The Rugby Championship', category: 'Rugby', logo: 'https://r2.thesportsdb.com/images/media/league/badge/dy0n4c1716684531.png' },
   'nrl': { label: 'NRL', category: 'Rugby League', logo: 'https://r2.thesportsdb.com/images/media/league/badge/gsztcj1552071996.png' },
   'afl': { label: 'AFL', category: 'Australian Football', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/afl.png' },
   'tennis-atp': { label: 'ATP Tour', category: 'Tennis', logo: 'https://r2.thesportsdb.com/images/media/league/badge/q7aej51769857150.png' },
@@ -584,17 +585,13 @@ async function fetchAllESPN(startDate: string, endDate: string): Promise<MatchEv
 const SPORTSDB_BASE = 'https://www.thesportsdb.com/api/v1/json/123';
 
 const SPORTSDB_ONLY_LEAGUES = [
-  // C-League: official SportsDB name is "Cambodia C-League" (ID 4793).
-  // Free API key "3" caps eventsseason at ~15 results per call.
-  // The eventsnextleague endpoint for this ID is broken (returns League One UK instead).
-  // We query multiple season formats and aggregate to maximise coverage.
   { id: 'soccer-cpl', sportsdbId: '4793', label: 'Cambodian Premier League', category: 'Football', logo: '/CPL.png' },
   { id: 'soccer-afccl', sportsdbId: '5485', label: 'AFC Challenge League', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/ctg73b1721497942.png' },
+  { id: 'soccer-afc', sportsdbId: '4719', label: 'AFC Champions League Elite', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/gsbq4k1719686780.png' },
+  { id: 'soccer-afc2', sportsdbId: '4804', label: 'AFC Champions League Two', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/sfg2dl1719686962.png' },
+  { id: 'soccer-afc-asian-cup', sportsdbId: '4866', label: 'AFC Asian Cup', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/0a86rp1710997941.png' },
+  { id: 'soccer-asian-cup-women', sportsdbId: '5179', label: 'Asian Cup Women', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/m0scwf1726416187.png' },
   { id: 'motogp', sportsdbId: '4407', label: 'MotoGP', category: 'Motorsport', logo: '/motogp.png' },
-  // Combat Sports — fetched via eventsseason.php (eventsnextleague is broken for these IDs)
-  // UFC is primarily fetched from ESPN (individual fights + correct times).
-  // Keep as SportsDB fallback in case ESPN blocks Vercel IPs. The smart dedup
-  // in fetchAllEvents() drops SportsDB UFC when ESPN UFC succeeds.
   { id: 'ufc', sportsdbId: '4443', label: 'UFC / MMA', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/bewnz31717531281.png' },
   { id: 'boxing', sportsdbId: '4445', label: 'Boxing', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/6enin21740228549.png' },
 ];
@@ -652,18 +649,6 @@ function sportsDBToICT(dateStr: string, timeStr: string): { date: string; time: 
   }
 }
 
-/** Build all season strings worth querying around a start/end date range */
-function buildSeasonCandidates(startDate: string, endDate: string): string[] {
-  const startYear = parseInt(startDate.slice(0, 4), 10);
-  const endYear   = parseInt(endDate.slice(0, 4), 10);
-  const seasons: string[] = [];
-  for (let y = startYear - 1; y <= endYear + 1; y++) {
-    seasons.push(`${y}`);
-    seasons.push(`${y}-${y + 1}`);
-  }
-  return [...new Set(seasons)];
-}
-
 function mapSDBEvent(event: SportsDBEvent, league: typeof SPORTSDB_ONLY_LEAGUES[0]): MatchEvent {
   const { date, time } = sportsDBToICT(event.dateEvent, event.strTime || '00:00:00');
   return {
@@ -689,14 +674,6 @@ function mapSDBEvent(event: SportsDBEvent, league: typeof SPORTSDB_ONLY_LEAGUES[
 // ── Combat Sports (UFC / Boxing) mapper for TheSportsDB events ──────────────
 
 const COMBAT_SPORT_IDS = new Set(['4443', '4445']);
-
-const SDB_BROWSER_HEADERS: Record<string, string> = {
-  'User-Agent':      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-  'Accept':          'application/json, text/plain, */*',
-  'Accept-Language': 'en-US,en;q=0.9',
-  'Referer':         'https://www.thesportsdb.com/',
-  'Origin':          'https://www.thesportsdb.com',
-};
 
 /**
  * Parse a TheSportsDB fight event name into card name, home fighter, away fighter.
@@ -837,109 +814,87 @@ async function fetchCPLFanout(
   return mapped;
 }
 
-/** Season-based fetch for leagues other than C-League (e.g. MotoGP) */
-async function fetchSportsDBLeagueBySeason(
+/**
+ * Next+past strategy: only 2 API calls per league.
+ * The free-tier eventsseason endpoint caps results at 15 (oldest first),
+ * so for long seasons the current month's matches are never returned.
+ * eventsnextleague / eventspastleague return the ~15 nearest upcoming / recent
+ * events which is exactly what we need for a schedule view.
+ */
+async function fetchSportsDBLeagueByNextPast(
   league: typeof SPORTSDB_ONLY_LEAGUES[0],
   startDate: string,
   endDate: string
 ): Promise<MatchEvent[]> {
-  const isCombat = COMBAT_SPORT_IDS.has(league.sportsdbId);
-
-  if (isCombat) {
-    // Combat sports strategy: fetch current year season first, then
-    // fall back to eventsnextleague to avoid hammering the API and hitting
-    // Cloudflare rate limits (1015/429).
-    const startYear = parseInt(startDate.slice(0, 4), 10);
-    const endYear   = parseInt(endDate.slice(0, 4), 10);
-    const years = new Set<number>();
-    for (let y = startYear; y <= endYear; y++) years.add(y);
-    // Also include previous year in case the season spans year boundary
-    years.add(startYear - 1);
-
-    const allEvents: SportsDBEvent[] = [];
-    const seen = new Set<string>();
-
-    for (const year of Array.from(years).sort()) {
-      const events = await sdbFetch(`eventsseason.php?id=${league.sportsdbId}&s=${year}`);
-      for (const e of events) {
-        if (!seen.has(e.idEvent)) {
-          seen.add(e.idEvent);
-          allEvents.push(e);
-        }
-      }
-      await sleep(400);
-    }
-
-    // If season fetch returned nothing useful, try eventsnextleague as fallback
-    const inRange = allEvents.filter(e => e.dateEvent >= startDate && e.dateEvent <= endDate);
-    if (inRange.length === 0) {
-      const next = await sdbFetch(`eventsnextleague.php?id=${league.sportsdbId}`);
-      for (const e of next) {
-        if (!seen.has(e.idEvent)) {
-          seen.add(e.idEvent);
-          allEvents.push(e);
-        }
-      }
-      const past = await sdbFetch(`eventspastleague.php?id=${league.sportsdbId}`);
-      for (const e of past) {
-        if (!seen.has(e.idEvent)) {
-          seen.add(e.idEvent);
-          allEvents.push(e);
-        }
-      }
-    }
-
-    const mapped = allEvents
-      .map(e => mapSDBCombatEvent(e, league))
-      .filter(e => e.date >= startDate && e.date <= endDate);
-
-    console.log(`[SportsDB] ✓ ${league.label}: ${mapped.length} events in date range`);
-    return mapped;
-  }
-
-  // Non-combat leagues: multi-season scan (for MotoGP etc.)
-  const seasons = buildSeasonCandidates(startDate, endDate);
   const allEvents: SportsDBEvent[] = [];
   const seen = new Set<string>();
 
-  console.log(`[SportsDB] Querying ${league.label} for seasons: ${seasons.join(', ')}`);
+  console.log(`[SportsDB] ${league.label} (id=${league.sportsdbId}): using next+past strategy`);
 
-  for (const season of seasons) {
-    const url = `${SPORTSDB_BASE}/eventsseason.php?id=${league.sportsdbId}&s=${season}`;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-    try {
-      const res = await fetch(url, { signal: controller.signal, headers: SDB_BROWSER_HEADERS });
-      clearTimeout(timeoutId);
-
-      if (res.ok) {
-        const data = await res.json();
-        const events: SportsDBEvent[] = data.events ?? [];
-        let added = 0;
-        for (const e of events) {
-          if (!seen.has(e.idEvent)) {
-            seen.add(e.idEvent);
-            allEvents.push(e);
-            added++;
-          }
-        }
-        if (added > 0) {
-          console.log(`[SportsDB] ${league.label} season ${season}: +${added} events`);
-        }
-      }
-    } catch {
-      clearTimeout(timeoutId);
-    }
-
-    await sleep(300);
+  const next = await sdbFetch(`eventsnextleague.php?id=${league.sportsdbId}`);
+  for (const e of next) {
+    if (!seen.has(e.idEvent)) { seen.add(e.idEvent); allEvents.push(e); }
   }
+  if (next.length > 0) console.log(`[SportsDB] ${league.label} eventsnextleague: ${next.length} events`);
+
+  await sleep(300);
+
+  const past = await sdbFetch(`eventspastleague.php?id=${league.sportsdbId}`);
+  for (const e of past) {
+    if (!seen.has(e.idEvent)) { seen.add(e.idEvent); allEvents.push(e); }
+  }
+  if (past.length > 0) console.log(`[SportsDB] ${league.label} eventspastleague: ${past.length} events`);
 
   const mapped = allEvents
     .map(e => mapSDBEvent(e, league))
     .filter(e => e.date >= startDate && e.date <= endDate);
 
-  console.log(`[SportsDB] ✓ ${league.label}: ${mapped.length} events in date range`);
+  console.log(`[SportsDB] ✓ ${league.label}: ${mapped.length} events in date range (${startDate} to ${endDate})`);
+  return mapped;
+}
+
+/** Season-based fetch — only used for combat sports (UFC, Boxing) as ESPN fallback */
+async function fetchSportsDBCombatBySeason(
+  league: typeof SPORTSDB_ONLY_LEAGUES[0],
+  startDate: string,
+  endDate: string
+): Promise<MatchEvent[]> {
+  const startYear = parseInt(startDate.slice(0, 4), 10);
+  const endYear   = parseInt(endDate.slice(0, 4), 10);
+  const years = new Set<number>();
+  for (let y = startYear; y <= endYear; y++) years.add(y);
+  years.add(startYear - 1);
+
+  const allEvents: SportsDBEvent[] = [];
+  const seen = new Set<string>();
+
+  for (const year of Array.from(years).sort()) {
+    const events = await sdbFetch(`eventsseason.php?id=${league.sportsdbId}&s=${year}`);
+    for (const e of events) {
+      if (!seen.has(e.idEvent)) { seen.add(e.idEvent); allEvents.push(e); }
+    }
+    await sleep(400);
+  }
+
+  // If season fetch returned nothing useful, try eventsnextleague as fallback
+  const inRange = allEvents.filter(e => e.dateEvent >= startDate && e.dateEvent <= endDate);
+  if (inRange.length === 0) {
+    const next = await sdbFetch(`eventsnextleague.php?id=${league.sportsdbId}`);
+    for (const e of next) {
+      if (!seen.has(e.idEvent)) { seen.add(e.idEvent); allEvents.push(e); }
+    }
+    await sleep(300);
+    const past = await sdbFetch(`eventspastleague.php?id=${league.sportsdbId}`);
+    for (const e of past) {
+      if (!seen.has(e.idEvent)) { seen.add(e.idEvent); allEvents.push(e); }
+    }
+  }
+
+  const mapped = allEvents
+    .map(e => mapSDBCombatEvent(e, league))
+    .filter(e => e.date >= startDate && e.date <= endDate);
+
+  console.log(`[SportsDB] ✓ ${league.label}: ${mapped.length} combat events in date range`);
   return mapped;
 }
 
@@ -951,24 +906,54 @@ async function fetchSportsDBLeague(
   if (league.id === 'soccer-cpl') {
     return fetchCPLFanout(league, startDate, endDate);
   }
-  return fetchSportsDBLeagueBySeason(league, startDate, endDate);
+  // Combat sports use season-based fetch (ESPN is primary; SportsDB is fallback)
+  if (COMBAT_SPORT_IDS.has(league.sportsdbId)) {
+    return fetchSportsDBCombatBySeason(league, startDate, endDate);
+  }
+  // All other leagues (AFC, MotoGP): efficient next+past strategy (2 API calls)
+  return fetchSportsDBLeagueByNextPast(league, startDate, endDate);
 }
 
 async function fetchAllSportsDB(startDate: string, endDate: string): Promise<MatchEvent[]> {
-  // Fetch all leagues in parallel — each league's internal sleeps still rate-limit
-  // its own sequential season requests; running leagues concurrently is safe.
-  const settled = await Promise.allSettled(
-    SPORTSDB_ONLY_LEAGUES.map(league => fetchSportsDBLeague(league, startDate, endDate))
-  );
-
   const results: MatchEvent[] = [];
-  for (const outcome of settled) {
-    if (outcome.status === 'fulfilled') {
-      results.push(...outcome.value);
-    } else {
-      console.warn('[SportsDB] league fetch failed:', outcome.reason);
+
+  // Phase 1: CPL uses a heavy fan-out strategy (22 requests) — run it first alone
+  const cplLeague = SPORTSDB_ONLY_LEAGUES.find(l => l.id === 'soccer-cpl');
+  if (cplLeague) {
+    try {
+      const cplEvents = await fetchSportsDBLeague(cplLeague, startDate, endDate);
+      results.push(...cplEvents);
+    } catch (err) {
+      console.warn('[SportsDB] CPL fetch failed:', err);
+    }
+    await sleep(500);
+  }
+
+  // Phase 2: Remaining leagues in batches of 3 (each uses ≤2-4 API calls)
+  // This avoids overwhelming TheSportsDB's rate limiter.
+  const otherLeagues = SPORTSDB_ONLY_LEAGUES.filter(l => l.id !== 'soccer-cpl');
+  const BATCH_SIZE = 3;
+
+  for (let i = 0; i < otherLeagues.length; i += BATCH_SIZE) {
+    const batch = otherLeagues.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.allSettled(
+      batch.map(league => fetchSportsDBLeague(league, startDate, endDate))
+    );
+
+    for (const outcome of batchResults) {
+      if (outcome.status === 'fulfilled') {
+        results.push(...outcome.value);
+      } else {
+        console.warn('[SportsDB] league fetch failed:', outcome.reason);
+      }
+    }
+
+    // 500ms delay between batches to respect rate limits
+    if (i + BATCH_SIZE < otherLeagues.length) {
+      await sleep(500);
     }
   }
+
   return results;
 }
 
