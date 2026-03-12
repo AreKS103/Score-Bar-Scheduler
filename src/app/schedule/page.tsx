@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Menu,
   LogOut,
+  Pencil,
 } from 'lucide-react';
 import { useScheduleStore } from '@/lib/store';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
@@ -30,6 +31,7 @@ import type { ScreenTag, MatchEvent } from '@/types';
 import SportFilter from '@/components/SportFilter';
 import LeagueSection from '@/components/LeagueSection';
 import AddMatchModal from '@/components/AddMatchModal';
+import EditMatchModal from '@/components/EditMatchModal';
 import PublishButton from '@/components/PublishButton';
 import DateRangeCalendar from '@/components/DateRangeCalendar';
 import SearchField from '@/components/SearchField';
@@ -50,6 +52,7 @@ export default function SchedulePage() {
     toggleSelected,
     toggleFeatured,
     toggleTag,
+    updateEvent,
     selectAll,
     deselectAll,
     batchSetSelected,
@@ -59,6 +62,7 @@ export default function SchedulePage() {
   } = useScheduleStore();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<MatchEvent | null>(null);
   const [isFetching, setIsFetching] = useState(false);
   const [bulkTagOpen, setBulkTagOpen] = useState(false);
   const [searchFilterIds, setSearchFilterIds] = useState<Set<string> | null>(null);
@@ -914,7 +918,7 @@ export default function SchedulePage() {
                             key={m.id}
                             onClick={() => togglePreviewCheck(m.id)}
                             className={cn(
-                            'flex items-start gap-1.5 text-[10px] rounded-md px-1.5 py-1 leading-snug cursor-pointer select-none transition-all border',
+                            'group flex items-start gap-1.5 text-[10px] rounded-md px-1.5 py-1 leading-snug cursor-pointer select-none transition-all border',
                               checked
                                 ? 'bg-destructive/10 border-destructive/40'
                                 : 'bg-secondary/40 border-transparent hover:bg-secondary/70'
@@ -938,6 +942,13 @@ export default function SchedulePage() {
                                 )}
                               </div>
                             </div>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setEditingEvent(m); }}
+                              className="shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-primary/10"
+                              title="Edit match"
+                            >
+                              <Pencil className="w-3 h-3 text-muted-foreground" />
+                            </button>
                           </div>
                         );
                       })}
@@ -995,6 +1006,13 @@ export default function SchedulePage() {
 
       {/* Settings lightbox */}
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
+      {/* Edit match modal */}
+      <EditMatchModal
+        event={editingEvent}
+        onClose={() => setEditingEvent(null)}
+        onSave={(id, updates) => updateEvent(id, updates)}
+      />
     </div>
   );
 }

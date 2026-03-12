@@ -60,6 +60,7 @@ const ESPN_SECONDARY_LEAGUES = [
   { id: 'soccer-saudipro', slug: 'soccer/ksa.1' },
   { id: 'soccer-jleague', slug: 'soccer/jpn.1' },
   { id: 'soccer-afc', slug: 'soccer/afc.champions' },
+  { id: 'soccer-afc2', slug: 'soccer/afc.cup' },
   { id: 'soccer-copam', slug: 'soccer/conmebol.libertadores' },
   // Other US sports
   { id: 'basketball-wnba', slug: 'basketball/wnba' },
@@ -109,9 +110,10 @@ const LEAGUE_METADATA: Record<string, { label: string; category: string; logo: s
   'soccer-aleague': { label: 'A-League', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/1003.png' },
   'soccer-saudipro': { label: 'Saudi Pro League', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/4710.png' },
   'soccer-jleague': { label: 'J-League', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/3j8bni1675170553.png' },
-  'soccer-afc': { label: 'AFC Champions League', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/33.png' },
+  'soccer-afc': { label: 'AFC Champions League Elite', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/33.png' },
+  'soccer-afc2': { label: 'AFC Champions League Two', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/ctg73b1721497942.png' },
   'soccer-copam': { label: 'Copa Libertadores', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/26.png' },
-  'soccer-cpl': { label: 'C-League Cambodia', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/fdhux61655121747.png' },
+  'soccer-cpl': { label: 'Cambodian Premier League', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/fdhux61655121747.png' },
   'basketball-nba': { label: 'NBA', category: 'Basketball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/nba.png' },
   'basketball-wnba': { label: 'WNBA', category: 'Basketball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/wnba.png' },
   'basketball-ncaam': { label: "NCAA Men's Basketball", category: 'Basketball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/ncaa.png' },
@@ -586,7 +588,8 @@ const SPORTSDB_ONLY_LEAGUES = [
   // Free API key "3" caps eventsseason at ~15 results per call.
   // The eventsnextleague endpoint for this ID is broken (returns League One UK instead).
   // We query multiple season formats and aggregate to maximise coverage.
-  { id: 'soccer-cpl', sportsdbId: '4793', label: 'C-League Cambodia', category: 'Football', logo: '/CPL.png' },
+  { id: 'soccer-cpl', sportsdbId: '4793', label: 'Cambodian Premier League', category: 'Football', logo: '/CPL.png' },
+  { id: 'soccer-afccl', sportsdbId: '5485', label: 'AFC Challenge League', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/ctg73b1721497942.png' },
   { id: 'motogp', sportsdbId: '4407', label: 'MotoGP', category: 'Motorsport', logo: '/motogp.png' },
   // Combat Sports — fetched via eventsseason.php (eventsnextleague is broken for these IDs)
   // UFC is primarily fetched from ESPN (individual fights + correct times).
