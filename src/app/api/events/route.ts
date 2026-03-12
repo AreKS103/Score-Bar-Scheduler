@@ -263,10 +263,13 @@ function mapMMAFights(
       .map(c => c.date || event.date)
       .reduce((latest, t) => (t > latest ? t : latest), '');
 
+    // ESPN orders prelims first, main event last — reverse so main event displays first.
+    const orderedComps = [...competitions].reverse();
+
     // Build one MatchEvent per competition (fight)
     const fights: MatchEvent[] = [];
-    for (let i = 0; i < competitions.length; i++) {
-      const comp = competitions[i];
+    for (let i = 0; i < orderedComps.length; i++) {
+      const comp = orderedComps[i];
       const fighters = comp.competitors ?? [];
       const f1 = fighters[0];
       const f2 = fighters[1];
@@ -278,7 +281,7 @@ function mapMMAFights(
       const weightClass = comp.type?.abbreviation ?? '';
 
       fights.push({
-        id: `espn-${league.id}-${event.id}-fight-${i}`,
+        id: `espn-${league.id}-${event.id}-fight-${competitions.length - 1 - i}`,
         source: 'espn',
         sportId: league.id,
         category: meta.category,
