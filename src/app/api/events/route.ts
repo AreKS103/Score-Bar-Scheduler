@@ -71,6 +71,7 @@ const ESPN_SECONDARY_LEAGUES = [
   { id: 'f1', slug: 'racing/f1' },
   { id: 'indycar', slug: 'racing/irl' },
   { id: 'bellator', slug: 'mma/bellator' },
+  { id: 'ufc', slug: 'mma/ufc' },
   { id: 'rugby-superrugby', slug: 'rugby/242041' },
   { id: 'rugby-sixnations', slug: 'rugby/180659' },
   { id: 'rugby-premship', slug: 'rugby/267979' },
@@ -94,7 +95,7 @@ const LEAGUE_METADATA: Record<string, { label: string; category: string; logo: s
   'soccer-facup': { label: 'FA Cup', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/4.png' },
   'soccer-efl': { label: 'EFL Championship', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/24.png' },
   'soccer-leagueone': { label: 'League One', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/afedb31688770443.png' },
-  'soccer-carabao': { label: 'Carabao Cup', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/2073.png' },
+  'soccer-carabao': { label: 'Carabao Cup', category: 'Football', logo: '/EFL_(Carabao)_Cup_Logo.svg' },
   'soccer-bundesliga': { label: 'Bundesliga', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/10.png' },
   'soccer-ligue1': { label: 'Ligue 1', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/9.png' },
   'soccer-laliga': { label: 'La Liga', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/15480.png' },
@@ -564,7 +565,6 @@ const SPORTSDB_ONLY_LEAGUES = [
   { id: 'soccer-cpl', sportsdbId: '4793', label: 'C-League Cambodia', category: 'Football', logo: '/CPL.png' },
   { id: 'motogp', sportsdbId: '4407', label: 'MotoGP', category: 'Motorsport', logo: '/motogp.png' },
   // Combat Sports — fetched via eventsseason.php (eventsnextleague is broken for these IDs)
-  { id: 'ufc', sportsdbId: '4443', label: 'UFC / MMA', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/bewnz31717531281.png' },
   { id: 'boxing', sportsdbId: '4445', label: 'Boxing', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/6enin21740228549.png' },
 ];
 
