@@ -36,6 +36,9 @@ const ESPN_PRIORITY_LEAGUES = [
   { id: 'soccer-laliga', slug: 'soccer/esp.1' },
   { id: 'soccer-bundesliga', slug: 'soccer/ger.1' },
   { id: 'soccer-seriea', slug: 'soccer/ita.1' },
+  // Combat Sports — must be early to survive Vercel's function timeout
+  { id: 'ufc', slug: 'mma/ufc' },
+  { id: 'bellator', slug: 'mma/bellator' },
 ];
 
 const ESPN_SECONDARY_LEAGUES = [
@@ -70,8 +73,6 @@ const ESPN_SECONDARY_LEAGUES = [
   // Motorsport, Combat, Rugby
   { id: 'f1', slug: 'racing/f1' },
   { id: 'indycar', slug: 'racing/irl' },
-  { id: 'bellator', slug: 'mma/bellator' },
-  { id: 'ufc', slug: 'mma/ufc' },
   { id: 'rugby-superrugby', slug: 'rugby/242041' },
   { id: 'rugby-sixnations', slug: 'rugby/180659' },
   { id: 'rugby-premship', slug: 'rugby/267979' },
@@ -251,7 +252,8 @@ function mapMMAFights(
   const results: MatchEvent[] = [];
 
   for (const event of events) {
-    const cardName = event.shortName || event.name?.split(':')?.[0]?.trim() || meta.label;
+    // Use the full event name so each card has a unique label (e.g. "UFC Fight Night: Emmett vs. Vallejos")
+    const cardName = event.name || event.shortName || meta.label;
     const { date, time } = utcToICT(event.date);
     const competitions = event.competitions ?? [];
     if (competitions.length === 0) continue;
@@ -568,6 +570,10 @@ const SPORTSDB_ONLY_LEAGUES = [
   { id: 'soccer-cpl', sportsdbId: '4793', label: 'C-League Cambodia', category: 'Football', logo: '/CPL.png' },
   { id: 'motogp', sportsdbId: '4407', label: 'MotoGP', category: 'Motorsport', logo: '/motogp.png' },
   // Combat Sports — fetched via eventsseason.php (eventsnextleague is broken for these IDs)
+  // UFC: ESPN is primary source (individual fights), SportsDB is fallback only.
+  // If ESPN returns fights for UFC on a given date, the dedup step in fetchAllEvents
+  // will discard these SportsDB entries automatically.
+  { id: 'ufc', sportsdbId: '4443', label: 'UFC / MMA', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/bewnz31717531281.png' },
   { id: 'boxing', sportsdbId: '4445', label: 'Boxing', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/6enin21740228549.png' },
 ];
 
@@ -958,23 +964,22 @@ async function fetchAllEvents(startDate: string, endDate: string): Promise<Match
     fetchAllSportsDB(startDate, endDate),
   ]);
 
-  const allEvents: MatchEvent[] = [];
+  if (espnEvents.status === 'rejected') console.warn('[Events API] ESPN fetch failed:', espnEvents.reason);
+  if (sportsDBEvents.status === 'rejected') console.warn('[Events API] SportsDB fetch failed:', sportsDBEvents.reason);
 
-  if (espnEvents.status === 'fulfilled') {
-    allEvents.push(...espnEvents.value);
-  } else {
-    console.warn('[Events API] ESPN fetch failed:', espnEvents.reason);
-  }
-
-  if (sportsDBEvents.status === 'fulfilled') {
-    allEvents.push(...sportsDBEvents.value);
-  } else {
-    console.warn('[Events API] SportsDB fetch failed:', sportsDBEvents.reason);
-  }
-
-  // Deduplicate by ID
+  // Deduplicate: ESPN takes priority over SportsDB for the same sport+date.
+  // This prevents SportsDB fallback entries from showing alongside ESPN individual fights.
+  const espnSportDates = new Set(
+    (espnEvents.status === 'fulfilled' ? espnEvents.value : []).map(e => `${e.sportId}|${e.date}`)
+  );
+  const mergedEvents = [
+    ...(espnEvents.status === 'fulfilled' ? espnEvents.value : []),
+    ...(sportsDBEvents.status === 'fulfilled'
+      ? sportsDBEvents.value.filter(e => !espnSportDates.has(`${e.sportId}|${e.date}`))
+      : []),
+  ];
   const seen = new Set<string>();
-  const deduped = allEvents.filter(e => {
+  const deduped = mergedEvents.filter(e => {
     if (seen.has(e.id)) return false;
     seen.add(e.id);
     return true;
