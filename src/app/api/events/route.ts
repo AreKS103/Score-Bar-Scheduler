@@ -500,6 +500,13 @@ async function fetchESPNLeague(
 
     const data = await espnFetchWithRetry(url, 10_000);
 
+    // Diagnostic logging for combat sports (UFC/Bellator)
+    if (isMMA) {
+      const eventCount = data?.events?.length ?? 0;
+      const fightCount = data?.events?.reduce((sum: number, e: ESPNEvent) => sum + (e.competitions?.length ?? 0), 0) ?? 0;
+      console.log(`[ESPN-MMA] ${league.id}: fetch ${data ? 'OK' : 'FAILED'}, ${eventCount} events, ${fightCount} fights, url=${url}`);
+    }
+
     if (!data?.events) {
       const stale = pathCache.get(league.id);
       if (stale && Date.now() - stale.fetchedAt < PATH_STALE_MAX_MS) {
@@ -527,6 +534,7 @@ async function fetchESPNLeague(
     if (parsed.length > 0) {
       pathCache.set(league.id, { events: parsed, fetchedAt: Date.now() });
     }
+    if (isMMA) console.log(`[ESPN-MMA] ${league.id}: mapped ${parsed.length} fights from ${events.length} events`);
     return parsed;
   } catch (err) {
     const stale = pathCache.get(league.id);
@@ -581,8 +589,10 @@ const SPORTSDB_ONLY_LEAGUES = [
   { id: 'soccer-cpl', sportsdbId: '4793', label: 'C-League Cambodia', category: 'Football', logo: '/CPL.png' },
   { id: 'motogp', sportsdbId: '4407', label: 'MotoGP', category: 'Motorsport', logo: '/motogp.png' },
   // Combat Sports — fetched via eventsseason.php (eventsnextleague is broken for these IDs)
-  // Boxing only — UFC is fetched from ESPN with individual fights and correct times.
-  // Adding UFC here gave the wrong prelim start time (4am) as a fallback and was misleading.
+  // UFC is primarily fetched from ESPN (individual fights + correct times).
+  // Keep as SportsDB fallback in case ESPN blocks Vercel IPs. The smart dedup
+  // in fetchAllEvents() drops SportsDB UFC when ESPN UFC succeeds.
+  { id: 'ufc', sportsdbId: '4443', label: 'UFC / MMA', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/bewnz31717531281.png' },
   { id: 'boxing', sportsdbId: '4445', label: 'Boxing', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/6enin21740228549.png' },
 ];
 
@@ -975,6 +985,11 @@ async function fetchAllEvents(startDate: string, endDate: string): Promise<Match
 
   if (espnEvents.status === 'rejected') console.warn('[Events API] ESPN fetch failed:', espnEvents.reason);
   if (sportsDBEvents.status === 'rejected') console.warn('[Events API] SportsDB fetch failed:', sportsDBEvents.reason);
+
+  // Diagnostic: count UFC events from each source
+  const espnUFC = (espnEvents.status === 'fulfilled' ? espnEvents.value : []).filter(e => e.sportId === 'ufc');
+  const sdbUFC = (sportsDBEvents.status === 'fulfilled' ? sportsDBEvents.value : []).filter(e => e.sportId === 'ufc');
+  console.log(`[Events API] UFC diagnostics: ESPN=${espnUFC.length} fights, SportsDB=${sdbUFC.length} events`);
 
   // Deduplicate: ESPN takes priority over SportsDB for the same sport+date.
   // This prevents SportsDB fallback entries from showing alongside ESPN individual fights.
