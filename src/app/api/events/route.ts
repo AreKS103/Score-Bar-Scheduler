@@ -255,6 +255,13 @@ function mapMMAFights(
     const competitions = event.competitions ?? [];
     if (competitions.length === 0) continue;
 
+    // Main card = the latest time group among all fights.
+    // ESPN returns competitions with individual comp.date values grouped by segment
+    // (Early Prelims → Prelims → Main Card), so the latest timestamp = main card.
+    const mainCardTime = competitions
+      .map(c => c.date || event.date)
+      .reduce((latest, t) => (t > latest ? t : latest), '');
+
     // Build one MatchEvent per competition (fight)
     const fights: MatchEvent[] = [];
     for (let i = 0; i < competitions.length; i++) {
@@ -265,6 +272,7 @@ function mapMMAFights(
       const f1Name = f1 ? getCompName(f1) : '';
       if (!f1Name) continue;
 
+      const compTime = comp.date || event.date;
       const fightTime = comp.date ? utcToICT(comp.date) : { date, time };
       const weightClass = comp.type?.abbreviation ?? '';
 
@@ -285,8 +293,8 @@ function mapMMAFights(
         tags: [],
         isFeatured: false,
         isSelected: false,
-        // First fight = main event; rest are undercards
-        isMainCard: i === 0,
+        // Main card = fights whose time matches the latest time group in the event
+        isMainCard: compTime === mainCardTime,
         cardName,
         fightOrder: i,
       });
@@ -553,8 +561,8 @@ const SPORTSDB_ONLY_LEAGUES = [
   // Free API key "3" caps eventsseason at ~15 results per call.
   // The eventsnextleague endpoint for this ID is broken (returns League One UK instead).
   // We query multiple season formats and aggregate to maximise coverage.
-  { id: 'soccer-cpl', sportsdbId: '4793', label: 'C-League Cambodia', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/fdhux61655121747.png' },
-  { id: 'motogp', sportsdbId: '4407', label: 'MotoGP', category: 'Motorsport', logo: 'https://r2.thesportsdb.com/images/media/league/badge/gg3c201768486075.png' },
+  { id: 'soccer-cpl', sportsdbId: '4793', label: 'C-League Cambodia', category: 'Football', logo: '/CPL.png' },
+  { id: 'motogp', sportsdbId: '4407', label: 'MotoGP', category: 'Motorsport', logo: '/motogp.png' },
   // Combat Sports — fetched via eventsseason.php (eventsnextleague is broken for these IDs)
   { id: 'ufc', sportsdbId: '4443', label: 'UFC / MMA', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/bewnz31717531281.png' },
   { id: 'boxing', sportsdbId: '4445', label: 'Boxing', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/6enin21740228549.png' },
@@ -996,14 +1004,28 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  // Fetch this user's custom events (per-user, not server-cached)
+  const getCustomEvents = async (): Promise<MatchEvent[]> => {
+    try {
+      const { data } = await supabase
+        .from('custom_events')
+        .select('event_data')
+        .eq('user_id', user.id)
+        .gt('expires_at', new Date().toISOString());
+      const all = (data ?? []).map(r => r.event_data as MatchEvent);
+      return all.filter(e => e.date >= startDate && e.date <= endDate);
+    } catch { return []; }
+  };
+
   const cacheKey = `${startDate}|${endDate}`;
   const now = Date.now();
   const cached = CACHE.get(cacheKey);
 
   // Return cached data if fresh
   if (cached && now - cached.timestamp < CACHE_TTL) {
+    const customEvents = await getCustomEvents();
     return NextResponse.json({
-      events: cached.data,
+      events: [...cached.data, ...customEvents],
       cached: true,
       age: Math.round((now - cached.timestamp) / 1000),
     }, { headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600' } });
@@ -1022,8 +1044,9 @@ export async function GET(req: NextRequest) {
       return cached.data;
     });
 
+    const customEvents = await getCustomEvents();
     return NextResponse.json({
-      events: cached.data,
+      events: [...cached.data, ...customEvents],
       cached: true,
       stale: true,
       age: Math.round((now - cached.timestamp) / 1000),
@@ -1034,8 +1057,8 @@ export async function GET(req: NextRequest) {
   try {
     // Prevent thundering herd - reuse existing fetch if in progress
     if (fetchPromise) {
-      const events = await fetchPromise;
-      return NextResponse.json({ events, cached: false });
+      const [events, customEvents] = await Promise.all([fetchPromise, getCustomEvents()]);
+      return NextResponse.json({ events: [...events, ...customEvents], cached: false });
     }
 
     fetchPromise = fetchAllEvents(startDate, endDate);
@@ -1044,7 +1067,8 @@ export async function GET(req: NextRequest) {
     CACHE.set(cacheKey, { data: events, timestamp: Date.now(), fetchInProgress: false });
     fetchPromise = null;
 
-    return NextResponse.json({ events, cached: false }, {
+    const customEvents = await getCustomEvents();
+    return NextResponse.json({ events: [...events, ...customEvents], cached: false }, {
       headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600' },
     });
   } catch (err) {
@@ -1053,8 +1077,9 @@ export async function GET(req: NextRequest) {
     
     // Return stale data on error if available
     if (cached) {
+      const customEvents = await getCustomEvents();
       return NextResponse.json({
-        events: cached.data,
+        events: [...cached.data, ...customEvents],
         cached: true,
         stale: true,
         error: 'Fetch failed, returning stale data',

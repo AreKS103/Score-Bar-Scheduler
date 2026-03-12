@@ -982,7 +982,15 @@ export default function SchedulePage() {
       <AddMatchModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        onAdd={(event) => addEvents([event])}
+        onAdd={async (event) => {
+          addEvents([event]);
+          // Persist to Supabase so it survives page refreshes (expires in 2 weeks)
+          await fetch('/api/custom-events', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(event),
+          }).catch(() => {});
+        }}
       />
 
       {/* Settings lightbox */}
