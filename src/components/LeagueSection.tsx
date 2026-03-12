@@ -94,22 +94,47 @@ const FightCardGroup = memo(function FightCardGroup({
         className="w-full flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold text-muted-foreground hover:text-foreground bg-secondary/30 border-t border-border/40 transition-colors"
       >
         {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-        {undercards.length} undercard bout{undercards.length !== 1 ? 's' : ''}
+        {(() => {
+          const mainCount = undercards.filter(f => f.isMainCard).length;
+          const prelimCount = undercards.filter(f => !f.isMainCard).length;
+          if (mainCount > 0 && prelimCount > 0) return `${mainCount} main card • ${prelimCount} prelim bout${prelimCount !== 1 ? 's' : ''}`;
+          return `${undercards.length} undercard bout${undercards.length !== 1 ? 's' : ''}`;
+        })()}
       </button>
-      {/* Undercard fights (indented) */}
-      {expanded && (
-        <div className="pl-4 pr-1 py-1 space-y-1 bg-secondary/10 border-t border-border/30">
-          {undercards.map(fight => (
-            <MatchCard
-              key={fight.id}
-              event={fight}
-              onToggleSelected={onToggleSelected}
-              onToggleFeatured={onToggleFeatured}
-              onToggleTag={onToggleTag}
-            />
-          ))}
-        </div>
-      )}
+      {/* Undercard fights — main card bouts first, then prelims with separator */}
+      {expanded && (() => {
+        const mainCardUndercards = undercards.filter(f => f.isMainCard);
+        const prelimUndercards = undercards.filter(f => !f.isMainCard);
+        return (
+          <div className="pl-4 pr-1 py-1 space-y-1 bg-secondary/10 border-t border-border/30">
+            {mainCardUndercards.map(fight => (
+              <MatchCard
+                key={fight.id}
+                event={fight}
+                onToggleSelected={onToggleSelected}
+                onToggleFeatured={onToggleFeatured}
+                onToggleTag={onToggleTag}
+              />
+            ))}
+            {mainCardUndercards.length > 0 && prelimUndercards.length > 0 && (
+              <div className="flex items-center gap-2 py-1">
+                <div className="flex-1 border-t border-border/40" />
+                <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60 px-1">Prelims</span>
+                <div className="flex-1 border-t border-border/40" />
+              </div>
+            )}
+            {prelimUndercards.map(fight => (
+              <MatchCard
+                key={fight.id}
+                event={fight}
+                onToggleSelected={onToggleSelected}
+                onToggleFeatured={onToggleFeatured}
+                onToggleTag={onToggleTag}
+              />
+            ))}
+          </div>
+        );
+      })()}
     </div>
   );
 });
