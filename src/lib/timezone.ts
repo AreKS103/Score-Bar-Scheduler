@@ -43,11 +43,11 @@ export function utcToICT(utcISO: string): { date: string; time: string } {
 }
 
 /**
- * Format a date string (YYYY-MM-DD) to display format: "Thursday 06 March"
+ * Format a date string (YYYY-MM-DD) to display format: "Friday 15 March"
  */
 export function formatDisplayDate(dateStr: string): string {
   const d = parseISO(dateStr);
-  return format(d, 'EEEE dd MMMM');
+  return format(d, 'EEEE d MMMM');
 }
 
 /**

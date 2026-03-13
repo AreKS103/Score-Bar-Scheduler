@@ -267,7 +267,7 @@ export function generateHTML(events: MatchEvent[], leagueOrder?: string[], featu
     // League header with logo
     if (leagueLogo) {
       parts.push(
-        `<img src="${leagueLogo}" alt="${escapeHTML(leagueLabel)}" style="height:40px;vertical-align:middle;margin-right:8px;" onerror="this.style.display='none'" />`
+        `<img src="${leagueLogo}" alt="${escapeHTML(leagueLabel)}" style="height:40px;vertical-align:middle;margin-right:8px;" loading="lazy" decoding="async" referrerpolicy="no-referrer" crossorigin="anonymous" />`
       );
     }
     parts.push(`<h3>${escapeHTML(leagueLabel)}</h3>`);
