@@ -35,6 +35,7 @@ export interface SportConfig {
   sportsdbId?: string;
   openf1?: boolean;
   logo: string;
+  publishLogo?: string;
 }
 
 // ─── WordPress ───────────────────────────────────────────────────────────────

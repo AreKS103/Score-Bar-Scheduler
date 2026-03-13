@@ -20,13 +20,13 @@ export const SPORTS_CONFIG: SportConfig[] = [
   { id: 'soccer-aleague',        label: 'A-League',                           category: 'Football',    espnSlug: 'soccer/aus.1',              logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/1308.png' },
   { id: 'soccer-saudipro',       label: 'Saudi Pro League',                   category: 'Football',    espnSlug: 'soccer/ksa.1',              logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/2488.png' },
   { id: 'soccer-jleague',        label: 'J-League',                           category: 'Football',    espnSlug: 'soccer/jpn.1',              logo: 'https://r2.thesportsdb.com/images/media/league/badge/3j8bni1675170553.png' },
-  { id: 'soccer-afc',            label: 'AFC Champions League Elite',         category: 'Football',    espnSlug: 'soccer/afc.champions',      sportsdbId: '4719', logo: '/AFC.png' },
+  { id: 'soccer-afc',            label: 'AFC Champions League Elite',         category: 'Football',    espnSlug: 'soccer/afc.champions',      sportsdbId: '4719', logo: '/AFC.png', publishLogo: 'https://r2.thesportsdb.com/images/media/league/badge/gsbq4k1719686780.png' },
   { id: 'soccer-afc2',           label: 'AFC Champions League Two',           category: 'Football',    espnSlug: 'soccer/afc.cup',            sportsdbId: '4804', logo: 'https://r2.thesportsdb.com/images/media/league/badge/sfg2dl1719686962.png' },
   { id: 'soccer-afccl',          label: 'AFC Challenge League',               category: 'Football',    espnSlug: null,                        sportsdbId: '5485', logo: 'https://r2.thesportsdb.com/images/media/league/badge/ctg73b1721497942.png' },
   { id: 'soccer-afc-asian-cup',  label: 'AFC Asian Cup',                      category: 'Football',    espnSlug: null,                        sportsdbId: '4866', logo: 'https://r2.thesportsdb.com/images/media/league/badge/0a86rp1710997941.png' },
   { id: 'soccer-asian-cup-women', label: 'Asian Cup Women',                   category: 'Football',    espnSlug: null,                        sportsdbId: '5179', logo: 'https://r2.thesportsdb.com/images/media/league/badge/m0scwf1726416187.png' },
   { id: 'soccer-copam',          label: 'Copa Libertadores',                  category: 'Football',    espnSlug: 'soccer/conmebol.libertadores', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/26.png' },
-  { id: 'soccer-cpl',            label: 'Cambodian Premier League',           category: 'Football',    espnSlug: null,                        sportsdbId: '4793', logo: '/CPL.png' },
+  { id: 'soccer-cpl',            label: 'Cambodian Premier League',           category: 'Football',    espnSlug: null,                        sportsdbId: '4793', logo: '/CPL.png', publishLogo: 'https://r2.thesportsdb.com/images/media/league/badge/fdhux61655121747.png' },
 
   // ── Basketball ─────────────────────────────────────────────────────────────
   { id: 'basketball-nba',        label: 'NBA',                                category: 'Basketball',  espnSlug: 'basketball/nba',            logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/nba.png' },
@@ -54,7 +54,7 @@ export const SPORTS_CONFIG: SportConfig[] = [
   { id: 'indycar',               label: 'IndyCar',                             category: 'Motorsport',  espnSlug: 'racing/irl',                logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/indycar.png' },
 
   // ── Combat Sports ──────────────────────────────────────────────────────────
-  { id: 'ufc',                   label: 'UFC / MMA',                           category: 'Combat Sports', espnSlug: null,                     sportsdbId: '4443', logo: '/UFC.png' },
+  { id: 'ufc',                   label: 'UFC / MMA',                           category: 'Combat Sports', espnSlug: null,                     sportsdbId: '4443', logo: '/UFC.png', publishLogo: 'https://a.espncdn.com/i/teamlogos/leagues/500/ufc.png' },
   { id: 'bellator',              label: 'PFL / Bellator',                      category: 'Combat Sports', espnSlug: 'mma/bellator',            logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/pfl.png' },
   { id: 'boxing',                label: 'Boxing',                              category: 'Combat Sports', espnSlug: null,                     sportsdbId: '4445', logo: 'https://r2.thesportsdb.com/images/media/league/badge/6enin21740228549.png' },
 
@@ -143,7 +143,7 @@ export const CATEGORY_LOGOS: Record<string, string> = {
   'Ice Hockey':          'https://a.espncdn.com/i/teamlogos/leagues/500/nhl.png',
   'Cricket':             'https://r2.thesportsdb.com/images/media/league/badge/gaiti11741709844.png',
   'Motorsport':          'https://r2.thesportsdb.com/images/media/league/badge/g8cofl1513623681.png',
-  'Combat Sports':       '/UFC.png',
+  'Combat Sports':       'https://a.espncdn.com/i/teamlogos/leagues/500/ufc.png',
   'Rugby':               'https://r2.thesportsdb.com/images/media/league/badge/7h1wr91738670253.png',
   'Rugby League':        'https://r2.thesportsdb.com/images/media/league/badge/gsztcj1552071996.png',
   'Australian Football': 'https://a.espncdn.com/i/teamlogos/leagues/500/afl.png',

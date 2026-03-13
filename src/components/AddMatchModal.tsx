@@ -137,7 +137,7 @@ export default function AddMatchModal({ isOpen, onClose, onAdd }: AddMatchModalP
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-                <Label>Date (Phnom Penh Time) — dd/mm/yyyy</Label>
+                <Label>Date — dd/mm/yyyy</Label>
               <Input
                   type="text"
                 value={date}

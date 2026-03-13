@@ -975,7 +975,7 @@ export default function SchedulePage() {
             <div className="absolute inset-0 z-30 flex items-center justify-center bg-background/75 backdrop-blur-[1px]">
               <div className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-lg">
                 <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                Loading saved schedule...
+                Loading schedule...
               </div>
             </div>
           )}

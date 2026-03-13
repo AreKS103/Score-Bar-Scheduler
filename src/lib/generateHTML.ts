@@ -42,18 +42,12 @@ function footballLeagueSort(sportId: string): number {
 }
 
 /**
- * Scheduler app can use local `/public` logos, but published HTML runs on the
- * SCORE website where those local paths do not exist. Convert known local
- * paths to external, publish-safe URLs.
+ * Keep app and publish logo logic separated:
+ * - `logo` is used by scheduler UI
+ * - `publishLogo` is used in generated HTML for WordPress
  */
-function getPublishLogoSrc(logo: string): string {
-  const localToExternal: Record<string, string> = {
-    '/AFC.png': 'https://r2.thesportsdb.com/images/media/league/badge/gsbq4k1719686780.png',
-    '/CPL.png': 'https://r2.thesportsdb.com/images/media/league/badge/fdhux61655121747.png',
-    '/UFC.png': 'https://a.espncdn.com/i/teamlogos/leagues/500/ufc.png',
-    '/motogp.png': 'https://r2.thesportsdb.com/images/media/league/badge/gg3c201768486075.png',
-  };
-  return localToExternal[logo] || logo;
+function getPublishLogoSrc(logo: string, publishLogo?: string): string {
+  return (publishLogo || logo || '').trim();
 }
 
 /**
@@ -277,7 +271,8 @@ export function generateHTML(events: MatchEvent[], leagueOrder?: string[], featu
 
     const config = SPORTS_CONFIG.find((s) => s.id === leagueKey);
     const leagueLabel = config?.label || firstEvent?.leagueLabel || leagueKey;
-    const leagueLogo = getPublishLogoSrc(config?.logo || '');
+    const rawLeagueLogo = config?.logo || firstEvent?.leagueLogo || '';
+    const leagueLogo = getPublishLogoSrc(rawLeagueLogo, config?.publishLogo);
 
     // League header with logo
     if (leagueLogo) {

@@ -5,6 +5,7 @@ import { Upload, CheckCircle, AlertCircle, Loader2, ChevronDown, Trash2, History
 import { cn } from '@/lib/utils';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useTimezoneStore } from '@/lib/timezoneStore';
 
 interface ScheduleSummary {
   id: string;
@@ -38,6 +39,7 @@ interface PublishButtonProps {
 }
 
 export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSchedule, getSnapshotData, onRestoreSchedule, hasCurrentSelections }: PublishButtonProps) {
+  const selectedTimezone = useTimezoneStore((state) => state.timezone);
   const [status, setStatus] = useState<'idle' | 'pushing' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -396,7 +398,14 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
                         <div>
                           <p className="text-sm text-foreground">{item.week_label}</p>
                           <p className="text-[11px] text-muted-foreground">
-                            {new Date(item.published_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            {new Date(item.published_at).toLocaleDateString('en-GB', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              timeZone: selectedTimezone,
+                            })}
                           </p>
                         </div>
                       </button>
@@ -613,7 +622,7 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
               <div key={s.id} className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-orange-500/30 bg-orange-500/10 backdrop-blur-sm text-xs whitespace-nowrap shadow-sm">
                 <Clock className="w-3.5 h-3.5 text-orange-400 shrink-0" />
                 <span className="text-foreground font-medium">
-                  {dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} at {dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                  {dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: selectedTimezone })} at {dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: selectedTimezone })}
                 </span>
                 {s.week_label && <span className="text-muted-foreground truncate max-w-32">· {s.week_label}</span>}
                 <button
