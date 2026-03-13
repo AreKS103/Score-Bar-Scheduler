@@ -14,6 +14,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid event data' }, { status: 400 });
     }
 
+    // Idempotent save by MatchEvent.id to avoid duplicates on retries.
+    const { data: existing } = await supabase
+      .from('custom_events')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('event_data->>id', event.id)
+      .maybeSingle();
+
+    if (existing?.id) {
+      return NextResponse.json({ success: true, rowId: existing.id, existing: true });
+    }
+
     const { data, error } = await supabase
       .from('custom_events')
       .insert({
@@ -26,7 +38,7 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       console.error('[CustomEvents] insert error:', error);
-      return NextResponse.json({ error: 'Failed to save event' }, { status: 500 });
+      return NextResponse.json({ error: error.message || 'Failed to save event' }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, rowId: data.id });

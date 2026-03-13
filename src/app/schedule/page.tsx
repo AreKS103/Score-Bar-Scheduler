@@ -23,7 +23,7 @@ import {
 import { useScheduleStore } from '@/lib/store';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { useFavoritesStore } from '@/lib/favoritesStore';
-import { getCachedEvents, setCachedEvents, appendCachedEvent, saveLocalCustomEvent, loadLocalCustomEvents, saveSelectionToSupabase, loadSelectionFromSupabase, loadSelectionState, saveSelectionState, type SavedSelectionState } from '@/lib/clientCache';
+import { getCachedEvents, setCachedEvents, appendCachedEvent, saveLocalCustomEvent, loadLocalCustomEvents, syncLocalCustomEventsToSupabase, saveSelectionToSupabase, loadSelectionFromSupabase, loadSelectionState, saveSelectionState, type SavedSelectionState } from '@/lib/clientCache';
 import { generateHTML } from '@/lib/generateHTML';
 import { SPORTS_CONFIG, getCategories, ALL_SCREEN_TAGS } from '@/lib/config';
 import { formatDisplayDate } from '@/lib/timezone';
@@ -229,6 +229,14 @@ export default function SchedulePage() {
       }
       handleFetch();
       useFavoritesStore.getState().loadFromSupabase();
+      // Retry syncing any locally stored custom events to Supabase (best-effort).
+      syncLocalCustomEventsToSupabase()
+        .then(({ synced, failed }) => {
+          if (synced > 0 || failed > 0) {
+            console.log(`[CustomEvents] local->Supabase sync: synced=${synced}, failed=${failed}`);
+          }
+        })
+        .catch(() => {});
       // After initial fetch, try to load from Supabase (may override localStorage)
       loadSelectionFromSupabase().then(supaState => {
         if (!supaState) return;

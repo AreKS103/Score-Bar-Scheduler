@@ -162,6 +162,35 @@ export function loadLocalCustomEvents(dateRange: { start: string; end: string })
   return store.events.filter((e) => e.source === 'manual' && e.date >= dateRange.start && e.date <= dateRange.end);
 }
 
+/**
+ * Best-effort sync: pushes locally stored custom events to Supabase via API.
+ * Safe to call repeatedly; server POST is idempotent by event_data->>id.
+ */
+export async function syncLocalCustomEventsToSupabase(): Promise<{ synced: number; failed: number }> {
+  if (typeof window === 'undefined') return { synced: 0, failed: 0 };
+  const store = readLocalCustomEventsStore();
+  if (!store.events.length) return { synced: 0, failed: 0 };
+
+  let synced = 0;
+  let failed = 0;
+
+  for (const event of store.events) {
+    try {
+      const res = await fetch('/api/custom-events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(event),
+      });
+      if (res.ok) synced++;
+      else failed++;
+    } catch {
+      failed++;
+    }
+  }
+
+  return { synced, failed };
+}
+
 // ─── Selection Persistence ────────────────────────────────────────────────────
 // Saves which events are selected/featured/tagged so page refreshes don't lose state.
 
