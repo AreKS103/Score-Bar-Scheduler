@@ -54,7 +54,7 @@ export const SPORTS_CONFIG: SportConfig[] = [
   { id: 'indycar',               label: 'IndyCar',                             category: 'Motorsport',  espnSlug: 'racing/irl',                logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/indycar.png' },
 
   // ── Combat Sports ──────────────────────────────────────────────────────────
-  { id: 'ufc',                   label: 'UFC / MMA',                           category: 'Combat Sports', espnSlug: null,                     sportsdbId: '4443', logo: 'https://r2.thesportsdb.com/images/media/league/badge/bewnz31717531281.png' },
+  { id: 'ufc',                   label: 'UFC / MMA',                           category: 'Combat Sports', espnSlug: null,                     sportsdbId: '4443', logo: '/UFC.png' },
   { id: 'bellator',              label: 'PFL / Bellator',                      category: 'Combat Sports', espnSlug: 'mma/bellator',            logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/pfl.png' },
   { id: 'boxing',                label: 'Boxing',                              category: 'Combat Sports', espnSlug: null,                     sportsdbId: '4445', logo: 'https://r2.thesportsdb.com/images/media/league/badge/6enin21740228549.png' },
 
@@ -143,7 +143,7 @@ export const CATEGORY_LOGOS: Record<string, string> = {
   'Ice Hockey':          'https://a.espncdn.com/i/teamlogos/leagues/500/nhl.png',
   'Cricket':             'https://r2.thesportsdb.com/images/media/league/badge/gaiti11741709844.png',
   'Motorsport':          'https://r2.thesportsdb.com/images/media/league/badge/g8cofl1513623681.png',
-  'Combat Sports':       'https://a.espncdn.com/i/teamlogos/leagues/500/ufc.png',
+  'Combat Sports':       '/UFC.png',
   'Rugby':               'https://r2.thesportsdb.com/images/media/league/badge/7h1wr91738670253.png',
   'Rugby League':        'https://r2.thesportsdb.com/images/media/league/badge/gsztcj1552071996.png',
   'Australian Football': 'https://a.espncdn.com/i/teamlogos/leagues/500/afl.png',

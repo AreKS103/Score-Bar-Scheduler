@@ -128,7 +128,7 @@ const LEAGUE_METADATA: Record<string, { label: string; category: string; logo: s
   'f1': { label: 'Formula 1', category: 'Motorsport', logo: 'https://r2.thesportsdb.com/images/media/league/badge/g8cofl1513623681.png' },
   'motogp': { label: 'MotoGP', category: 'Motorsport', logo: 'https://r2.thesportsdb.com/images/media/league/badge/gg3c201768486075.png' },
   'indycar': { label: 'IndyCar', category: 'Motorsport', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/indycar.png' },
-  'ufc': { label: 'UFC / MMA', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/bewnz31717531281.png' },
+  'ufc': { label: 'UFC / MMA', category: 'Combat Sports', logo: '/UFC.png' },
   'bellator': { label: 'PFL / Bellator', category: 'Combat Sports', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/pfl.png' },
   'boxing': { label: 'Boxing', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/6enin21740228549.png' },
   'rugby-superrugby': { label: 'Super Rugby Pacific', category: 'Rugby', logo: 'https://r2.thesportsdb.com/images/media/league/badge/gz76v11717091774.png' },
@@ -592,7 +592,7 @@ const SPORTSDB_ONLY_LEAGUES = [
   { id: 'soccer-afc-asian-cup', sportsdbId: '4866', label: 'AFC Asian Cup', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/0a86rp1710997941.png' },
   { id: 'soccer-asian-cup-women', sportsdbId: '5179', label: 'Asian Cup Women', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/m0scwf1726416187.png' },
   { id: 'motogp', sportsdbId: '4407', label: 'MotoGP', category: 'Motorsport', logo: '/motogp.png' },
-  { id: 'ufc', sportsdbId: '4443', label: 'UFC / MMA', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/bewnz31717531281.png' },
+  { id: 'ufc', sportsdbId: '4443', label: 'UFC / MMA', category: 'Combat Sports', logo: '/UFC.png' },
   { id: 'boxing', sportsdbId: '4445', label: 'Boxing', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/6enin21740228549.png' },
 ];
 
