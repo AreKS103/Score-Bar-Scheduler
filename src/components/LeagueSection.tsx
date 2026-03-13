@@ -157,6 +157,16 @@ const LeagueSection = memo(function LeagueSection({
     [events]
   );
 
+  const allSelected = useMemo(
+    () => events.length > 0 && events.every((ev) => ev.isSelected),
+    [events]
+  );
+
+  const someSelected = useMemo(
+    () => events.some((ev) => ev.isSelected),
+    [events]
+  );
+
   const { sortedDates, byDate } = useMemo(() => {
     const map = new Map<string, MatchEvent[]>();
     const sorted = [...events].sort((a, b) => {
@@ -168,8 +178,18 @@ const LeagueSection = memo(function LeagueSection({
       if (!map.has(event.date)) map.set(event.date, []);
       map.get(event.date)!.push(event);
     }
-    return { sortedDates: Array.from(map.keys()).sort(), byDate: map };
+    return { sortedDates: Array.from(map.keys()), byDate: map };
   }, [events]);
+
+  const fightCardsByDate = useMemo(() => {
+    if (!isFightSport) return new Map<string, { main: MatchEvent; undercards: MatchEvent[] }[]>();
+    const grouped = new Map<string, { main: MatchEvent; undercards: MatchEvent[] }[]>();
+    for (const date of sortedDates) {
+      const dayEvents = byDate.get(date) ?? [];
+      grouped.set(date, groupFightCard(dayEvents));
+    }
+    return grouped;
+  }, [isFightSport, sortedDates, byDate]);
 
   if (!config) return null;
 
@@ -190,26 +210,25 @@ const LeagueSection = memo(function LeagueSection({
           <button
             onClick={(e) => {
               e.stopPropagation();
-              const allSelected = events.length > 0 && events.every((ev) => ev.isSelected);
               onBulkSelectLeague(sportId, !allSelected);
             }}
             className={cn(
               'transition-colors shrink-0',
-              events.length > 0 && events.every((ev) => ev.isSelected)
+              allSelected
                 ? 'text-primary hover:text-primary/80'
-                : events.some((ev) => ev.isSelected)
+                : someSelected
                   ? 'text-muted-foreground hover:text-primary'
                   : 'text-muted-foreground/30 hover:text-primary'
             )}
             title={
-              events.length > 0 && events.every((ev) => ev.isSelected)
+              allSelected
                 ? 'Deselect all matches'
                 : 'Select all matches'
             }
           >
-            {events.length > 0 && events.every((ev) => ev.isSelected) ? (
+            {allSelected ? (
               <CheckSquare className="w-3.5 h-3.5" />
-            ) : events.some((ev) => ev.isSelected) ? (
+            ) : someSelected ? (
               <MinusSquare className="w-3.5 h-3.5" />
             ) : (
               <Square className="w-3.5 h-3.5" />
@@ -261,7 +280,7 @@ const LeagueSection = memo(function LeagueSection({
             </div>
             <div className="space-y-2">
               {isFightSport
-                ? groupFightCard(dayEvents).map(({ main, undercards }) => (
+                ? (fightCardsByDate.get(date) ?? []).map(({ main, undercards }) => (
                     <FightCardGroup
                       key={main.id}
                       main={main}

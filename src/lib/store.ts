@@ -86,11 +86,14 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
     }),
 
   bulkSetTags: (ids: string[], tags: ScreenTag[]) =>
-    set((state) => ({
-      events: state.events.map((e) =>
-        ids.includes(e.id) ? { ...e, tags } : e
-      ),
-    })),
+    set((state) => {
+      const idSet = new Set(ids);
+      return {
+        events: state.events.map((e) =>
+          idSet.has(e.id) ? { ...e, tags } : e
+        ),
+      };
+    }),
 
   setFetchStatus: (key: string, status: FetchStatus) =>
     set((state) => ({

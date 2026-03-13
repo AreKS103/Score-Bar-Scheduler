@@ -174,17 +174,22 @@ export async function syncLocalCustomEventsToSupabase(): Promise<{ synced: numbe
   let synced = 0;
   let failed = 0;
 
-  for (const event of store.events) {
-    try {
-      const res = await fetch('/api/custom-events', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(event),
-      });
-      if (res.ok) synced++;
+  const BATCH_SIZE = 3;
+  for (let i = 0; i < store.events.length; i += BATCH_SIZE) {
+    const batch = store.events.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map((event) =>
+        fetch('/api/custom-events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(event),
+        })
+      )
+    );
+
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value.ok) synced++;
       else failed++;
-    } catch {
-      failed++;
     }
   }
 

@@ -475,15 +475,20 @@ export default function SchedulePage() {
   }, []);
 
   const handlePreviewDelete = useCallback(() => {
-    previewCheckedIds.forEach((id) => toggleSelected(id));
+    if (previewCheckedIds.size > 0) {
+      batchSetSelected(Array.from(previewCheckedIds), false);
+    }
     setPreviewCheckedIds(new Set());
-  }, [previewCheckedIds, toggleSelected]);
+  }, [previewCheckedIds, batchSetSelected]);
 
   const handleDeleteAll = useCallback(() => {
-    events.filter((e) => e.isSelected).forEach((e) => toggleSelected(e.id));
+    const selectedIds = events.filter((e) => e.isSelected).map((e) => e.id);
+    if (selectedIds.length > 0) {
+      batchSetSelected(selectedIds, false);
+    }
     setDeleteAllConfirm(false);
     setPreviewCheckedIds(new Set());
-  }, [events, toggleSelected]);
+  }, [events, batchSetSelected]);
 
   // ─── HTML generation — recomputes whenever leagueOrder, events, or sortVersion changes ─
   const html = useMemo(
@@ -590,6 +595,9 @@ export default function SchedulePage() {
       const snapshot: MatchEvent[] = Array.isArray(schedule.events_snapshot) ? schedule.events_snapshot : [];
       const restoredCustom = snapshot.filter((e) => e.source === 'manual');
 
+      // Start fetching full-week events immediately while local persistence runs.
+      const eventsPromise = fetch(`/api/events?start=${rangeStart}&end=${rangeEnd}`);
+
       // Persist restored custom events locally so they survive refresh/tab close.
       for (const ev of restoredCustom) {
         saveLocalCustomEvent(ev);
@@ -608,12 +616,14 @@ export default function SchedulePage() {
         )
       );
 
-      // Move calendar to the restored schedule range.
-      setDateRange(rangeStart, rangeEnd);
+      // Move calendar to the restored schedule range only if changed.
+      if (rangeStart !== dateRange.start || rangeEnd !== dateRange.end) {
+        setDateRange(rangeStart, rangeEnd);
+      }
 
       // Always load the full week from API, then overlay restored selections.
       // This keeps the left panel complete while restoring preview selections.
-      const eventsRes = await fetch(`/api/events?start=${rangeStart}&end=${rangeEnd}`);
+      const eventsRes = await eventsPromise;
       const eventsData = eventsRes.ok ? await eventsRes.json() : { events: [] };
       const apiEvents: MatchEvent[] = eventsData.events ?? [];
 
