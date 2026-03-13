@@ -64,6 +64,7 @@ export default function SchedulePage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<MatchEvent | null>(null);
   const [isFetching, setIsFetching] = useState(false);
+  const [isRestoringSchedule, setIsRestoringSchedule] = useState(false);
   const [bulkTagOpen, setBulkTagOpen] = useState(false);
   const [searchFilterIds, setSearchFilterIds] = useState<Set<string> | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -577,6 +578,7 @@ export default function SchedulePage() {
   }), [dateRange, events, leagueOrder, featuredLeagues]);
 
   const handleRestoreSchedule = useCallback(async (scheduleId: string) => {
+    setIsRestoringSchedule(true);
     try {
       const res = await fetch(`/api/schedule-history/${scheduleId}`);
       if (!res.ok) return;
@@ -658,6 +660,8 @@ export default function SchedulePage() {
       });
     } catch (e) {
       console.error('Failed to restore schedule:', e);
+    } finally {
+      setIsRestoringSchedule(false);
     }
   }, [dateRange.end, dateRange.start, setDateRange, setEvents, setCachedEvents, loadLocalCustomEvents, saveSelectionToSupabase]);
 
@@ -862,7 +866,15 @@ export default function SchedulePage() {
         </header>
 
         {/* Match list */}
-        <div className="flex-1 overflow-y-auto px-3 sm:px-6 pb-4">
+        <div className="relative flex-1 overflow-y-auto px-3 sm:px-6 pb-4">
+          {isFetching && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/70 backdrop-blur-[1px] pointer-events-none">
+              <div className="flex items-center gap-2 rounded-md border border-border bg-card/90 px-3 py-2 text-sm text-foreground shadow-md">
+                <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                Loading sports events...
+              </div>
+            </div>
+          )}
           {events.length === 0 && !isFetching && (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <div className="text-6xl mb-4">🏟️</div>
@@ -873,7 +885,7 @@ export default function SchedulePage() {
                 Sports data is loading automatically. If nothing appears, check your date range and try refreshing.
               </p>
               <Button onClick={() => handleFetch(true)}>
-                <Loader2 className="w-4 h-4" />
+                <RefreshCw className="w-4 h-4" />
                 Fetch Matches
               </Button>
             </div>
@@ -958,7 +970,15 @@ export default function SchedulePage() {
         </div>
 
         {/* Two-column body (stacks on narrow panels) */}
-        <div className="flex flex-col sm:flex-row flex-1 overflow-hidden">
+        <div className="relative flex flex-col sm:flex-row flex-1 overflow-hidden">
+          {isRestoringSchedule && (
+            <div className="absolute inset-0 z-30 flex items-center justify-center bg-background/75 backdrop-blur-[1px]">
+              <div className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-lg">
+                <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                Loading saved schedule...
+              </div>
+            </div>
+          )}
 
           {/* Left: match list */}
           <aside className="w-full sm:w-60 shrink-0 border-b sm:border-b-0 sm:border-r border-border bg-sidebar flex flex-col overflow-hidden relative max-h-[40vh] sm:max-h-none">
