@@ -42,6 +42,18 @@ export default function AddMatchModal({ isOpen, onClose, onAdd }: AddMatchModalP
 
   const selectedSport = SPORTS_CONFIG.find((s) => s.id === sportId)!;
 
+  const parseDisplayDate = (value: string): string | null => {
+    const m = value.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!m) return null;
+    const dd = m[1].padStart(2, '0');
+    const mm = m[2].padStart(2, '0');
+    const yyyy = m[3];
+    const d = new Date(`${yyyy}-${mm}-${dd}T00:00:00Z`);
+    if (Number.isNaN(d.getTime())) return null;
+    if (d.getUTCFullYear() !== Number(yyyy) || d.getUTCMonth() + 1 !== Number(mm) || d.getUTCDate() !== Number(dd)) return null;
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
   const toggleTag = (tag: ScreenTag) => {
     setTags((prev) =>
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
@@ -50,7 +62,8 @@ export default function AddMatchModal({ isOpen, onClose, onAdd }: AddMatchModalP
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!date || !time || !home) return;
+    const isoDate = parseDisplayDate(date);
+    if (!isoDate || !time || !home) return;
 
     const useCustom = customLeague.trim().length > 0;
     const leagueLabel = useCustom ? customLeague.trim() : selectedSport.label;
@@ -63,7 +76,7 @@ export default function AddMatchModal({ isOpen, onClose, onAdd }: AddMatchModalP
       category: useCustom ? 'Custom' : selectedSport.category,
       leagueLabel,
       leagueLogo: useCustom ? '' : selectedSport.logo,
-      date,
+      date: isoDate,
       time,
       home,
       away,
@@ -124,11 +137,14 @@ export default function AddMatchModal({ isOpen, onClose, onAdd }: AddMatchModalP
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Date (Phnom Penh Time)</Label>
+                <Label>Date (Phnom Penh Time) — dd/mm/yyyy</Label>
               <Input
-                type="date"
+                  type="text"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
+                  placeholder="14/03/2026"
+                  inputMode="numeric"
+                  pattern="^\d{1,2}/\d{1,2}/\d{4}$"
                 required
                 className="mt-1.5"
               />

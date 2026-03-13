@@ -586,6 +586,25 @@ export default function SchedulePage() {
       const rangeStart: string = schedule.date_range_start || dateRange.start;
       const rangeEnd: string = schedule.date_range_end || dateRange.end;
       const snapshot: MatchEvent[] = Array.isArray(schedule.events_snapshot) ? schedule.events_snapshot : [];
+      const restoredCustom = snapshot.filter((e) => e.source === 'manual');
+
+      // Persist restored custom events locally so they survive refresh/tab close.
+      for (const ev of restoredCustom) {
+        saveLocalCustomEvent(ev);
+        appendCachedEvent(ev);
+      }
+
+      // Best-effort push restored custom events back into Supabase table.
+      // This ensures schedule restore is durable across devices as well.
+      void Promise.allSettled(
+        restoredCustom.map((ev) =>
+          fetch('/api/custom-events', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(ev),
+          })
+        )
+      );
 
       // Move calendar to the restored schedule range.
       setDateRange(rangeStart, rangeEnd);
@@ -1097,7 +1116,17 @@ export default function SchedulePage() {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onAdd={async (event) => {
+          const hasSelectedInLeague = useScheduleStore
+            .getState()
+            .events
+            .some((e) => e.sportId === event.sportId && e.isSelected);
+
           addEvents([event]);
+          // If this is the first selected event for the league, pin it to top
+          // so newly added custom matches are immediately visible in preview.
+          if (!hasSelectedInLeague) {
+            setLeagueOrder((prev) => [event.sportId, ...prev.filter((id) => id !== event.sportId)]);
+          }
           // Durable local fallback: keep manual event across refresh even if Supabase fails.
           saveLocalCustomEvent(event);
           // Append to local cache so it survives the instant cache load on refresh

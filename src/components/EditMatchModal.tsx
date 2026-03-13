@@ -40,6 +40,24 @@ export default function EditMatchModal({ event, onClose, onSave }: EditMatchModa
   const [tags, setTags] = useState<ScreenTag[]>([]);
   const [isFeatured, setIsFeatured] = useState(false);
 
+  const toDisplayDate = (iso: string): string => {
+    const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return iso;
+    return `${m[3]}/${m[2]}/${m[1]}`;
+  };
+
+  const parseDisplayDate = (value: string): string | null => {
+    const m = value.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!m) return null;
+    const dd = m[1].padStart(2, '0');
+    const mm = m[2].padStart(2, '0');
+    const yyyy = m[3];
+    const d = new Date(`${yyyy}-${mm}-${dd}T00:00:00Z`);
+    if (Number.isNaN(d.getTime())) return null;
+    if (d.getUTCFullYear() !== Number(yyyy) || d.getUTCMonth() + 1 !== Number(mm) || d.getUTCDate() !== Number(dd)) return null;
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
   // Populate fields when event changes
   useEffect(() => {
     if (!event) return;
@@ -51,7 +69,7 @@ export default function EditMatchModal({ event, onClose, onSave }: EditMatchModa
       setSportId(SPORTS_CONFIG[0].id);
       setCustomLeague(event.leagueLabel);
     }
-    setDate(event.date);
+    setDate(toDisplayDate(event.date));
     setTime(event.time);
     setHome(event.home);
     setAway(event.away);
@@ -68,7 +86,8 @@ export default function EditMatchModal({ event, onClose, onSave }: EditMatchModa
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!event || !date || !time || !home) return;
+    const isoDate = parseDisplayDate(date);
+    if (!event || !isoDate || !time || !home) return;
 
     const useCustom = customLeague.trim().length > 0;
     const selectedSport = SPORTS_CONFIG.find((s) => s.id === sportId);
@@ -80,7 +99,7 @@ export default function EditMatchModal({ event, onClose, onSave }: EditMatchModa
       category: useCustom ? 'Custom' : selectedSport?.category || event.category,
       leagueLabel,
       leagueLogo: useCustom ? '' : selectedSport?.logo || event.leagueLogo,
-      date,
+      date: isoDate,
       time,
       home,
       away,
@@ -134,11 +153,14 @@ export default function EditMatchModal({ event, onClose, onSave }: EditMatchModa
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Date (Phnom Penh Time)</Label>
+              <Label>Date (Phnom Penh Time) — dd/mm/yyyy</Label>
               <Input
-                type="date"
+                type="text"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
+                placeholder="14/03/2026"
+                inputMode="numeric"
+                pattern="^\d{1,2}/\d{1,2}/\d{4}$"
                 required
                 className="mt-1.5"
               />
