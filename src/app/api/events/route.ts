@@ -592,7 +592,6 @@ const SPORTSDB_ONLY_LEAGUES = [
   { id: 'soccer-afc-asian-cup', sportsdbId: '4866', label: 'AFC Asian Cup', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/0a86rp1710997941.png' },
   { id: 'soccer-asian-cup-women', sportsdbId: '5179', label: 'Asian Cup Women', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/m0scwf1726416187.png' },
   { id: 'motogp', sportsdbId: '4407', label: 'MotoGP', category: 'Motorsport', logo: '/motogp.png' },
-  { id: 'ufc', sportsdbId: '4443', label: 'UFC / MMA', category: 'Combat Sports', logo: '/UFC.png' },
   { id: 'boxing', sportsdbId: '4445', label: 'Boxing', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/6enin21740228549.png' },
 ];
 
@@ -673,7 +672,7 @@ function mapSDBEvent(event: SportsDBEvent, league: typeof SPORTSDB_ONLY_LEAGUES[
 
 // ── Combat Sports (UFC / Boxing) mapper for TheSportsDB events ──────────────
 
-const COMBAT_SPORT_IDS = new Set(['4443', '4445']);
+const COMBAT_SPORT_IDS = new Set(['4445']);
 
 /**
  * Parse a TheSportsDB fight event name into card name, home fighter, away fighter.
