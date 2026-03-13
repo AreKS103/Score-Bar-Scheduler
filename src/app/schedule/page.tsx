@@ -575,16 +575,64 @@ export default function SchedulePage() {
       const { schedule } = await res.json();
       if (!schedule) return;
 
-      const restored: MatchEvent[] = schedule.events_snapshot;
-      setEvents(restored);
+      const rangeStart: string = schedule.date_range_start || dateRange.start;
+      const rangeEnd: string = schedule.date_range_end || dateRange.end;
+      const snapshot: MatchEvent[] = Array.isArray(schedule.events_snapshot) ? schedule.events_snapshot : [];
+
+      // Move calendar to the restored schedule range.
+      setDateRange(rangeStart, rangeEnd);
+
+      // Always load the full week from API, then overlay restored selections.
+      // This keeps the left panel complete while restoring preview selections.
+      const eventsRes = await fetch(`/api/events?start=${rangeStart}&end=${rangeEnd}`);
+      const eventsData = eventsRes.ok ? await eventsRes.json() : { events: [] };
+      const apiEvents: MatchEvent[] = eventsData.events ?? [];
+
+      // Include local fallback custom events in the restored date range too.
+      const localCustom = loadLocalCustomEvents({ start: rangeStart, end: rangeEnd });
+
+      const byId = new Map<string, MatchEvent>();
+      for (const e of apiEvents) byId.set(e.id, e);
+      for (const e of localCustom) {
+        if (!byId.has(e.id)) byId.set(e.id, e);
+      }
+
+      // Overlay snapshot so selected/featured/tags (and custom-only rows) are restored.
+      for (const snap of snapshot) {
+        const existing = byId.get(snap.id);
+        if (existing) {
+          byId.set(snap.id, { ...existing, ...snap, isSelected: true });
+        } else {
+          byId.set(snap.id, { ...snap, isSelected: true });
+        }
+      }
+
+      const restoredFullWeek = Array.from(byId.values());
+      setEvents(restoredFullWeek);
+      setCachedEvents({ start: rangeStart, end: rangeEnd }, restoredFullWeek);
+
       setLeagueOrder(schedule.league_order || []);
       const fl = new Map<string, string>(Object.entries(schedule.featured_leagues || {}));
       setFeaturedLeagues(fl);
       setPreviewOpen(true);
+
+      // Persist restored selection state immediately for refresh durability.
+      const selections: SavedSelectionState['selections'] = {};
+      for (const e of restoredFullWeek) {
+        if (e.isSelected || e.isFeatured || e.tags.length > 0) {
+          selections[e.id] = { isSelected: e.isSelected, isFeatured: e.isFeatured, tags: e.tags };
+        }
+      }
+      saveSelectionToSupabase({
+        selections,
+        leagueOrder: schedule.league_order || [],
+        featuredLeagues: schedule.featured_leagues || {},
+        savedAt: Date.now(),
+      });
     } catch (e) {
       console.error('Failed to restore schedule:', e);
     }
-  }, [setEvents]);
+  }, [dateRange.end, dateRange.start, setDateRange, setEvents, setCachedEvents, loadLocalCustomEvents, saveSelectionToSupabase]);
 
   return (
     <div className="flex h-screen bg-background text-foreground">
