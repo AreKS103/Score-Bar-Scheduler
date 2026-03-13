@@ -100,6 +100,68 @@ export function clearCachedEvents(): void {
   } catch {}
 }
 
+// ─── Local Custom Event Fallback ─────────────────────────────────────────────
+// Keeps manual events durable even when Supabase insert fails (missing migration,
+// temporary auth issues, RLS misconfig, etc).
+
+const CUSTOM_EVENTS_KEY = 'sportglobe_custom_events_v1';
+const CUSTOM_EVENT_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 days (matches DB default)
+
+interface LocalCustomEventsData {
+  version: number;
+  events: MatchEvent[];
+}
+
+function readLocalCustomEventsStore(): LocalCustomEventsData {
+  if (typeof window === 'undefined') return { version: 1, events: [] };
+  try {
+    const raw = localStorage.getItem(CUSTOM_EVENTS_KEY);
+    if (!raw) return { version: 1, events: [] };
+    const parsed = JSON.parse(raw) as LocalCustomEventsData;
+    if (parsed.version !== 1 || !Array.isArray(parsed.events)) {
+      return { version: 1, events: [] };
+    }
+    return parsed;
+  } catch {
+    return { version: 1, events: [] };
+  }
+}
+
+function writeLocalCustomEventsStore(events: MatchEvent[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(CUSTOM_EVENTS_KEY, JSON.stringify({ version: 1, events } satisfies LocalCustomEventsData));
+  } catch {
+    // ignore quota failures; app still works via in-memory state
+  }
+}
+
+/** Persist a custom/manual event locally as fallback durability. */
+export function saveLocalCustomEvent(event: MatchEvent): void {
+  if (typeof window === 'undefined') return;
+  if (event.source !== 'manual') return;
+
+  const store = readLocalCustomEventsStore();
+  const now = Date.now();
+
+  // Prune old manual events (older than 14 days by event date)
+  const pruned = store.events.filter((e) => {
+    if (e.source !== 'manual') return false;
+    const ts = Date.parse(`${e.date}T00:00:00Z`);
+    return Number.isFinite(ts) && (now - ts) <= CUSTOM_EVENT_TTL_MS;
+  });
+
+  const withoutDup = pruned.filter((e) => e.id !== event.id);
+  withoutDup.push(event);
+  writeLocalCustomEventsStore(withoutDup);
+}
+
+/** Load local fallback custom events for a date range (inclusive). */
+export function loadLocalCustomEvents(dateRange: { start: string; end: string }): MatchEvent[] {
+  const store = readLocalCustomEventsStore();
+  return store.events.filter((e) => e.source === 'manual' && e.date >= dateRange.start && e.date <= dateRange.end);
+}
+
 // ─── Selection Persistence ────────────────────────────────────────────────────
 // Saves which events are selected/featured/tagged so page refreshes don't lose state.
 

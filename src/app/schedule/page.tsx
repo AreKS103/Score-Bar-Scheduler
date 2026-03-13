@@ -23,7 +23,7 @@ import {
 import { useScheduleStore } from '@/lib/store';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { useFavoritesStore } from '@/lib/favoritesStore';
-import { getCachedEvents, setCachedEvents, appendCachedEvent, saveSelectionToSupabase, loadSelectionFromSupabase, loadSelectionState, saveSelectionState, type SavedSelectionState } from '@/lib/clientCache';
+import { getCachedEvents, setCachedEvents, appendCachedEvent, saveLocalCustomEvent, loadLocalCustomEvents, saveSelectionToSupabase, loadSelectionFromSupabase, loadSelectionState, saveSelectionState, type SavedSelectionState } from '@/lib/clientCache';
 import { generateHTML } from '@/lib/generateHTML';
 import { SPORTS_CONFIG, getCategories, ALL_SCREEN_TAGS } from '@/lib/config';
 import { formatDisplayDate } from '@/lib/timezone';
@@ -164,8 +164,17 @@ export default function SchedulePage() {
         events.map(e => [e.id, { isSelected: e.isSelected, isFeatured: e.isFeatured, tags: e.tags }])
       );
       
+      // Merge local fallback custom events to survive Supabase custom_events issues
+      const localCustom = loadLocalCustomEvents(dateRange);
+      const mergedRawById = new Map<string, MatchEvent>();
+      for (const e of allEventsRaw) mergedRawById.set(e.id, e);
+      for (const e of localCustom) {
+        if (!mergedRawById.has(e.id)) mergedRawById.set(e.id, e);
+      }
+      const mergedRaw = Array.from(mergedRawById.values());
+
       // Merge with preserved selections (in-memory > localStorage > default)
-      const allEvents = allEventsRaw.map((e: MatchEvent) => {
+      const allEvents = mergedRaw.map((e: MatchEvent) => {
         // In-memory takes priority (user is actively using the page)
         const mem = memSel.get(e.id);
         if (mem && (mem.isSelected || mem.isFeatured || mem.tags.length > 0)) return { ...e, ...mem };
@@ -178,7 +187,8 @@ export default function SchedulePage() {
       setEvents(allEvents);
       
       // Save to client cache (without selection state for clean cache)
-      setCachedEvents(dateRange, allEventsRaw);
+      // Include local custom fallback events so instant reload view is consistent.
+      setCachedEvents(dateRange, mergedRaw);
       
       // Mark all leagues as loaded
       SPORTS_CONFIG.forEach((s) =>
@@ -1032,6 +1042,8 @@ export default function SchedulePage() {
         onClose={() => setIsAddModalOpen(false)}
         onAdd={async (event) => {
           addEvents([event]);
+          // Durable local fallback: keep manual event across refresh even if Supabase fails.
+          saveLocalCustomEvent(event);
           // Append to local cache so it survives the instant cache load on refresh
           appendCachedEvent(event);
           // Immediately save selection state (don't wait for 800ms debounce)
@@ -1049,11 +1061,14 @@ export default function SchedulePage() {
             savedAt: Date.now(),
           });
           // Persist to Supabase so it survives page refreshes (expires in 2 weeks)
-          await fetch('/api/custom-events', {
+          const res = await fetch('/api/custom-events', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(event),
-          }).catch(() => {});
+          }).catch(() => null);
+          if (!res?.ok) {
+            console.warn('[CustomEvents] Supabase save failed, kept local fallback copy');
+          }
         }}
       />
 
