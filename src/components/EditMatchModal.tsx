@@ -30,7 +30,7 @@ interface EditMatchModalProps {
 }
 
 export default function EditMatchModal({ event, onClose, onSave }: EditMatchModalProps) {
-  const [sportId, setSportId] = useState('');
+  const [sportId, setSportId] = useState(SPORTS_CONFIG[0]?.id ?? '');
   const [customLeague, setCustomLeague] = useState('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
@@ -91,10 +91,10 @@ export default function EditMatchModal({ event, onClose, onSave }: EditMatchModa
     onClose();
   };
 
-  if (!event) return null;
+  const isOpen = !!event;
 
   return (
-    <Dialog open={!!event} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -107,7 +107,7 @@ export default function EditMatchModal({ event, onClose, onSave }: EditMatchModa
           <div className="flex gap-3">
             <div className="flex-[3]">
               <Label>Sport / League</Label>
-              <Select value={sportId} onValueChange={(v) => { setSportId(v); setCustomLeague(''); }}>
+                <Select value={sportId} onValueChange={(v) => { setSportId(v); setCustomLeague(''); }}>
                 <SelectTrigger className="mt-1.5 w-full">
                   <SelectValue placeholder="Select sport / league" />
                 </SelectTrigger>
@@ -225,7 +225,7 @@ export default function EditMatchModal({ event, onClose, onSave }: EditMatchModa
             <Button type="button" variant="ghost" onClick={onClose} className="flex-1">
               Cancel
             </Button>
-            <Button type="submit" className="flex-1">
+            <Button type="submit" className="flex-1" disabled={!event}>
               Save Changes
             </Button>
           </div>
