@@ -1054,6 +1054,12 @@ export default function SchedulePage() {
               selections[e.id] = { isSelected: e.isSelected, isFeatured: e.isFeatured, tags: e.tags };
             }
           }
+          // Safety: if Zustand snapshot races, force-include this just-added event.
+          selections[event.id] = {
+            isSelected: event.isSelected,
+            isFeatured: event.isFeatured,
+            tags: event.tags,
+          };
           saveSelectionToSupabase({
             selections,
             leagueOrder,

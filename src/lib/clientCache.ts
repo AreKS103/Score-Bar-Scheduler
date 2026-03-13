@@ -244,6 +244,8 @@ export function saveSelectionToSupabase(state: SavedSelectionState): void {
  * Load selection state from Supabase. Falls back to localStorage.
  */
 export async function loadSelectionFromSupabase(): Promise<SavedSelectionState | null> {
+  const localState = loadSelectionState();
+
   // Try Supabase first
   if (isSupabaseConfigured()) {
     try {
@@ -257,15 +259,39 @@ export async function loadSelectionFromSupabase(): Promise<SavedSelectionState |
           .single();
 
         if (data) {
-          const state: SavedSelectionState = {
+          const remoteState: SavedSelectionState = {
             selections: data.selections ?? {},
             leagueOrder: data.league_order ?? [],
             featuredLeagues: data.featured_leagues ?? {},
             savedAt: new Date(data.updated_at).getTime(),
           };
-          // Sync to localStorage too
-          saveSelectionState(state);
-          return state;
+
+          // If local is newer, keep it. This prevents stale remote rows from
+          // wiping freshly-added custom selections when Supabase save failed.
+          if (localState && localState.savedAt >= remoteState.savedAt) {
+            return localState;
+          }
+
+          // Otherwise merge to preserve local-only event IDs (e.g. manual events
+          // that failed remote insert) while still taking the newer remote base.
+          const merged: SavedSelectionState = {
+            selections: {
+              ...remoteState.selections,
+              ...(localState?.selections ?? {}),
+            },
+            leagueOrder: localState?.leagueOrder?.length
+              ? localState.leagueOrder
+              : remoteState.leagueOrder,
+            featuredLeagues: {
+              ...remoteState.featuredLeagues,
+              ...(localState?.featuredLeagues ?? {}),
+            },
+            savedAt: Math.max(remoteState.savedAt, localState?.savedAt ?? 0),
+          };
+
+          // Sync merged view to localStorage
+          saveSelectionState(merged);
+          return merged;
         }
       }
     } catch (e) {
@@ -274,7 +300,7 @@ export async function loadSelectionFromSupabase(): Promise<SavedSelectionState |
   }
 
   // Fall back to localStorage
-  return loadSelectionState();
+  return localState;
 }
 
 /** Get cache metadata without loading full data */
