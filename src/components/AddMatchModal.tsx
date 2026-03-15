@@ -173,6 +173,9 @@ export default function AddMatchModal({ isOpen, onClose, onAdd }: AddMatchModalP
     setFieldErrors(nextErrors);
     if (nextErrors.sport || nextErrors.date || nextErrors.time || nextErrors.home) return;
 
+    // Re-guard with direct checks so TypeScript narrows nullable values.
+    if (!isoDate || !normalizedTime) return;
+
     const leagueLabel = useCustom ? customLeague.trim() : (selectedSport?.label ?? '');
     const leagueId = useCustom ? `custom-${customLeague.trim().toLowerCase().replace(/\s+/g, '-')}` : sportId;
     const category = useCustom ? toCustomCategory(customLeague) : (selectedSport?.category ?? '');
