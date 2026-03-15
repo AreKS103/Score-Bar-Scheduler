@@ -23,7 +23,7 @@ import {
 import { useScheduleStore } from '@/lib/store';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { useFavoritesStore } from '@/lib/favoritesStore';
-import { getCachedEvents, setCachedEvents, appendCachedEvent, saveLocalCustomEvent, loadLocalCustomEvents, syncLocalCustomEventsToSupabase, saveSelectionToSupabase, loadSelectionFromSupabase, loadSelectionState, saveSelectionState, type SavedSelectionState } from '@/lib/clientCache';
+import { getCachedEvents, setCachedEvents, appendCachedEvent, removeCachedEvent, saveLocalCustomEvent, loadLocalCustomEvents, removeLocalCustomEvent, syncLocalCustomEventsToSupabase, saveSelectionToSupabase, loadSelectionFromSupabase, loadSelectionState, saveSelectionState, loadCustomLeagueLogo, type SavedSelectionState } from '@/lib/clientCache';
 import { generateHTML } from '@/lib/generateHTML';
 import { SPORTS_CONFIG, getCategories, ALL_SCREEN_TAGS } from '@/lib/config';
 import { formatDisplayDate } from '@/lib/timezone';
@@ -49,6 +49,7 @@ export default function SchedulePage() {
     activeSportFilter,
     setEvents,
     addEvents,
+    removeEvent,
     toggleSelected,
     toggleFeatured,
     toggleTag,
@@ -56,14 +57,14 @@ export default function SchedulePage() {
     selectAll,
     deselectAll,
     batchSetSelected,
-    setFetchStatus,
+    setFetchStatuses,
     setDateRange,
     setActiveSportFilter,
   } = useScheduleStore();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<MatchEvent | null>(null);
-  const [isFetching, setIsFetching] = useState(false);
+  const [isFetching, setIsFetching] = useState(true);
   const [isRestoringSchedule, setIsRestoringSchedule] = useState(false);
   const [bulkTagOpen, setBulkTagOpen] = useState(false);
   const [searchFilterIds, setSearchFilterIds] = useState<Set<string> | null>(null);
@@ -144,8 +145,10 @@ export default function SchedulePage() {
     }
 
     setIsFetching(true);
-    SPORTS_CONFIG.forEach((s) =>
-      setFetchStatus(s.id, { loading: true, error: null })
+    setFetchStatuses(
+      Object.fromEntries(
+        SPORTS_CONFIG.map((s) => [s.id, { loading: true, error: null }])
+      )
     );
 
     try {
@@ -192,8 +195,10 @@ export default function SchedulePage() {
       setCachedEvents(dateRange, mergedRaw);
       
       // Mark all leagues as loaded
-      SPORTS_CONFIG.forEach((s) =>
-        setFetchStatus(s.id, { loading: false, error: null })
+      setFetchStatuses(
+        Object.fromEntries(
+          SPORTS_CONFIG.map((s) => [s.id, { loading: false, error: null }])
+        )
       );
 
       if (data.cached) {
@@ -203,13 +208,15 @@ export default function SchedulePage() {
       }
     } catch (err) {
       console.error('Fetch failed:', err);
-      SPORTS_CONFIG.forEach((s) =>
-        setFetchStatus(s.id, { loading: false, error: 'Fetch failed' })
+      setFetchStatuses(
+        Object.fromEntries(
+          SPORTS_CONFIG.map((s) => [s.id, { loading: false, error: 'Fetch failed' }])
+        )
       );
     } finally {
       setIsFetching(false);
     }
-  }, [dateRange, events, setEvents, setFetchStatus]);
+  }, [dateRange, events, setEvents, setFetchStatuses]);
 
   // ─── Auto-fetch on mount ───────────────────────────────────────────────────
   useEffect(() => {
@@ -475,20 +482,70 @@ export default function SchedulePage() {
   }, []);
 
   const handlePreviewDelete = useCallback(() => {
-    if (previewCheckedIds.size > 0) {
-      batchSetSelected(Array.from(previewCheckedIds), false);
+    const checkedIds = Array.from(previewCheckedIds);
+    if (checkedIds.length === 0) return;
+
+    const checkedEvents = events.filter((e) => checkedIds.includes(e.id));
+    const manualIds = checkedEvents.filter((e) => e.source === 'manual').map((e) => e.id);
+    const nonManualIds = checkedEvents.filter((e) => e.source !== 'manual').map((e) => e.id);
+
+    // Non-manual items are deselected only.
+    if (nonManualIds.length > 0) {
+      batchSetSelected(nonManualIds, false);
     }
+
+    // Manual/custom items are fully removed and persisted as deleted.
+    if (manualIds.length > 0) {
+      for (const id of manualIds) {
+        removeEvent(id);
+        removeLocalCustomEvent(id);
+        removeCachedEvent(id);
+      }
+
+      void Promise.allSettled(
+        manualIds.map((id) =>
+          fetch('/api/custom-events', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ eventId: id }),
+          })
+        )
+      );
+    }
+
     setPreviewCheckedIds(new Set());
-  }, [previewCheckedIds, batchSetSelected]);
+  }, [previewCheckedIds, events, batchSetSelected, removeEvent]);
 
   const handleDeleteAll = useCallback(() => {
-    const selectedIds = events.filter((e) => e.isSelected).map((e) => e.id);
-    if (selectedIds.length > 0) {
-      batchSetSelected(selectedIds, false);
+    const selectedEvents = events.filter((e) => e.isSelected);
+    const manualIds = selectedEvents.filter((e) => e.source === 'manual').map((e) => e.id);
+    const nonManualIds = selectedEvents.filter((e) => e.source !== 'manual').map((e) => e.id);
+
+    if (nonManualIds.length > 0) {
+      batchSetSelected(nonManualIds, false);
     }
+
+    if (manualIds.length > 0) {
+      for (const id of manualIds) {
+        removeEvent(id);
+        removeLocalCustomEvent(id);
+        removeCachedEvent(id);
+      }
+
+      void Promise.allSettled(
+        manualIds.map((id) =>
+          fetch('/api/custom-events', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ eventId: id }),
+          })
+        )
+      );
+    }
+
     setDeleteAllConfirm(false);
     setPreviewCheckedIds(new Set());
-  }, [events, batchSetSelected]);
+  }, [events, batchSetSelected, removeEvent]);
 
   // ─── HTML generation — recomputes whenever leagueOrder, events, or sortVersion changes ─
   const html = useMemo(
@@ -585,6 +642,19 @@ export default function SchedulePage() {
   const handleRestoreSchedule = useCallback(async (scheduleId: string) => {
     setIsRestoringSchedule(true);
     try {
+      const normalizeEvent = (e: MatchEvent): MatchEvent => {
+        const fallbackLogo = e.source === 'manual' ? loadCustomLeagueLogo(e.leagueLabel ?? '') : '';
+        return {
+          ...e,
+          away: e.away ?? '',
+          round: e.round ?? '',
+          leagueLogo: e.leagueLogo || fallbackLogo || '',
+          tags: Array.isArray(e.tags) ? e.tags : [],
+          isFeatured: Boolean(e.isFeatured),
+          isSelected: Boolean(e.isSelected),
+        };
+      };
+
       const res = await fetch(`/api/schedule-history/${scheduleId}`);
       if (!res.ok) return;
       const { schedule } = await res.json();
@@ -592,7 +662,9 @@ export default function SchedulePage() {
 
       const rangeStart: string = schedule.date_range_start || dateRange.start;
       const rangeEnd: string = schedule.date_range_end || dateRange.end;
-      const snapshot: MatchEvent[] = Array.isArray(schedule.events_snapshot) ? schedule.events_snapshot : [];
+      const snapshot: MatchEvent[] = Array.isArray(schedule.events_snapshot)
+        ? (schedule.events_snapshot as MatchEvent[]).map(normalizeEvent)
+        : [];
       const restoredCustom = snapshot.filter((e) => e.source === 'manual');
 
       // Start fetching full-week events immediately while local persistence runs.
@@ -625,10 +697,10 @@ export default function SchedulePage() {
       // This keeps the left panel complete while restoring preview selections.
       const eventsRes = await eventsPromise;
       const eventsData = eventsRes.ok ? await eventsRes.json() : { events: [] };
-      const apiEvents: MatchEvent[] = eventsData.events ?? [];
+      const apiEvents: MatchEvent[] = (eventsData.events ?? []).map(normalizeEvent);
 
       // Include local fallback custom events in the restored date range too.
-      const localCustom = loadLocalCustomEvents({ start: rangeStart, end: rangeEnd });
+      const localCustom = loadLocalCustomEvents({ start: rangeStart, end: rangeEnd }).map(normalizeEvent);
 
       const byId = new Map<string, MatchEvent>();
       for (const e of apiEvents) byId.set(e.id, e);
@@ -877,7 +949,7 @@ export default function SchedulePage() {
 
         {/* Match list */}
         <div className="relative flex-1 overflow-y-auto px-3 sm:px-6 pb-4">
-          {isFetching && (
+          {isFetching && events.length > 0 && (
             <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/70 backdrop-blur-[1px] pointer-events-none">
               <div className="flex items-center gap-2 rounded-md border border-border bg-card/90 px-3 py-2 text-sm text-foreground shadow-md">
                 <Loader2 className="w-4 h-4 animate-spin text-primary" />
@@ -885,7 +957,7 @@ export default function SchedulePage() {
               </div>
             </div>
           )}
-          {events.length === 0 && !isFetching && (
+          {events.length === 0 && !isFetching && hasFetchedRef.current && (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <div className="text-6xl mb-4">🏟️</div>
               <h2 className="text-xl font-semibold text-foreground mb-2">
@@ -1200,7 +1272,24 @@ export default function SchedulePage() {
       <EditMatchModal
         event={editingEvent}
         onClose={() => setEditingEvent(null)}
-        onSave={(id, updates) => updateEvent(id, updates)}
+        onSave={(id, updates) => {
+          updateEvent(id, updates);
+          const current = useScheduleStore.getState().events.find((e) => e.id === id);
+          if (!current || current.source !== 'manual') return;
+
+          const nextEvent: MatchEvent = { ...current, ...updates };
+          saveLocalCustomEvent(nextEvent);
+          removeCachedEvent(nextEvent.id);
+          appendCachedEvent(nextEvent);
+
+          void fetch('/api/custom-events', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(nextEvent),
+          }).catch(() => {
+            console.warn('[CustomEvents] Supabase update failed, kept local fallback copy');
+          });
+        }}
       />
     </div>
   );

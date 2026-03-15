@@ -263,10 +263,13 @@ export function generateHTML(events: MatchEvent[], leagueOrder?: string[], featu
     const category = firstEvent?.category ?? '';
 
     if (category !== lastCategory) {
-      if (lastCategory !== '') parts.push('');
-      parts.push(`<h2>– ${escapeHTML(category)} –</h2>`);
-      parts.push('');
-      lastCategory = category;
+      // Custom leagues should render only their league title, without a category header.
+      if (category !== 'Custom') {
+        if (lastCategory !== '') parts.push('');
+        parts.push(`<h2>– ${escapeHTML(category)} –</h2>`);
+        parts.push('');
+        lastCategory = category;
+      }
     }
 
     const config = SPORTS_CONFIG.find((s) => s.id === leagueKey);

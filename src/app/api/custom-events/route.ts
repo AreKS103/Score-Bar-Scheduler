@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import type { MatchEvent } from '@/types';
 
+const BUCKET = 'custom-league-logos';
+
+function getLogoPath(event: MatchEvent | null | undefined): string | null {
+  const path = event?.customLogoPath;
+  return typeof path === 'string' && path.length > 0 ? path : null;
+}
+
 /** Save a new custom event */
 export async function POST(req: NextRequest) {
   try {
@@ -17,13 +24,35 @@ export async function POST(req: NextRequest) {
     // Idempotent save by MatchEvent.id to avoid duplicates on retries.
     const { data: existing } = await supabase
       .from('custom_events')
-      .select('id')
+      .select('id, event_data')
       .eq('user_id', user.id)
       .eq('event_data->>id', event.id)
       .maybeSingle();
 
     if (existing?.id) {
-      return NextResponse.json({ success: true, rowId: existing.id, existing: true });
+      const previousEvent = existing.event_data as MatchEvent;
+      const previousLogoPath = getLogoPath(previousEvent);
+      const nextLogoPath = getLogoPath(event);
+
+      const { error: updateError } = await supabase
+        .from('custom_events')
+        .update({
+          event_data: event,
+          expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+        })
+        .eq('id', existing.id)
+        .eq('user_id', user.id);
+
+      if (updateError) {
+        console.error('[CustomEvents] update error:', updateError);
+        return NextResponse.json({ error: updateError.message || 'Failed to update event' }, { status: 500 });
+      }
+
+      if (previousLogoPath && previousLogoPath !== nextLogoPath) {
+        await supabase.storage.from(BUCKET).remove([previousLogoPath]);
+      }
+
+      return NextResponse.json({ success: true, rowId: existing.id, updated: true });
     }
 
     const { data, error } = await supabase
@@ -53,6 +82,25 @@ export async function GET() {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    // Cleanup expired rows (+ stored logos) opportunistically.
+    const { data: expiredRows } = await supabase
+      .from('custom_events')
+      .select('id, event_data')
+      .eq('user_id', user.id)
+      .lte('expires_at', new Date().toISOString());
+
+    if (expiredRows && expiredRows.length > 0) {
+      const expiredIds = expiredRows.map((r) => r.id);
+      const logoPaths = expiredRows
+        .map((r) => getLogoPath(r.event_data as MatchEvent))
+        .filter((v): v is string => Boolean(v));
+
+      await supabase.from('custom_events').delete().in('id', expiredIds);
+      if (logoPaths.length > 0) {
+        await supabase.storage.from(BUCKET).remove(Array.from(new Set(logoPaths)));
+      }
+    }
 
     const { data, error } = await supabase
       .from('custom_events')
@@ -89,6 +137,12 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'Missing eventId' }, { status: 400 });
     }
 
+    const { data: rows } = await supabase
+      .from('custom_events')
+      .select('id, event_data')
+      .eq('user_id', user.id)
+      .eq('event_data->>id', eventId);
+
     // Match on the event_data->>'id' JSONB field
     const { error } = await supabase
       .from('custom_events')
@@ -98,6 +152,14 @@ export async function DELETE(req: NextRequest) {
 
     if (error) {
       return NextResponse.json({ error: 'Failed to delete event' }, { status: 500 });
+    }
+
+    const logoPaths = (rows ?? [])
+      .map((r) => getLogoPath(r.event_data as MatchEvent))
+      .filter((v): v is string => Boolean(v));
+
+    if (logoPaths.length > 0) {
+      await supabase.storage.from(BUCKET).remove(Array.from(new Set(logoPaths)));
     }
 
     return NextResponse.json({ success: true });

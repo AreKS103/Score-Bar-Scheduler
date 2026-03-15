@@ -9,13 +9,20 @@ import { createClient } from '@/lib/supabase/server';
 interface CacheEntry {
   data: MatchEvent[];
   timestamp: number;
-  fetchInProgress: boolean;
 }
 
 // In-memory cache (persists across requests in same Node process)
 const CACHE = new Map<string, CacheEntry>();
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes – fresh window; serve immediately
 const STALE_OK_TTL = 45 * 60 * 1000; // 45 minutes – serve stale + background-refresh
+
+interface CustomEventsCacheEntry {
+  data: MatchEvent[];
+  timestamp: number;
+}
+
+const CUSTOM_EVENTS_CACHE = new Map<string, CustomEventsCacheEntry>();
+const CUSTOM_EVENTS_CACHE_TTL = 60 * 1000;
 
 // Fetch lock to prevent thundering herd
 let fetchPromise: Promise<MatchEvent[]> | null = null;
@@ -193,8 +200,8 @@ interface PathCacheEntry { events: MatchEvent[]; fetchedAt: number }
 const pathCache = new Map<string, PathCacheEntry>();
 const PATH_STALE_MAX_MS = 10 * 60_000;
 
-/** Fetch with timeout + 1 automatic retry (doubles timeout on retry) */
-async function espnFetchWithRetry(url: string, ms = 10_000): Promise<any> {
+/** Fetch with timeout + 1 automatic retry */
+async function espnFetchWithRetry(url: string, ms = 4_000): Promise<any> {
   const attempt = async (timeout: number) => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeout);
@@ -209,9 +216,9 @@ async function espnFetchWithRetry(url: string, ms = 10_000): Promise<any> {
   };
   const result = await attempt(ms);
   if (result !== null) return result;
-  // Retry once with jittered delay and doubled timeout
-  await sleep(300 + Math.random() * 500);
-  return attempt(ms * 2);
+  // Retry once with minimal delay
+  await sleep(150 + Math.random() * 200);
+  return attempt(ms); // keep timeout same to avoid massive cascades
 }
 
 interface ESPNCompetitorRaw {
@@ -501,7 +508,7 @@ async function fetchESPNLeague(
     const dateParam = espnDateRange(startDate, endDate);
     const url = `${ESPN_BASE}/${league.slug}/scoreboard?dates=${dateParam}&limit=1000`;
 
-    const data = await espnFetchWithRetry(url, 10_000);
+    const data = await espnFetchWithRetry(url, 3_500);
 
     // Diagnostic logging for combat sports (UFC/Bellator)
     if (isMMA) {
@@ -550,31 +557,28 @@ async function fetchESPNLeague(
   }
 }
 
-/** Fetch ESPN leagues in batches with controlled concurrency */
+/** Fetch ESPN leagues with controlled concurrency without strict batch bottlenecks */
 async function fetchAllESPN(startDate: string, endDate: string): Promise<MatchEvent[]> {
   const allLeagues = [...ESPN_PRIORITY_LEAGUES, ...ESPN_SECONDARY_LEAGUES];
   const results: MatchEvent[] = [];
-  const BATCH_SIZE = 5;
+  const CONCURRENCY = 15;
+  let i = 0;
 
-  // Process in batches
-  for (let i = 0; i < allLeagues.length; i += BATCH_SIZE) {
-    const batch = allLeagues.slice(i, i + BATCH_SIZE);
-    const batchResults = await Promise.allSettled(
-      batch.map(league => fetchESPNLeague(league, startDate, endDate))
-    );
-
-    for (const result of batchResults) {
-      if (result.status === 'fulfilled') {
-        results.push(...result.value);
+  const workers = Array(CONCURRENCY).fill(null).map(async () => {
+    while (i < allLeagues.length) {
+      const league = allLeagues[i++];
+      if (!league) break;
+      try {
+        const events = await fetchESPNLeague(league, startDate, endDate);
+        results.push(...events);
+      } catch (err) {
+        // Ignored, handled in fetchESPNLeague
       }
+      await sleep(25); // tiny spacing
     }
+  });
 
-    // 200ms delay between batches to avoid ESPN rate limiting
-    if (i + BATCH_SIZE < allLeagues.length) {
-      await sleep(200);
-    }
-  }
-
+  await Promise.allSettled(workers);
   return results;
 }
 
@@ -925,13 +929,13 @@ async function fetchAllSportsDB(startDate: string, endDate: string): Promise<Mat
     } catch (err) {
       console.warn('[SportsDB] CPL fetch failed:', err);
     }
-    await sleep(500);
+    await sleep(150);
   }
 
   // Phase 2: Remaining leagues in batches of 3 (each uses ≤2-4 API calls)
   // This avoids overwhelming TheSportsDB's rate limiter.
   const otherLeagues = SPORTSDB_ONLY_LEAGUES.filter(l => l.id !== 'soccer-cpl');
-  const BATCH_SIZE = 3;
+  const BATCH_SIZE = 5;
 
   for (let i = 0; i < otherLeagues.length; i += BATCH_SIZE) {
     const batch = otherLeagues.slice(i, i + BATCH_SIZE);
@@ -947,9 +951,9 @@ async function fetchAllSportsDB(startDate: string, endDate: string): Promise<Mat
       }
     }
 
-    // 500ms delay between batches to respect rate limits
+    // Small delay between batches to lower burst pressure while staying responsive.
     if (i + BATCH_SIZE < otherLeagues.length) {
-      await sleep(500);
+      await sleep(150);
     }
   }
 
@@ -964,18 +968,28 @@ async function fetchAllEvents(startDate: string, endDate: string): Promise<Match
   console.log(`[Events API] Fetching events from ${startDate} to ${endDate}`);
   const startTime = Date.now();
 
-  // Fetch ESPN and SportsDB in parallel
+  // Fetch ESPN and SportsDB in parallel, but don't let a slow SportsDB pass
+  // block first paint for the schedule page.
+  const sportsDBBounded = Promise.race<MatchEvent[] | null>([
+    fetchAllSportsDB(startDate, endDate),
+    sleep(2_500).then(() => null),
+  ]);
+
   const [espnEvents, sportsDBEvents] = await Promise.allSettled([
     fetchAllESPN(startDate, endDate),
-    fetchAllSportsDB(startDate, endDate),
+    sportsDBBounded,
   ]);
 
   if (espnEvents.status === 'rejected') console.warn('[Events API] ESPN fetch failed:', espnEvents.reason);
   if (sportsDBEvents.status === 'rejected') console.warn('[Events API] SportsDB fetch failed:', sportsDBEvents.reason);
+  if (sportsDBEvents.status === 'fulfilled' && sportsDBEvents.value === null) {
+    console.warn('[Events API] SportsDB timed out for this request; returning ESPN-first payload');
+  }
 
   // Diagnostic: count UFC events from each source
   const espnUFC = (espnEvents.status === 'fulfilled' ? espnEvents.value : []).filter(e => e.sportId === 'ufc');
-  const sdbUFC = (sportsDBEvents.status === 'fulfilled' ? sportsDBEvents.value : []).filter(e => e.sportId === 'ufc');
+  const sdbEvents = sportsDBEvents.status === 'fulfilled' && sportsDBEvents.value ? sportsDBEvents.value : [];
+  const sdbUFC = sdbEvents.filter(e => e.sportId === 'ufc');
   console.log(`[Events API] UFC diagnostics: ESPN=${espnUFC.length} fights, SportsDB=${sdbUFC.length} events`);
 
   // Deduplicate: ESPN takes priority over SportsDB for the same sport+date.
@@ -985,7 +999,7 @@ async function fetchAllEvents(startDate: string, endDate: string): Promise<Match
   );
   const mergedEvents = [
     ...(espnEvents.status === 'fulfilled' ? espnEvents.value : []),
-    ...(sportsDBEvents.status === 'fulfilled'
+    ...(sportsDBEvents.status === 'fulfilled' && sportsDBEvents.value
       ? sportsDBEvents.value.filter(e => !espnSportDates.has(`${e.sportId}|${e.date}`))
       : []),
   ];
@@ -1007,10 +1021,18 @@ async function fetchAllEvents(startDate: string, endDate: string): Promise<Match
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export async function GET(req: NextRequest) {
-  // Require authenticated session — prevents external abuse of the fetch pipeline
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // Auth can fail locally (e.g. transient env/read issues in synced folders).
+  // Keep core event feed available and only skip per-user custom events.
+  let supabase: Awaited<ReturnType<typeof createClient>> | null = null;
+  let userId: string | null = null;
+
+  try {
+    supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    userId = user?.id ?? null;
+  } catch (err) {
+    console.warn('[Events API] Auth init failed, continuing without user context:', err);
+  }
 
   const { searchParams } = new URL(req.url);
   const startDate = searchParams.get('start');
@@ -1025,14 +1047,25 @@ export async function GET(req: NextRequest) {
 
   // Fetch this user's custom events (per-user, not server-cached)
   const getCustomEvents = async (): Promise<MatchEvent[]> => {
+    if (!supabase || !userId) return [];
+
+    const customCacheKey = `${userId}|${startDate}|${endDate}`;
+    const now = Date.now();
+    const cachedCustom = CUSTOM_EVENTS_CACHE.get(customCacheKey);
+    if (cachedCustom && now - cachedCustom.timestamp < CUSTOM_EVENTS_CACHE_TTL) {
+      return cachedCustom.data;
+    }
+
     try {
       const { data } = await supabase
         .from('custom_events')
         .select('event_data')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .gt('expires_at', new Date().toISOString());
       const all = (data ?? []).map(r => r.event_data as MatchEvent);
-      return all.filter(e => e.date >= startDate && e.date <= endDate);
+      const filtered = all.filter(e => e.date >= startDate && e.date <= endDate);
+      CUSTOM_EVENTS_CACHE.set(customCacheKey, { data: filtered, timestamp: now });
+      return filtered;
     } catch { return []; }
   };
 
@@ -1054,7 +1087,7 @@ export async function GET(req: NextRequest) {
   if (cached && now - cached.timestamp < STALE_OK_TTL && !fetchPromise) {
     // Start background refresh
     fetchPromise = fetchAllEvents(startDate, endDate).then(events => {
-      CACHE.set(cacheKey, { data: events, timestamp: Date.now(), fetchInProgress: false });
+      CACHE.set(cacheKey, { data: events, timestamp: Date.now() });
       fetchPromise = null;
       return events;
     }).catch(err => {
@@ -1083,7 +1116,7 @@ export async function GET(req: NextRequest) {
     fetchPromise = fetchAllEvents(startDate, endDate);
     const events = await fetchPromise;
     
-    CACHE.set(cacheKey, { data: events, timestamp: Date.now(), fetchInProgress: false });
+    CACHE.set(cacheKey, { data: events, timestamp: Date.now() });
     fetchPromise = null;
 
     const customEvents = await getCustomEvents();

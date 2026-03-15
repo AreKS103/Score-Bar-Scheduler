@@ -100,6 +100,11 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
       fetchStatuses: { ...state.fetchStatuses, [key]: status },
     })),
 
+  setFetchStatuses: (statuses: Record<string, FetchStatus>) =>
+    set(() => ({
+      fetchStatuses: statuses,
+    })),
+
   setDateRange: (start: string, end: string) =>
     set({ dateRange: { start, end } }),
 

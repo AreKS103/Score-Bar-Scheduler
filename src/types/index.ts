@@ -9,6 +9,7 @@ export interface MatchEvent {
   category: string;        // e.g. 'Football', 'Motorsport'
   leagueLabel: string;     // e.g. 'EPL', 'Formula 1'
   leagueLogo: string;      // URL to logo image
+  customLogoPath?: string; // Supabase Storage object path for custom league logos
   date: string;            // YYYY-MM-DD in ICT
   time: string;            // HH:mm in ICT (24hr)
   home: string;            // Home team or event name
@@ -168,6 +169,7 @@ export interface ScheduleStore {
   batchSetSelected: (ids: string[], selected: boolean) => void;
   bulkSetTags: (ids: string[], tags: ScreenTag[]) => void;
   setFetchStatus: (key: string, status: FetchStatus) => void;
+  setFetchStatuses: (statuses: Record<string, FetchStatus>) => void;
   setDateRange: (start: string, end: string) => void;
   setActiveSportFilter: (filter: string) => void;
   getSelectedEvents: () => MatchEvent[];

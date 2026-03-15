@@ -20,6 +20,8 @@ interface PendingSchedule {
   status: string;
 }
 
+const HISTORY_CACHE_MS = 60_000;
+
 interface PublishButtonProps {
   getHTML: () => string;
   disabled?: boolean;
@@ -68,6 +70,8 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
   // Stores previous live HTML fetched just before publish starts (for undo)
   const prevHTMLRef = useRef('');
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const historyFetchedAtRef = useRef(0);
+  const historyAbortRef = useRef<AbortController | null>(null);
   // Ref to publish function so the countdown effect always calls the freshest closure
   const doPublishRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const scheduleModeRef = useRef(false);
@@ -110,22 +114,27 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
     return () => clearTimeout(t);
   }, [countdown]);
 
-  // Clean up undo timer on unmount
-  useEffect(() => () => { if (undoTimerRef.current) clearTimeout(undoTimerRef.current); }, []);
+  // Clean up timers/requests on unmount
+  useEffect(() => () => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    historyAbortRef.current?.abort();
+  }, []);
 
   // Fetch pending scheduled publishes on mount
-  const fetchPendingSchedules = async () => {
+  const fetchPendingSchedules = async (executeDue = false) => {
     try {
-      // Trigger execution of any past-due scheduled publishes
-      await fetch('/api/scheduled-publish', { method: 'PATCH' }).catch(() => {});
-      const res = await fetch('/api/scheduled-publish');
+      // Run due jobs only when the publish controls are actively opened.
+      if (executeDue) {
+        await fetch('/api/scheduled-publish', { method: 'PATCH' }).catch(() => {});
+      }
+      const res = await fetch('/api/scheduled-publish', { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         setPendingSchedules(data.schedules ?? []);
       }
     } catch { /* ignore */ }
   };
-  useEffect(() => { fetchPendingSchedules(); }, []);
+  useEffect(() => { fetchPendingSchedules(false); }, []);
 
   const handleCancelSchedule = async (id: string) => {
     setCancellingId(id);
@@ -143,15 +152,26 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
     }
   };
 
-  const fetchHistory = async () => {
+  const fetchHistory = async (force = false) => {
+    const isFresh = Date.now() - historyFetchedAtRef.current < HISTORY_CACHE_MS;
+    if (!force && historyItems.length > 0 && isFresh) return;
+
+    historyAbortRef.current?.abort();
+    const controller = new AbortController();
+    historyAbortRef.current = controller;
+
     setHistoryLoading(true);
     try {
-      const res = await fetch('/api/schedule-history');
+      const res = await fetch('/api/schedule-history', { signal: controller.signal, cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         setHistoryItems(data.schedules ?? []);
+        historyFetchedAtRef.current = Date.now();
       }
     } catch { /* ignore */ } finally {
+      if (historyAbortRef.current === controller) {
+        historyAbortRef.current = null;
+      }
       setHistoryLoading(false);
     }
   };
@@ -340,7 +360,7 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
           onClick={() => {
             setHistoryOpen((o) => !o);
             setRestoreConfirm(null);
-            if (!historyOpen) fetchHistory();
+            if (!historyOpen) fetchHistory(false);
           }}
           className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md border border-border bg-secondary text-foreground hover:bg-accent transition-colors"
           title="Past schedules"
@@ -350,7 +370,7 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
         </button>
 
         {historyOpen && (
-          <div className="absolute top-full left-0 mt-1.5 z-200 bg-popover border border-border rounded-lg shadow-2xl shadow-black/40 w-72 overflow-hidden animate-in fade-in-0 zoom-in-95">
+          <div className="absolute top-full right-0 mt-1.5 z-50 bg-popover border border-border rounded-lg shadow-2xl shadow-black/40 w-80 max-w-[calc(100vw-1rem)] overflow-hidden animate-in fade-in-0 zoom-in-95">
             <div className="px-3 py-2 border-b border-border">
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Past Schedules</span>
             </div>
@@ -361,7 +381,7 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
             ) : historyItems.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-6">No published schedules yet</p>
             ) : (
-              <div className="max-h-60 overflow-y-auto">
+              <div className="max-h-60 overflow-y-auto overflow-x-hidden">
                 {historyItems.map((item) => (
                   <div key={item.id}>
                     {restoreConfirm === item.id ? (
@@ -393,11 +413,13 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
                     ) : (
                       <button
                         onClick={() => setRestoreConfirm(item.id)}
-                        className="w-full text-left px-3 py-2.5 hover:bg-accent transition-colors flex items-center justify-between"
+                        className="w-full relative text-left pl-3 pr-4 py-2.5 hover:bg-accent transition-colors flex items-start"
                       >
-                        <div>
-                          <p className="text-sm text-foreground">{item.week_label}</p>
-                          <p className="text-[11px] text-muted-foreground">
+                        <div className="w-full min-w-0 pr-2">
+                          <p className="text-sm text-foreground leading-snug break-words whitespace-normal">
+                            {item.week_label}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground mt-0.5 break-words whitespace-normal">
                             {new Date(item.published_at).toLocaleDateString('en-GB', {
                               day: 'numeric',
                               month: 'short',
@@ -461,7 +483,15 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
 
             {/* Dropdown trigger */}
             <button
-              onClick={() => { setDropdownOpen((o) => !o); setDeleteConfirm(false); setScheduleMode(false); }}
+              onClick={() => {
+                const next = !dropdownOpen;
+                setDropdownOpen(next);
+                setDeleteConfirm(false);
+                setScheduleMode(false);
+                if (next) {
+                  void fetchPendingSchedules(true);
+                }
+              }}
               className="flex items-center px-2 py-1.5 hover:bg-white/10 transition-colors"
               aria-label="More publish options"
             >

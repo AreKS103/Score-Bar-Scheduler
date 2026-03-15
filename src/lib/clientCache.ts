@@ -92,6 +92,20 @@ export function appendCachedEvent(event: MatchEvent): void {
   } catch {}
 }
 
+/** Remove a single event from local cache by ID. */
+export function removeCachedEvent(eventId: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return;
+    const cache: CacheData = JSON.parse(raw);
+    if (cache.version !== CACHE_VERSION) return;
+    cache.events = cache.events.filter((e) => e.id !== eventId);
+    cache.timestamp = Date.now();
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+  } catch {}
+}
+
 /** Clear the local cache */
 export function clearCachedEvents(): void {
   if (typeof window === 'undefined') return;
@@ -106,10 +120,20 @@ export function clearCachedEvents(): void {
 
 const CUSTOM_EVENTS_KEY = 'sportglobe_custom_events_v1';
 const CUSTOM_EVENT_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 days (matches DB default)
+const CUSTOM_LEAGUE_LOGOS_KEY = 'sportglobe_custom_league_logos_v1';
 
 interface LocalCustomEventsData {
   version: number;
   events: MatchEvent[];
+}
+
+interface LocalCustomLeagueLogosData {
+  version: number;
+  logos: Record<string, string>;
+}
+
+function normalizeCustomLeagueKey(label: string): string {
+  return label.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 function readLocalCustomEventsStore(): LocalCustomEventsData {
@@ -136,6 +160,50 @@ function writeLocalCustomEventsStore(events: MatchEvent[]): void {
   }
 }
 
+function readLocalCustomLeagueLogosStore(): LocalCustomLeagueLogosData {
+  if (typeof window === 'undefined') return { version: 1, logos: {} };
+  try {
+    const raw = localStorage.getItem(CUSTOM_LEAGUE_LOGOS_KEY);
+    if (!raw) return { version: 1, logos: {} };
+    const parsed = JSON.parse(raw) as LocalCustomLeagueLogosData;
+    if (parsed.version !== 1 || typeof parsed.logos !== 'object' || parsed.logos === null) {
+      return { version: 1, logos: {} };
+    }
+    return parsed;
+  } catch {
+    return { version: 1, logos: {} };
+  }
+}
+
+function writeLocalCustomLeagueLogosStore(logos: Record<string, string>): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(
+      CUSTOM_LEAGUE_LOGOS_KEY,
+      JSON.stringify({ version: 1, logos } satisfies LocalCustomLeagueLogosData)
+    );
+  } catch {
+    // ignore quota failures; custom event flow can still work without logo persistence
+  }
+}
+
+export function saveCustomLeagueLogo(leagueLabel: string, logoDataUrl: string): void {
+  if (typeof window === 'undefined') return;
+  const key = normalizeCustomLeagueKey(leagueLabel);
+  if (!key || !logoDataUrl) return;
+  const store = readLocalCustomLeagueLogosStore();
+  store.logos[key] = logoDataUrl;
+  writeLocalCustomLeagueLogosStore(store.logos);
+}
+
+export function loadCustomLeagueLogo(leagueLabel: string): string {
+  if (typeof window === 'undefined') return '';
+  const key = normalizeCustomLeagueKey(leagueLabel);
+  if (!key) return '';
+  const store = readLocalCustomLeagueLogosStore();
+  return store.logos[key] ?? '';
+}
+
 /** Persist a custom/manual event locally as fallback durability. */
 export function saveLocalCustomEvent(event: MatchEvent): void {
   if (typeof window === 'undefined') return;
@@ -160,6 +228,14 @@ export function saveLocalCustomEvent(event: MatchEvent): void {
 export function loadLocalCustomEvents(dateRange: { start: string; end: string }): MatchEvent[] {
   const store = readLocalCustomEventsStore();
   return store.events.filter((e) => e.source === 'manual' && e.date >= dateRange.start && e.date <= dateRange.end);
+}
+
+/** Remove one locally persisted custom/manual event by MatchEvent.id. */
+export function removeLocalCustomEvent(eventId: string): void {
+  if (typeof window === 'undefined') return;
+  const store = readLocalCustomEventsStore();
+  const next = store.events.filter((e) => e.id !== eventId);
+  writeLocalCustomEventsStore(next);
 }
 
 /**
