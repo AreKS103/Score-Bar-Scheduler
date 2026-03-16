@@ -125,30 +125,42 @@ export async function GET() {
   }
 }
 
-/** Delete a custom event by its event ID (the MatchEvent.id field) */
+/** Delete one or more custom events by MatchEvent.id (event_data->>id). */
 export async function DELETE(req: NextRequest) {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { eventId } = await req.json();
-    if (!eventId || typeof eventId !== 'string') {
-      return NextResponse.json({ error: 'Missing eventId' }, { status: 400 });
+    const body = await req.json().catch(() => null) as { eventId?: string; eventIds?: string[] } | null;
+    const ids = Array.from(new Set([
+      ...(typeof body?.eventId === 'string' ? [body.eventId] : []),
+      ...(Array.isArray(body?.eventIds) ? body!.eventIds.filter((v): v is string => typeof v === 'string' && v.length > 0) : []),
+    ]));
+    if (ids.length === 0) {
+      return NextResponse.json({ error: 'Missing eventId/eventIds' }, { status: 400 });
     }
 
     const { data: rows } = await supabase
       .from('custom_events')
       .select('id, event_data')
       .eq('user_id', user.id)
-      .eq('event_data->>id', eventId);
+      .in('event_data->>id', ids);
+
+    const matchedEventIds = (rows ?? [])
+      .map((r) => (r.event_data as MatchEvent)?.id)
+      .filter((v): v is string => typeof v === 'string' && v.length > 0);
+
+    if (matchedEventIds.length === 0) {
+      return NextResponse.json({ success: true, deletedEventIds: [] });
+    }
 
     // Match on the event_data->>'id' JSONB field
     const { error } = await supabase
       .from('custom_events')
       .delete()
       .eq('user_id', user.id)
-      .eq('event_data->>id', eventId);
+      .in('event_data->>id', matchedEventIds);
 
     if (error) {
       return NextResponse.json({ error: 'Failed to delete event' }, { status: 500 });
@@ -162,7 +174,7 @@ export async function DELETE(req: NextRequest) {
       await supabase.storage.from(BUCKET).remove(Array.from(new Set(logoPaths)));
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, deletedEventIds: matchedEventIds });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown error' }, { status: 500 });
   }

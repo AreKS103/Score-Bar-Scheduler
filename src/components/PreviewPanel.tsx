@@ -57,9 +57,9 @@ export default function PreviewPanel({
       <div
         className="bg-card border border-border rounded-lg p-8 overflow-y-auto prose prose-sm max-w-none
           dark:prose-invert
-          [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mt-8 [&_h2]:mb-4
+          [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mt-0 [&_h2]:mb-0
           [&_h2]:text-zinc-800 dark:[&_h2]:text-white
-          [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-5 [&_h3]:mb-3
+          [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-0 [&_h3]:mb-0
           [&_h3]:text-zinc-700 dark:[&_h3]:text-zinc-200
           [&_hr]:border-border [&_hr]:my-6
           [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1.5

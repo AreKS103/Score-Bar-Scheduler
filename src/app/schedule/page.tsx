@@ -481,7 +481,45 @@ export default function SchedulePage() {
     });
   }, []);
 
-  const handlePreviewDelete = useCallback(() => {
+  const deleteManualEventsPermanently = useCallback(async (ids: string[]) => {
+    const eventIds = Array.from(new Set(ids));
+    if (eventIds.length === 0) return { deletedIds: [] as string[], failedIds: [] as string[] };
+
+    try {
+      const res = await fetch('/api/custom-events', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventIds }),
+      });
+
+      if (!res.ok) {
+        console.error('[CustomEvents] permanent delete failed', { status: res.status, eventIds });
+        return { deletedIds: [] as string[], failedIds: eventIds };
+      }
+
+      const data = await res.json().catch(() => null) as { deletedEventIds?: string[] } | null;
+      const deletedSet = new Set(
+        Array.isArray(data?.deletedEventIds)
+          ? data!.deletedEventIds.filter((v): v is string => typeof v === 'string' && v.length > 0)
+          : eventIds
+      );
+      const deletedIds = eventIds.filter((id) => deletedSet.has(id));
+      const failedIds = eventIds.filter((id) => !deletedSet.has(id));
+
+      for (const id of deletedIds) {
+        removeEvent(id);
+        removeLocalCustomEvent(id);
+        removeCachedEvent(id);
+      }
+
+      return { deletedIds, failedIds };
+    } catch (error) {
+      console.error('[CustomEvents] permanent delete request threw', { error, eventIds });
+      return { deletedIds: [] as string[], failedIds: eventIds };
+    }
+  }, [removeEvent]);
+
+  const handlePreviewDelete = useCallback(async () => {
     const checkedIds = Array.from(previewCheckedIds);
     if (checkedIds.length === 0) return;
 
@@ -494,29 +532,17 @@ export default function SchedulePage() {
       batchSetSelected(nonManualIds, false);
     }
 
-    // Manual/custom items are fully removed and persisted as deleted.
+    // Manual/custom items are removed locally only after Supabase confirms delete.
+    let failedManualIds: string[] = [];
     if (manualIds.length > 0) {
-      for (const id of manualIds) {
-        removeEvent(id);
-        removeLocalCustomEvent(id);
-        removeCachedEvent(id);
-      }
-
-      void Promise.allSettled(
-        manualIds.map((id) =>
-          fetch('/api/custom-events', {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ eventId: id }),
-          })
-        )
-      );
+      const result = await deleteManualEventsPermanently(manualIds);
+      failedManualIds = result.failedIds;
     }
 
-    setPreviewCheckedIds(new Set());
-  }, [previewCheckedIds, events, batchSetSelected, removeEvent]);
+    setPreviewCheckedIds(new Set(failedManualIds));
+  }, [previewCheckedIds, events, batchSetSelected, deleteManualEventsPermanently]);
 
-  const handleDeleteAll = useCallback(() => {
+  const handleDeleteAll = useCallback(async () => {
     const selectedEvents = events.filter((e) => e.isSelected);
     const manualIds = selectedEvents.filter((e) => e.source === 'manual').map((e) => e.id);
     const nonManualIds = selectedEvents.filter((e) => e.source !== 'manual').map((e) => e.id);
@@ -525,27 +551,15 @@ export default function SchedulePage() {
       batchSetSelected(nonManualIds, false);
     }
 
+    let failedManualIds: string[] = [];
     if (manualIds.length > 0) {
-      for (const id of manualIds) {
-        removeEvent(id);
-        removeLocalCustomEvent(id);
-        removeCachedEvent(id);
-      }
-
-      void Promise.allSettled(
-        manualIds.map((id) =>
-          fetch('/api/custom-events', {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ eventId: id }),
-          })
-        )
-      );
+      const result = await deleteManualEventsPermanently(manualIds);
+      failedManualIds = result.failedIds;
     }
 
     setDeleteAllConfirm(false);
-    setPreviewCheckedIds(new Set());
-  }, [events, batchSetSelected, removeEvent]);
+    setPreviewCheckedIds(new Set(failedManualIds));
+  }, [events, batchSetSelected, deleteManualEventsPermanently]);
 
   // ─── HTML generation — recomputes whenever leagueOrder, events, or sortVersion changes ─
   const html = useMemo(

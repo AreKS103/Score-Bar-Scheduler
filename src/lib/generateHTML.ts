@@ -265,7 +265,10 @@ export function generateHTML(events: MatchEvent[], leagueOrder?: string[], featu
     if (category !== lastCategory) {
       // Custom leagues should render only their league title, without a category header.
       if (category !== 'Custom') {
-        if (lastCategory !== '') parts.push('');
+        // Use explicit HTML spacer so WordPress sanitization/theme CSS can't remove section gaps.
+        if (lastCategory !== '') {
+          parts.push('<p>&nbsp;</p>');
+        }
         parts.push(`<h2>– ${escapeHTML(category)} –</h2>`);
         parts.push('');
         lastCategory = category;
