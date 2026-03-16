@@ -37,7 +37,7 @@ export default function DateRangeCalendar({
       from: isValid(from) ? from : undefined,
       to: isValid(to) ? to : undefined,
     }),
-    [startDate, endDate]
+    [from, to]
   );
 
   const singleSelected = isValid(from) ? from : undefined;
@@ -74,15 +74,17 @@ export default function DateRangeCalendar({
   // Keep draft range synced with external state while closed.
   useEffect(() => {
     if (open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRangeDraft((prev) => (isSameRange(prev, rangeSelectedFromProps) ? prev : rangeSelectedFromProps));
-  }, [open, startDate, endDate]);
+  }, [open, rangeSelectedFromProps]);
 
   // Every time the picker opens in range mode, start by selecting "from" first.
   useEffect(() => {
     if (!open || mode !== 'range') return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRangeDraft((prev) => (isSameRange(prev, rangeSelectedFromProps) ? prev : rangeSelectedFromProps));
     setRangeStep('start');
-  }, [open, mode]);
+  }, [open, mode, rangeSelectedFromProps]);
 
   // Close on click outside
   useEffect(() => {

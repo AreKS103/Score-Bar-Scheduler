@@ -59,7 +59,7 @@ async function fetchAllPages(
 ): Promise<ESPNScoreboardResponse['events']> {
   const first = await fetchScoreboard(espnSlug, startDate, endDate, 1);
   const all = [...(first.events ?? [])];
-  const totalPages = Math.min((first as any).pageCount ?? 1, 5);
+  const totalPages = Math.min((first as ESPNScoreboardResponse & { pageCount?: number }).pageCount ?? 1, 5);
   for (let p = 2; p <= totalPages; p++) {
     await sleep(200);
     const page = await fetchScoreboard(espnSlug, startDate, endDate, p);

@@ -231,7 +231,7 @@ export default function AddMatchModal({ isOpen, onClose, onAdd }: AddMatchModalP
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="flex gap-3">
-            <div className="flex-[3]">
+            <div className="flex-3">
               <Label className={fieldErrors.sport ? 'text-destructive' : ''}>Sport / League</Label>
               <Select value={sportId} onValueChange={(v) => { setSportId(v); setCustomLeague(''); setFieldErrors((p) => ({ ...p, sport: false })); }}>
                 <SelectTrigger className={cn('mt-1.5 w-full', fieldErrors.sport && 'border-destructive focus-visible:ring-destructive')}>
@@ -247,7 +247,7 @@ export default function AddMatchModal({ isOpen, onClose, onAdd }: AddMatchModalP
               </Select>
               {fieldErrors.sport && <p className="mt-1 text-xs text-destructive">Select a sport/league or enter a custom league.</p>}
             </div>
-            <div className="flex-[2]">
+            <div className="flex-2">
               <Label>Custom League <span className="text-muted-foreground">(optional)</span></Label>
               <Input
                 type="text"

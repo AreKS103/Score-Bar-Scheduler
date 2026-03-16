@@ -201,7 +201,7 @@ const pathCache = new Map<string, PathCacheEntry>();
 const PATH_STALE_MAX_MS = 10 * 60_000;
 
 /** Fetch with timeout + 1 automatic retry */
-async function espnFetchWithRetry(url: string, ms = 4_000): Promise<any> {
+async function espnFetchWithRetry<T>(url: string, ms = 4_000): Promise<T | null> {
   const attempt = async (timeout: number) => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeout);
@@ -508,7 +508,7 @@ async function fetchESPNLeague(
     const dateParam = espnDateRange(startDate, endDate);
     const url = `${ESPN_BASE}/${league.slug}/scoreboard?dates=${dateParam}&limit=1000`;
 
-    const data = await espnFetchWithRetry(url, 3_500);
+    const data = await espnFetchWithRetry<{ events?: ESPNEvent[] }>(url, 3_500);
 
     // Diagnostic logging for combat sports (UFC/Bellator)
     if (isMMA) {
@@ -571,7 +571,7 @@ async function fetchAllESPN(startDate: string, endDate: string): Promise<MatchEv
       try {
         const events = await fetchESPNLeague(league, startDate, endDate);
         results.push(...events);
-      } catch (err) {
+      } catch {
         // Ignored, handled in fetchESPNLeague
       }
       await sleep(25); // tiny spacing

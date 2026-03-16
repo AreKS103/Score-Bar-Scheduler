@@ -416,10 +416,10 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
                         className="w-full relative text-left pl-3 pr-4 py-2.5 hover:bg-accent transition-colors flex items-start"
                       >
                         <div className="w-full min-w-0 pr-2">
-                          <p className="text-sm text-foreground leading-snug break-words whitespace-normal">
+                          <p className="text-sm text-foreground leading-snug wrap-break-word whitespace-normal">
                             {item.week_label}
                           </p>
-                          <p className="text-[11px] text-muted-foreground mt-0.5 break-words whitespace-normal">
+                          <p className="text-[11px] text-muted-foreground mt-0.5 wrap-break-word whitespace-normal">
                             {new Date(item.published_at).toLocaleDateString('en-GB', {
                               day: 'numeric',
                               month: 'short',
@@ -602,7 +602,7 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
 
       {/* ── Undo toast (fixed, bottom-right) ───────────────────────────────── */}
       {undoToast && (
-        <div className="fixed bottom-5 right-5 z-[400] flex items-center gap-3 bg-neutral-900 dark:bg-zinc-800 border border-white/10 text-white px-4 py-3 rounded-xl shadow-2xl animate-in slide-in-from-bottom-3 fade-in-0 duration-300">
+        <div className="fixed bottom-5 right-5 z-400 flex items-center gap-3 bg-neutral-900 dark:bg-zinc-800 border border-white/10 text-white px-4 py-3 rounded-xl shadow-2xl animate-in slide-in-from-bottom-3 fade-in-0 duration-300">
           <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
           <span className="text-sm font-medium">Schedule published</span>
           {undoToast.prevHTML ? (
@@ -624,7 +624,7 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
       )}
       {/* ── Scheduled publish confirmation toast ─────────────────────────── */}
       {scheduledInfo && (
-        <div className="fixed bottom-5 right-5 z-[400] flex items-center gap-3 bg-neutral-900 dark:bg-zinc-800 border border-white/10 text-white px-4 py-3 rounded-xl shadow-2xl animate-in slide-in-from-bottom-3 fade-in-0 duration-300">
+        <div className="fixed bottom-5 right-5 z-400 flex items-center gap-3 bg-neutral-900 dark:bg-zinc-800 border border-white/10 text-white px-4 py-3 rounded-xl shadow-2xl animate-in slide-in-from-bottom-3 fade-in-0 duration-300">
           <Clock className="w-4 h-4 text-orange-400 shrink-0" />
           <span className="text-sm font-medium">
             Scheduled for {scheduledInfo.date} at {scheduledInfo.time}

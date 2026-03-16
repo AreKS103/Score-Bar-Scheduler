@@ -131,6 +131,7 @@ export default function EditMatchModal({ event, onClose, onSave }: EditMatchModa
     if (!event) return;
     const knownSport = SPORTS_CONFIG.find((s) => s.id === event.sportId);
     if (knownSport) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSportId(knownSport.id);
       setCustomLeague('');
       setCustomLeagueLogo(event.leagueLogo || knownSport.logo || '');
@@ -214,7 +215,7 @@ export default function EditMatchModal({ event, onClose, onSave }: EditMatchModa
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="flex gap-3">
-            <div className="flex-[3]">
+            <div className="flex-3">
               <Label>Sport / League</Label>
               <Select value={sportId} onValueChange={(v) => { setSportId(v); setCustomLeague(''); }}>
                 <SelectTrigger className="mt-1.5 w-full">
@@ -229,7 +230,7 @@ export default function EditMatchModal({ event, onClose, onSave }: EditMatchModa
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex-[2]">
+            <div className="flex-2">
               <Label>Custom League <span className="text-muted-foreground">(optional)</span></Label>
               <Input
                 type="text"

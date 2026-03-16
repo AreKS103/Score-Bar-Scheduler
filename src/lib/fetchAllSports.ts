@@ -198,8 +198,9 @@ function mergeEventData(primary: MatchEvent, secondary: MatchEvent): MatchEvent 
 export async function fetchAllSports(
   startDate: string,
   endDate: string,
-  onProgress?: (sportId: string, status: 'loading' | 'done' | 'error', error?: string) => void
+  _onProgress?: (sportId: string, status: 'loading' | 'done' | 'error', error?: string) => void
 ): Promise<FetchResult[]> {
+  void _onProgress;
   // Launch all three API source fetches in parallel
   const [espnResults, f1Result, sportsDBResults] = await Promise.allSettled([
     fetchAllESPNLeagues(startDate, endDate),
@@ -240,9 +241,6 @@ export async function fetchAllSports(
   // Cross-reference & deduplicate across all sources
   const allEvents = allResults.flatMap((r) => r.events);
   const deduped = crossReferenceEvents(allEvents);
-
-  // Build a set of surviving event IDs
-  const survivingIds = new Set(deduped.map(e => e.id));
 
   // Group deduplicated events back into per-league results
   // Events may have been assigned to a different primary than their original sportId

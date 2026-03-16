@@ -5,7 +5,8 @@ import { createClient } from '@/lib/supabase/server';
  * Server-side API route to test WordPress connection.
  * Uses server-side env vars only — credentials never reach the browser.
  */
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
+  void _req;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ok: false, message: 'Unauthorized' }, { status: 401 });

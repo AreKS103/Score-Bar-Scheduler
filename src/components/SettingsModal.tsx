@@ -24,11 +24,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { timezone, useLocal, setUseLocal } = useTimezoneStore();
   const { theme, toggleTheme } = useThemeStore();
   const isDark = theme === 'dark';
-  const [detectedTz, setDetectedTz] = useState('');
-
-  useEffect(() => {
-    setDetectedTz(Intl.DateTimeFormat().resolvedOptions().timeZone || 'Unknown');
-  }, []);
+  const [detectedTz] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'Unknown');
 
   // Close on Escape
   useEffect(() => {

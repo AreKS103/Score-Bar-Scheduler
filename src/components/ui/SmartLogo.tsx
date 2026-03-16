@@ -22,6 +22,8 @@ export default function SmartLogo({
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
+    // Reset fallback chain when source candidates change.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIndex(0);
   }, [candidates]);
 

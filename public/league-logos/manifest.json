@@ -1,0 +1,390 @@
+{
+  "generatedAt": "2026-03-16T04:34:07.276Z",
+  "total": 54,
+  "success": 50,
+  "failed": 4,
+  "results": [
+    {
+      "id": "soccer-epl",
+      "ok": true,
+      "source": "https://a.espncdn.com/i/leaguelogos/soccer/500/23.png",
+      "file": "public/league-logos/soccer-epl.png",
+      "extension": ".png"
+    },
+    {
+      "id": "soccer-ucl",
+      "ok": true,
+      "source": "https://a.espncdn.com/i/leaguelogos/soccer/500/2.png",
+      "file": "public/league-logos/soccer-ucl.png",
+      "extension": ".png"
+    },
+    {
+      "id": "soccer-uel",
+      "ok": true,
+      "source": "https://a.espncdn.com/i/leaguelogos/soccer/500/2310.png",
+      "file": "public/league-logos/soccer-uel.png",
+      "extension": ".png"
+    },
+    {
+      "id": "soccer-uecl",
+      "ok": true,
+      "source": "https://a.espncdn.com/i/leaguelogos/soccer/500/45.png",
+      "file": "public/league-logos/soccer-uecl.png",
+      "extension": ".png"
+    },
+    {
+      "id": "soccer-facup",
+      "ok": true,
+      "source": "https://a.espncdn.com/i/leaguelogos/soccer/500/4.png",
+      "file": "public/league-logos/soccer-facup.png",
+      "extension": ".png"
+    },
+    {
+      "id": "soccer-efl",
+      "ok": true,
+      "source": "https://a.espncdn.com/i/leaguelogos/soccer/500/24.png",
+      "file": "public/league-logos/soccer-efl.png",
+      "extension": ".png"
+    },
+    {
+      "id": "soccer-leagueone",
+      "ok": true,
+      "source": "https://r2.thesportsdb.com/images/media/league/badge/afedb31688770443.png",
+      "file": "public/league-logos/soccer-leagueone.png",
+      "extension": ".png"
+    },
+    {
+      "id": "soccer-carabao",
+      "ok": true,
+      "source": "/carabao-cup-logo.svg",
+      "file": "public/league-logos/soccer-carabao.svg",
+      "extension": ".svg"
+    },
+    {
+      "id": "soccer-bundesliga",
+      "ok": true,
+      "source": "https://a.espncdn.com/i/leaguelogos/soccer/500/10.png",
+      "file": "public/league-logos/soccer-bundesliga.png",
+      "extension": ".png"
+    },
+    {
+      "id": "soccer-ligue1",
+      "ok": true,
+      "source": "https://a.espncdn.com/i/leaguelogos/soccer/500/9.png",
+      "file": "public/league-logos/soccer-ligue1.png",
+      "extension": ".png"
+    },
+    {
+      "id": "soccer-laliga",
+      "ok": true,
+      "source": "https://r2.thesportsdb.com/images/media/league/badge/ja4it51687628717.png",
+      "file": "public/league-logos/soccer-laliga.png",
+      "extension": ".png"
+    },
+    {
+      "id": "soccer-seriea",
+      "ok": true,
+      "source": "https://a.espncdn.com/i/leaguelogos/soccer/500/12.png",
+      "file": "public/league-logos/soccer-seriea.png",
+      "extension": ".png"
+    },
+    {
+      "id": "soccer-spfl",
+      "ok": true,
+      "source": "/spfl.jpg",
+      "file": "public/league-logos/soccer-spfl.jpg",
+      "extension": ".jpg"
+    },
+    {
+      "id": "soccer-eredivisie",
+      "ok": true,
+      "source": "https://a.espncdn.com/i/leaguelogos/soccer/500/11.png",
+      "file": "public/league-logos/soccer-eredivisie.png",
+      "extension": ".png"
+    },
+    {
+      "id": "soccer-mls",
+      "ok": true,
+      "source": "https://a.espncdn.com/i/leaguelogos/soccer/500/19.png",
+      "file": "public/league-logos/soccer-mls.png",
+      "extension": ".png"
+    },
+    {
+      "id": "soccer-aleague",
+      "ok": true,
+      "source": "/A-League-logo-2.png",
+      "file": "public/league-logos/soccer-aleague.png",
+      "extension": ".png"
+    },
+    {
+      "id": "soccer-saudipro",
+      "ok": true,
+      "source": "/Roshn_Saudi_League_Logo.svg.png",
+      "file": "public/league-logos/soccer-saudipro.png",
+      "extension": ".png"
+    },
+    {
+      "id": "soccer-jleague",
+      "ok": true,
+      "source": "https://r2.thesportsdb.com/images/media/league/badge/3j8bni1675170553.png",
+      "file": "public/league-logos/soccer-jleague.png",
+      "extension": ".png"
+    },
+    {
+      "id": "soccer-afc",
+      "ok": true,
+      "source": "/AFC.png",
+      "file": "public/league-logos/soccer-afc.png",
+      "extension": ".png"
+    },
+    {
+      "id": "soccer-afc2",
+      "ok": true,
+      "source": "https://r2.thesportsdb.com/images/media/league/badge/sfg2dl1719686962.png",
+      "file": "public/league-logos/soccer-afc2.png",
+      "extension": ".png"
+    },
+    {
+      "id": "soccer-afccl",
+      "ok": true,
+      "source": "https://r2.thesportsdb.com/images/media/league/badge/ctg73b1721497942.png",
+      "file": "public/league-logos/soccer-afccl.png",
+      "extension": ".png"
+    },
+    {
+      "id": "soccer-afc-asian-cup",
+      "ok": true,
+      "source": "https://r2.thesportsdb.com/images/media/league/badge/0a86rp1710997941.png",
+      "file": "public/league-logos/soccer-afc-asian-cup.png",
+      "extension": ".png"
+    },
+    {
+      "id": "soccer-asian-cup-women",
+      "ok": true,
+      "source": "https://r2.thesportsdb.com/images/media/league/badge/m0scwf1726416187.png",
+      "file": "public/league-logos/soccer-asian-cup-women.png",
+      "extension": ".png"
+    },
+    {
+      "id": "soccer-copam",
+      "ok": true,
+      "source": "https://a.espncdn.com/i/leaguelogos/soccer/500/26.png",
+      "file": "public/league-logos/soccer-copam.png",
+      "extension": ".png"
+    },
+    {
+      "id": "soccer-cpl",
+      "ok": true,
+      "source": "/CPL.png",
+      "file": "public/league-logos/soccer-cpl.png",
+      "extension": ".png"
+    },
+    {
+      "id": "basketball-nba",
+      "ok": true,
+      "source": "https://a.espncdn.com/i/teamlogos/leagues/500/nba.png",
+      "file": "public/league-logos/basketball-nba.png",
+      "extension": ".png"
+    },
+    {
+      "id": "basketball-wnba",
+      "ok": true,
+      "source": "https://a.espncdn.com/i/teamlogos/leagues/500/wnba.png",
+      "file": "public/league-logos/basketball-wnba.png",
+      "extension": ".png"
+    },
+    {
+      "id": "basketball-ncaam",
+      "ok": false,
+      "source": null,
+      "file": null,
+      "extension": null,
+      "error": "HTTP 404"
+    },
+    {
+      "id": "basketball-nbl",
+      "ok": true,
+      "source": "https://r2.thesportsdb.com/images/media/league/badge/gvz6vb1726086476.png",
+      "file": "public/league-logos/basketball-nbl.png",
+      "extension": ".png"
+    },
+    {
+      "id": "football-nfl",
+      "ok": true,
+      "source": "https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png",
+      "file": "public/league-logos/football-nfl.png",
+      "extension": ".png"
+    },
+    {
+      "id": "football-ncaaf",
+      "ok": false,
+      "source": null,
+      "file": null,
+      "extension": null,
+      "error": "HTTP 404"
+    },
+    {
+      "id": "baseball-mlb",
+      "ok": true,
+      "source": "https://a.espncdn.com/i/teamlogos/leagues/500/mlb.png",
+      "file": "public/league-logos/baseball-mlb.png",
+      "extension": ".png"
+    },
+    {
+      "id": "hockey-nhl",
+      "ok": true,
+      "source": "https://a.espncdn.com/i/teamlogos/leagues/500/nhl.png",
+      "file": "public/league-logos/hockey-nhl.png",
+      "extension": ".png"
+    },
+    {
+      "id": "cricket-ipl",
+      "ok": true,
+      "source": "https://r2.thesportsdb.com/images/media/league/badge/gaiti11741709844.png",
+      "file": "public/league-logos/cricket-ipl.png",
+      "extension": ".png"
+    },
+    {
+      "id": "cricket-bbl",
+      "ok": true,
+      "source": "https://r2.thesportsdb.com/images/media/league/badge/yko7ny1546635346.png",
+      "file": "public/league-logos/cricket-bbl.png",
+      "extension": ".png"
+    },
+    {
+      "id": "f1",
+      "ok": true,
+      "source": "https://r2.thesportsdb.com/images/media/league/badge/g8cofl1513623681.png",
+      "file": "public/league-logos/f1.png",
+      "extension": ".png"
+    },
+    {
+      "id": "motogp",
+      "ok": true,
+      "source": "/motogp.png",
+      "file": "public/league-logos/motogp.png",
+      "extension": ".png"
+    },
+    {
+      "id": "indycar",
+      "ok": false,
+      "source": null,
+      "file": null,
+      "extension": null,
+      "error": "HTTP 404"
+    },
+    {
+      "id": "ufc",
+      "ok": true,
+      "source": "/UFC.png",
+      "file": "public/league-logos/ufc.png",
+      "extension": ".png"
+    },
+    {
+      "id": "bellator",
+      "ok": true,
+      "source": "https://a.espncdn.com/i/teamlogos/leagues/500/pfl.png",
+      "file": "public/league-logos/bellator.png",
+      "extension": ".png"
+    },
+    {
+      "id": "boxing",
+      "ok": true,
+      "source": "https://r2.thesportsdb.com/images/media/league/badge/6enin21740228549.png",
+      "file": "public/league-logos/boxing.png",
+      "extension": ".png"
+    },
+    {
+      "id": "rugby-superrugby",
+      "ok": true,
+      "source": "/Super_Rugby_Pacific_logo.png",
+      "file": "public/league-logos/rugby-superrugby.png",
+      "extension": ".png"
+    },
+    {
+      "id": "rugby-sixnations",
+      "ok": true,
+      "source": "https://r2.thesportsdb.com/images/media/league/badge/7h1wr91738670253.png",
+      "file": "public/league-logos/rugby-sixnations.png",
+      "extension": ".png"
+    },
+    {
+      "id": "rugby-premship",
+      "ok": true,
+      "source": "https://r2.thesportsdb.com/images/media/league/badge/r59qxy1755025703.png",
+      "file": "public/league-logos/rugby-premship.png",
+      "extension": ".png"
+    },
+    {
+      "id": "rugby-top14",
+      "ok": true,
+      "source": "https://r2.thesportsdb.com/images/media/league/badge/xrsqtw1452903237.png",
+      "file": "public/league-logos/rugby-top14.png",
+      "extension": ".png"
+    },
+    {
+      "id": "rugby-urc",
+      "ok": true,
+      "source": "https://r2.thesportsdb.com/images/media/league/badge/o6dhfo1716481482.png",
+      "file": "public/league-logos/rugby-urc.png",
+      "extension": ".png"
+    },
+    {
+      "id": "rugby-champscup",
+      "ok": true,
+      "source": "https://r2.thesportsdb.com/images/media/league/badge/kohne11716546580.png",
+      "file": "public/league-logos/rugby-champscup.png",
+      "extension": ".png"
+    },
+    {
+      "id": "rugby-rc",
+      "ok": true,
+      "source": "https://r2.thesportsdb.com/images/media/league/badge/dy0n4c1716684531.png",
+      "file": "public/league-logos/rugby-rc.png",
+      "extension": ".png"
+    },
+    {
+      "id": "nrl",
+      "ok": true,
+      "source": "https://r2.thesportsdb.com/images/media/league/badge/gsztcj1552071996.png",
+      "file": "public/league-logos/nrl.png",
+      "extension": ".png"
+    },
+    {
+      "id": "afl",
+      "ok": true,
+      "source": "https://a.espncdn.com/i/teamlogos/leagues/500/afl.png",
+      "file": "public/league-logos/afl.png",
+      "extension": ".png"
+    },
+    {
+      "id": "tennis-atp",
+      "ok": true,
+      "source": "https://r2.thesportsdb.com/images/media/league/badge/q7aej51769857150.png",
+      "file": "public/league-logos/tennis-atp.png",
+      "extension": ".png"
+    },
+    {
+      "id": "tennis-wta",
+      "ok": false,
+      "source": null,
+      "file": null,
+      "extension": null,
+      "error": "HTTP 404"
+    },
+    {
+      "id": "golf-pga",
+      "ok": true,
+      "source": "/PGA_Tour_logo.svg",
+      "file": "public/league-logos/golf-pga.svg",
+      "extension": ".svg"
+    },
+    {
+      "id": "golf-lpga",
+      "ok": true,
+      "source": "https://a.espncdn.com/i/teamlogos/leagues/500/lpga.png",
+      "file": "public/league-logos/golf-lpga.png",
+      "extension": ".png"
+    }
+  ]
+}

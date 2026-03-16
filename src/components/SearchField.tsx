@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Search, X } from 'lucide-react';
 import type { MatchEvent } from '@/types';
 import { Input } from '@/components/ui/input';
@@ -39,7 +39,10 @@ export default function SearchField({
 
   // Stable ref to callback so we don't trigger effect on every render
   const onFilteredChangeRef = useRef(onFilteredChange);
-  onFilteredChangeRef.current = onFilteredChange;
+
+  useEffect(() => {
+    onFilteredChangeRef.current = onFilteredChange;
+  }, [onFilteredChange]);
 
   const doSearch = useCallback((q: string, evts: MatchEvent[]) => {
     if (!q.trim()) {

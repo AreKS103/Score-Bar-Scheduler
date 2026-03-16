@@ -220,8 +220,6 @@ export default function SchedulePage() {
     router.push('/login');
   }
   const [activeSortLeague, setActiveSortLeague] = useState<string | null>(null);
-  // Increments on every moveLeague call — guarantees html useMemo always recomputes
-  const [sortVersion, setSortVersion] = useState(0);
   const [headerHeight, setHeaderHeight] = useState(116);
   const hasFetchedRef = useRef(false);
   const prevPreviewContentCountRef = useRef(0);
@@ -440,7 +438,7 @@ export default function SchedulePage() {
         }
       });
     }
-  }, [handleFetch]);
+  }, [handleFetch, setEvents]);
 
   // ─── Filtered events (sport filter + search) ──────────────────────────────
   const filteredEvents = useMemo(() => {
@@ -689,7 +687,6 @@ export default function SchedulePage() {
 
   const moveLeague = useCallback((league: string, dir: -1 | 1) => {
     setActiveSortLeague(league);
-    setSortVersion((v) => v + 1); // Always different → html useMemo always recomputes
     setLeagueOrder((prev) => {
       // Build the visible-only order from the current leagueOrder so we always
       // swap with the correct visible neighbour (prev may contain non-selected
@@ -902,7 +899,7 @@ export default function SchedulePage() {
     () => (selectedCount > 0 || featuredLeagues.size > 0)
       ? generateHTML(events, leagueOrder, featuredLeagues)
       : '',
-    [events, leagueOrder, sortVersion, selectedCount, featuredLeagues] // sortVersion is the safety net
+    [events, leagueOrder, selectedCount, featuredLeagues]
   );
 
   // Scroll HTML preview back to top whenever the league order changes so the reorder is visible
@@ -1097,7 +1094,7 @@ export default function SchedulePage() {
     } finally {
       setIsRestoringSchedule(false);
     }
-  }, [dateRange.end, dateRange.start, setDateRange, setEvents, setCachedEvents, loadLocalCustomEvents, saveSelectionToSupabase]);
+  }, [dateRange.end, dateRange.start, setDateRange, setEvents]);
 
   return (
     <div className="flex h-screen bg-background text-foreground">
@@ -1590,7 +1587,7 @@ export default function SchedulePage() {
                             <button
                               onClick={(e) => { e.stopPropagation(); setEditingEvent(m); }}
                               data-no-league-menu="true"
-                              className="shrink-0 w-[10%] min-w-[24px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity border-l border-border/50 hover:bg-primary/10"
+                              className="shrink-0 w-[10%] min-w-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity border-l border-border/50 hover:bg-primary/10"
                               title="Edit match"
                             >
                               <Pencil className="w-3 h-3 text-muted-foreground" />

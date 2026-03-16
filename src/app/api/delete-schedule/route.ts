@@ -4,7 +4,8 @@ import { createClient } from '@/lib/supabase/server';
 /**
  * Clears the published schedule on WordPress by posting an empty HTML string.
  */
-export async function POST(req: NextRequest) {
+export async function POST(_req: NextRequest) {
+  void _req;
   try {
     // Require authenticated session
     const supabase = await createClient();
