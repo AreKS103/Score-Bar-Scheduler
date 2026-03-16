@@ -50,6 +50,67 @@ interface ScheduleHistoryState {
   signature: string;
 }
 
+function cloneEventsForHistory(events: MatchEvent[]): MatchEvent[] {
+  return events.map((e) => ({
+    ...e,
+    tags: [...e.tags],
+  }));
+}
+
+function areEventsSameForHistory(a: MatchEvent[], b: MatchEvent[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    const x = a[i];
+    const y = b[i];
+    if (
+      x.id !== y.id ||
+      x.sportId !== y.sportId ||
+      x.date !== y.date ||
+      x.time !== y.time ||
+      x.home !== y.home ||
+      x.away !== y.away ||
+      x.round !== y.round ||
+      x.isSelected !== y.isSelected ||
+      x.isFeatured !== y.isFeatured
+    ) {
+      return false;
+    }
+    if (x.tags.length !== y.tags.length) return false;
+    for (let j = 0; j < x.tags.length; j += 1) {
+      if (x.tags[j] !== y.tags[j]) return false;
+    }
+  }
+  return true;
+}
+
+function areFeaturedLeaguesSame(
+  a: Array<[string, string]>,
+  b: Array<[string, string]>
+): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i][0] !== b[i][0] || a[i][1] !== b[i][1]) return false;
+  }
+  return true;
+}
+
+function isAppendOnlyLeagueOrder(
+  previous: string[],
+  current: string[],
+  events: MatchEvent[]
+): boolean {
+  if (current.length <= previous.length) return false;
+  for (let i = 0; i < previous.length; i += 1) {
+    if (previous[i] !== current[i]) return false;
+  }
+
+  const selectedLeagueIds = new Set(
+    events.filter((e) => e.isSelected).map((e) => e.sportId)
+  );
+  const appended = current.slice(previous.length);
+  return appended.length > 0 && appended.every((id) => selectedLeagueIds.has(id));
+}
+
 function buildHistorySignature(
   events: MatchEvent[],
   leagueOrder: string[],
@@ -182,7 +243,7 @@ export default function SchedulePage() {
   const selectedByLeagueRef = useRef<Map<string, MatchEvent[]>>(new Map());
 
   const captureHistoryState = useCallback((): ScheduleHistoryState => ({
-    events,
+    events: cloneEventsForHistory(events),
     leagueOrder: [...leagueOrder],
     featuredLeagues: Array.from(featuredLeagues.entries()),
     signature: buildHistorySignature(events, leagueOrder, featuredLeagues),
@@ -190,7 +251,7 @@ export default function SchedulePage() {
 
   const applyHistoryState = useCallback((state: ScheduleHistoryState) => {
     isApplyingHistoryRef.current = true;
-    setEvents(state.events);
+    setEvents(cloneEventsForHistory(state.events));
     setLeagueOrder(state.leagueOrder);
     setFeaturedLeagues(new Map(state.featuredLeagues));
     setHistoryVersion((v) => v + 1);
@@ -473,6 +534,17 @@ export default function SchedulePage() {
 
     if (isApplyingHistoryRef.current) {
       isApplyingHistoryRef.current = false;
+      lastHistoryStateRef.current = current;
+      return;
+    }
+
+    // Ignore derived league-order appends (caused by selection sync) so the first
+    // undo reverts the actual user action instead of a bookkeeping step.
+    if (
+      areEventsSameForHistory(previous.events, current.events) &&
+      areFeaturedLeaguesSame(previous.featuredLeagues, current.featuredLeagues) &&
+      isAppendOnlyLeagueOrder(previous.leagueOrder, current.leagueOrder, current.events)
+    ) {
       lastHistoryStateRef.current = current;
       return;
     }
