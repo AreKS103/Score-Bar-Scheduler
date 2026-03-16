@@ -280,13 +280,16 @@ export function generateHTML(events: MatchEvent[], leagueOrder?: string[], featu
     const rawLeagueLogo = config?.logo || firstEvent?.leagueLogo || '';
     const leagueLogo = getPublishLogoSrc(rawLeagueLogo, config?.publishLogo);
 
+    const escapedLeagueKey = escapeHTML(leagueKey);
+    const escapedLeagueLabel = escapeHTML(leagueLabel);
+
     // League header with logo
     if (leagueLogo) {
       parts.push(
-        `<img src="${leagueLogo}" alt="${escapeHTML(leagueLabel)}" style="height:40px;vertical-align:middle;margin-right:8px;" loading="lazy" decoding="async" referrerpolicy="no-referrer" crossorigin="anonymous" />`
+        `<img data-preview-league="1" data-preview-sport-id="${escapedLeagueKey}" data-preview-league-label="${escapedLeagueLabel}" src="${leagueLogo}" alt="${escapedLeagueLabel}" style="height:40px;vertical-align:middle;margin-right:8px;" loading="lazy" decoding="async" referrerpolicy="no-referrer" crossorigin="anonymous" />`
       );
     }
-    parts.push(`<h3>${escapeHTML(leagueLabel)}</h3>`);
+    parts.push(`<h3 data-preview-league="1" data-preview-sport-id="${escapedLeagueKey}" data-preview-league-label="${escapedLeagueLabel}">${escapedLeagueLabel}</h3>`);
     parts.push('');
 
     // Sort dates ascending
@@ -347,11 +350,15 @@ export function generateHTML(events: MatchEvent[], leagueOrder?: string[], featu
         // If round is shared, don't repeat it on each line
         const e = sharedRound ? { ...event, round: '' } : event;
         const line = generateMatchLine(e);
+        const escapedEventId = escapeHTML(event.id);
+        const escapedLeagueKey = escapeHTML(leagueKey);
+        const escapedLeagueLabel = escapeHTML(leagueLabel);
+        const wrappedLine = `<span data-preview-match="1" data-preview-match-id="${escapedEventId}" data-preview-sport-id="${escapedLeagueKey}" data-preview-league-label="${escapedLeagueLabel}">${line}</span>`;
         // Indent prelim fights (non-main-card fights in combat leagues)
         if (isCombatLeague && e.fightOrder !== undefined && !e.isMainCard) {
-          return `&nbsp;&nbsp;&nbsp;&nbsp;${line}`;
+          return `&nbsp;&nbsp;&nbsp;&nbsp;${wrappedLine}`;
         }
-        return line;
+        return wrappedLine;
       });
 
       parts.push(`<p>\n${matchLines.join('<br/>\n')}\n</p>`);

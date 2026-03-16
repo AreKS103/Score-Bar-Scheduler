@@ -1,5 +1,6 @@
 'use client';
 import { Copy, CheckCircle } from 'lucide-react';
+import type { MouseEvent } from 'react';
 import { cn } from '@/lib/utils';
 
 interface PreviewPanelProps {
@@ -9,6 +10,23 @@ interface PreviewPanelProps {
   lastPushed?: string | null;
   onCopy?: () => void;
   copied?: boolean;
+  onPreviewContextMenu?: (payload:
+    | {
+        type: 'league';
+        sportId: string;
+        leagueLabel: string;
+        x: number;
+        y: number;
+      }
+    | {
+        type: 'match';
+        eventId: string;
+        sportId: string;
+        leagueLabel: string;
+        x: number;
+        y: number;
+      }
+  ) => void;
 }
 
 export default function PreviewPanel({
@@ -18,7 +36,64 @@ export default function PreviewPanel({
   lastPushed,
   onCopy,
   copied,
+  onPreviewContextMenu,
 }: PreviewPanelProps) {
+  const handlePreviewContextMenu = (event: MouseEvent<HTMLDivElement>) => {
+    // In preview, always suppress the browser context menu.
+    event.preventDefault();
+
+    if (!onPreviewContextMenu) return;
+
+    const target = event.target as HTMLElement;
+    const root = event.currentTarget;
+
+    const matchNode = target.closest('[data-preview-match="1"]') as HTMLElement | null;
+    if (matchNode) {
+      const eventId = matchNode.getAttribute('data-preview-match-id') || '';
+      const sportId = matchNode.getAttribute('data-preview-sport-id') || '';
+      if (eventId && sportId) {
+        onPreviewContextMenu({
+          type: 'match',
+          eventId,
+          sportId,
+          leagueLabel: matchNode.getAttribute('data-preview-league-label') || sportId,
+          x: event.clientX,
+          y: event.clientY,
+        });
+      }
+      return;
+    }
+
+    let leagueNode = target.closest('[data-preview-league="1"]') as HTMLElement | null;
+
+    // If user right-clicked a match line under the header, resolve to the
+    // nearest preceding league header/logo block.
+    if (!leagueNode) {
+      const tagged = Array.from(
+        root.querySelectorAll('[data-preview-league="1"]')
+      ) as HTMLElement[];
+      for (const node of tagged) {
+        const relation = node.compareDocumentPosition(target);
+        if (relation & Node.DOCUMENT_POSITION_FOLLOWING) {
+          leagueNode = node;
+        }
+      }
+    }
+
+    if (!leagueNode) return;
+
+    const sportId = leagueNode.getAttribute('data-preview-sport-id') || '';
+    if (!sportId) return;
+
+    onPreviewContextMenu({
+      type: 'league',
+      sportId,
+      leagueLabel: leagueNode.getAttribute('data-preview-league-label') || leagueNode.textContent?.trim() || sportId,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  };
+
   return (
     <div className="space-y-5">
       {/* Summary bar */}
@@ -71,6 +146,7 @@ export default function PreviewPanel({
           [&_img]:inline [&_img]:h-8 [&_img]:w-auto [&_img]:my-0
           [&_br]:leading-8
         "
+        onContextMenu={handlePreviewContextMenu}
         dangerouslySetInnerHTML={{ __html: html }}
       />
     </div>

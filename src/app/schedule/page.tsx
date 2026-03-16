@@ -77,6 +77,24 @@ export default function SchedulePage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [featuredLeagues, setFeaturedLeagues] = useState<Map<string, string>>(new Map());
+  const [highlightMenu, setHighlightMenu] = useState<
+    | {
+        type: 'league';
+        sportId: string;
+        leagueLabel: string;
+        x: number;
+        y: number;
+      }
+    | {
+        type: 'match';
+        eventId: string;
+        sportId: string;
+        leagueLabel: string;
+        x: number;
+        y: number;
+      }
+    | null
+  >(null);
   const [flashKey, setFlashKey] = useState(0);
   const router = useRouter();
 
@@ -117,6 +135,7 @@ export default function SchedulePage() {
   const leagueItemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const sidebarScrollRef = useRef<HTMLDivElement>(null);
   const htmlPreviewRef = useRef<HTMLDivElement>(null);
+  const highlightMenuRef = useRef<HTMLDivElement>(null);
   // Ref mirror of selectedByLeague so moveLeague never closes over stale data
   const selectedByLeagueRef = useRef<Map<string, MatchEvent[]>>(new Map());
 
@@ -317,6 +336,30 @@ export default function SchedulePage() {
     return map;
   }, [events]);
 
+  // Auto-clear stale league spotlights when that league has no events
+  // in the currently loaded date range (e.g. F1 week with no races).
+  useEffect(() => {
+    if (events.length === 0) {
+      setFeaturedLeagues((prev) => (prev.size === 0 ? prev : new Map()));
+      return;
+    }
+
+    const availableLeagueIds = new Set(events.map((e) => e.sportId));
+    setFeaturedLeagues((prev) => {
+      if (prev.size === 0) return prev;
+      let changed = false;
+      const next = new Map<string, string>();
+      for (const [sportId, label] of prev.entries()) {
+        if (availableLeagueIds.has(sportId)) {
+          next.set(sportId, label);
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [events]);
+
   // Keep leagueOrder in sync: preserve user's order, append new leagues, drop removed ones
   useEffect(() => {
     setLeagueOrder((prev) => {
@@ -451,6 +494,77 @@ export default function SchedulePage() {
       return next;
     });
   }, []);
+
+  const openHighlightMenu = useCallback((payload:
+    | {
+        type: 'league';
+        sportId: string;
+        leagueLabel: string;
+        x: number;
+        y: number;
+      }
+    | {
+        type: 'match';
+        eventId: string;
+        sportId: string;
+        leagueLabel: string;
+        x: number;
+        y: number;
+      }
+  ) => {
+    setHighlightMenu(payload);
+  }, []);
+
+  const closeHighlightMenu = useCallback(() => {
+    setHighlightMenu(null);
+  }, []);
+
+  const setLeagueHighlight = useCallback((sportId: string, leagueLabel: string, shouldHighlight: boolean) => {
+    setFeaturedLeagues((prev) => {
+      const next = new Map(prev);
+      if (shouldHighlight) {
+        const configLabel = SPORTS_CONFIG.find((s) => s.id === sportId)?.label ?? '';
+        next.set(sportId, leagueLabel || configLabel);
+      } else {
+        next.delete(sportId);
+      }
+      return next;
+    });
+    closeHighlightMenu();
+  }, [closeHighlightMenu]);
+
+  const setMatchHighlight = useCallback((eventId: string, shouldHighlight: boolean) => {
+    const event = events.find((e) => e.id === eventId);
+    if (!event) {
+      closeHighlightMenu();
+      return;
+    }
+    if (Boolean(event.isFeatured) !== shouldHighlight) {
+      toggleFeatured(eventId);
+    }
+    closeHighlightMenu();
+  }, [events, toggleFeatured, closeHighlightMenu]);
+
+  useEffect(() => {
+    if (!highlightMenu) return;
+
+    const handleGlobalPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (highlightMenuRef.current?.contains(target)) return;
+      closeHighlightMenu();
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeHighlightMenu();
+    };
+
+    window.addEventListener('pointerdown', handleGlobalPointerDown);
+    window.addEventListener('keydown', handleEscape);
+    return () => {
+      window.removeEventListener('pointerdown', handleGlobalPointerDown);
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [highlightMenu, closeHighlightMenu]);
 
   const bulkSelectLeague = useCallback((sportId: string, selectAll: boolean) => {
     const ids = events.filter((e) => e.sportId === sportId).map((e) => e.id);
@@ -1121,13 +1235,27 @@ export default function SchedulePage() {
                           ? 'border-yellow-500/40 bg-yellow-500/5'
                           : 'border-border/50'
                     )}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      if ((event.target as HTMLElement).closest('[data-no-league-menu="true"]')) {
+                        closeHighlightMenu();
+                        return;
+                      }
+                      openHighlightMenu({
+                        type: 'league',
+                        sportId,
+                        leagueLabel: matches[0]?.leagueLabel ?? sportId,
+                        x: event.clientX,
+                        y: event.clientY,
+                      });
+                    }}
                   >
                     <div className="flex items-center justify-between mb-1.5">
                       <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide truncate pr-1">
                         {matches[0]?.leagueLabel ?? sportId}
                         {featuredLeagues.has(sportId) && <span className="ml-1 text-yellow-400">★</span>}
                       </p>
-                      <div className="flex items-center gap-0.5 shrink-0">
+                      <div className="flex items-center gap-0.5 shrink-0" data-no-league-menu="true">
                         <button
                           onClick={() => moveLeague(sportId, -1)}
                           disabled={leagueIdx === 0}
@@ -1156,6 +1284,18 @@ export default function SchedulePage() {
                                 ? 'bg-destructive/10 border-destructive/40'
                                 : 'bg-secondary/40 border-transparent hover:bg-secondary/70'
                             )}
+                            onContextMenu={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              openHighlightMenu({
+                                type: 'match',
+                                eventId: m.id,
+                                sportId,
+                                leagueLabel: matches[0]?.leagueLabel ?? sportId,
+                                x: event.clientX,
+                                y: event.clientY,
+                              });
+                            }}
                           >
                             <div
                               onClick={() => togglePreviewCheck(m.id)}
@@ -1182,6 +1322,7 @@ export default function SchedulePage() {
                             </div>
                             <button
                               onClick={(e) => { e.stopPropagation(); setEditingEvent(m); }}
+                              data-no-league-menu="true"
                               className="shrink-0 w-[10%] min-w-[24px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity border-l border-border/50 hover:bg-primary/10"
                               title="Edit match"
                             >
@@ -1221,11 +1362,64 @@ export default function SchedulePage() {
                 leagueCount={selectedLeagues}
                 onCopy={handleCopyHTML}
                 copied={copied}
+                onPreviewContextMenu={openHighlightMenu}
               />
             </div>
           </div>
         </div>
       </div>
+
+      {highlightMenu && (
+        <div
+          ref={highlightMenuRef}
+          className="fixed z-170 min-w-44 rounded-lg border border-border bg-popover/98 p-1.5 shadow-2xl backdrop-blur-sm"
+          style={{
+            left: highlightMenu.x,
+            top: highlightMenu.y,
+          }}
+        >
+          <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {highlightMenu.type === 'match' ? 'Match Highlight' : highlightMenu.leagueLabel}
+          </p>
+          {highlightMenu.type === 'league' ? (
+            featuredLeagues.has(highlightMenu.sportId) ? (
+              <button
+                onClick={() => setLeagueHighlight(highlightMenu.sportId, highlightMenu.leagueLabel, false)}
+                className="w-full rounded-md px-2 py-1.5 text-left text-xs text-foreground hover:bg-accent transition-colors"
+              >
+                Remove League Highlight
+              </button>
+            ) : (
+              <button
+                onClick={() => setLeagueHighlight(highlightMenu.sportId, highlightMenu.leagueLabel, true)}
+                className="w-full rounded-md px-2 py-1.5 text-left text-xs text-foreground hover:bg-accent transition-colors"
+              >
+                Add League Highlight
+              </button>
+            )
+          ) : (() => {
+            const isMatchHighlighted = events.find((e) => e.id === highlightMenu.eventId)?.isFeatured;
+            if (isMatchHighlighted) {
+              return (
+                <button
+                  onClick={() => setMatchHighlight(highlightMenu.eventId, false)}
+                  className="w-full rounded-md px-2 py-1.5 text-left text-xs text-foreground hover:bg-accent transition-colors"
+                >
+                  Remove Match Highlight
+                </button>
+              );
+            }
+            return (
+              <button
+                onClick={() => setMatchHighlight(highlightMenu.eventId, true)}
+                className="w-full rounded-md px-2 py-1.5 text-left text-xs text-foreground hover:bg-accent transition-colors"
+              >
+                Add Match Highlight
+              </button>
+            );
+          })()}
+        </div>
+      )}
 
       {/* Add match modal */}
       <AddMatchModal

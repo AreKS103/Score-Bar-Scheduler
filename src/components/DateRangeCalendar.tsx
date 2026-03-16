@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { format, parse, isValid } from 'date-fns';
 import { CalendarDays, CalendarRange, Calendar1 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -25,23 +25,36 @@ export default function DateRangeCalendar({
 }: DateRangeCalendarProps) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<CalendarMode>('range');
+  const [rangeDraft, setRangeDraft] = useState<DateRange>({ from: undefined, to: undefined });
+  const [rangeStep, setRangeStep] = useState<'start' | 'end'>('start');
   const ref = useRef<HTMLDivElement>(null);
 
   const from = parse(startDate, 'yyyy-MM-dd', new Date());
   const to = parse(endDate, 'yyyy-MM-dd', new Date());
 
-  const rangeSelected: DateRange = {
-    from: isValid(from) ? from : undefined,
-    to: isValid(to) ? to : undefined,
-  };
+  const rangeSelectedFromProps: DateRange = useMemo(
+    () => ({
+      from: isValid(from) ? from : undefined,
+      to: isValid(to) ? to : undefined,
+    }),
+    [startDate, endDate]
+  );
 
   const singleSelected = isValid(from) ? from : undefined;
 
-  const handleRangeSelect = (range: DateRange | undefined) => {
-    if (!range) return;
-    const newFrom = range.from ? format(range.from, 'yyyy-MM-dd') : startDate;
-    const newTo = range.to ? format(range.to, 'yyyy-MM-dd') : newFrom;
-    onChange(newFrom, newTo);
+  const handleRangeDayClick = (day: Date) => {
+    if (rangeStep === 'start') {
+      setRangeDraft({ from: day, to: undefined });
+      setRangeStep('end');
+      return;
+    }
+
+    const fromDay = rangeDraft.from ?? day;
+    const startDay = day < fromDay ? day : fromDay;
+    const endDay = day < fromDay ? fromDay : day;
+    setRangeDraft({ from: startDay, to: endDay });
+    onChange(format(startDay, 'yyyy-MM-dd'), format(endDay, 'yyyy-MM-dd'));
+    setRangeStep('start');
   };
 
   const handleSingleSelect = (day: Date | undefined) => {
@@ -49,6 +62,27 @@ export default function DateRangeCalendar({
     const formatted = format(day, 'yyyy-MM-dd');
     onChange(formatted, formatted);
   };
+
+  const isSameRange = (a: DateRange, b: DateRange) => {
+    const aFrom = a.from?.getTime() ?? null;
+    const aTo = a.to?.getTime() ?? null;
+    const bFrom = b.from?.getTime() ?? null;
+    const bTo = b.to?.getTime() ?? null;
+    return aFrom === bFrom && aTo === bTo;
+  };
+
+  // Keep draft range synced with external state while closed.
+  useEffect(() => {
+    if (open) return;
+    setRangeDraft((prev) => (isSameRange(prev, rangeSelectedFromProps) ? prev : rangeSelectedFromProps));
+  }, [open, startDate, endDate]);
+
+  // Every time the picker opens in range mode, start by selecting "from" first.
+  useEffect(() => {
+    if (!open || mode !== 'range') return;
+    setRangeDraft((prev) => (isSameRange(prev, rangeSelectedFromProps) ? prev : rangeSelectedFromProps));
+    setRangeStep('start');
+  }, [open, mode]);
 
   // Close on click outside
   useEffect(() => {
@@ -125,8 +159,8 @@ export default function DateRangeCalendar({
           {mode === 'range' ? (
             <Calendar
               mode="range"
-              selected={rangeSelected}
-              onSelect={handleRangeSelect}
+              selected={rangeDraft}
+              onDayClick={handleRangeDayClick}
               numberOfMonths={2}
               fixedWeeks
               today={new Date()}
@@ -159,19 +193,32 @@ export default function DateRangeCalendar({
                 singleSelected ? format(singleSelected, 'EEE, MMM d, yyyy') : 'Pick a date'
               ) : (
                 <>
-                  {rangeSelected.from && rangeSelected.to ? (
+                  {rangeDraft.from && rangeDraft.to ? (
                     <>
-                      {format(rangeSelected.from, 'EEE, MMM d')} → {format(rangeSelected.to, 'EEE, MMM d')}
+                      {format(rangeDraft.from, 'EEE, MMM d')} → {format(rangeDraft.to, 'EEE, MMM d')}
                     </>
-                  ) : rangeSelected.from ? (
-                    <>{format(rangeSelected.from, 'EEE, MMM d')} → pick end date</>
+                  ) : rangeDraft.from ? (
+                    <>{format(rangeDraft.from, 'EEE, MMM d')} → pick end date</>
                   ) : (
-                    'Click a start date, then an end date'
+                    rangeStep === 'start'
+                      ? 'Click a start date'
+                      : 'Click an end date'
                   )}
                 </>
               )}
             </div>
-            <Button size="sm" variant="secondary" onClick={() => { setOpen(false); onDone?.(); }}>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                if (mode === 'range' && rangeStep === 'end' && rangeDraft.from) {
+                  const single = format(rangeDraft.from, 'yyyy-MM-dd');
+                  onChange(single, single);
+                }
+                setOpen(false);
+                onDone?.();
+              }}
+            >
               Done
             </Button>
           </div>
