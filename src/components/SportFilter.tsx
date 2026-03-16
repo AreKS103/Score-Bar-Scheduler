@@ -7,6 +7,7 @@ import { getCategories, getLeaguesByCategory, CATEGORY_LOGOS, SPORTS_CONFIG } fr
 import { useFavoritesStore } from '@/lib/favoritesStore';
 import type { MatchEvent } from '@/types';
 import { cn } from '@/lib/utils';
+import SmartLogo from '@/components/ui/SmartLogo';
 
 interface SportFilterProps {
   activeFilter: string;
@@ -25,12 +26,7 @@ function CategoryIcon({ category }: { category: string }) {
   const logoUrl = CATEGORY_LOGOS[category];
   if (logoUrl) {
     return (
-      <img
-        src={logoUrl}
-        alt=""
-        className="w-4 h-4 object-contain shrink-0"
-        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-      />
+      <SmartLogo logo={logoUrl} alt="" className="w-4 h-4 object-contain shrink-0" />
     );
   }
   return <span className="w-4 h-4 shrink-0 rounded-full bg-muted-foreground/20 inline-block" />;
@@ -252,11 +248,11 @@ export default function SportFilter({
                           >
                             <span className="flex items-center gap-2 min-w-0">
                               {league.logo && (
-                                <img
-                                  src={league.logo}
+                                <SmartLogo
+                                  logo={league.logo}
+                                  publishLogo={league.publishLogo}
                                   alt=""
                                   className="w-3.5 h-3.5 object-contain shrink-0"
-                                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                                 />
                               )}
                               <span className="truncate">{league.label}</span>
@@ -381,11 +377,11 @@ export default function SportFilter({
                         >
                           <span className="flex items-center gap-2 min-w-0">
                             {league.logo && (
-                              <img
-                                src={league.logo}
+                              <SmartLogo
+                                logo={league.logo}
+                                publishLogo={league.publishLogo}
                                 alt=""
                                 className="w-3.5 h-3.5 object-contain shrink-0"
-                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                               />
                             )}
                             <span className="truncate">{league.label}</span>

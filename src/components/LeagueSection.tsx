@@ -5,6 +5,7 @@ import { Star, CheckSquare, Square, MinusSquare, ChevronDown, ChevronRight } fro
 import type { MatchEvent, ScreenTag } from '@/types';
 import { getSportConfig } from '@/lib/config';
 import MatchCard from '@/components/MatchCard';
+import SmartLogo from '@/components/ui/SmartLogo';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
@@ -198,11 +199,11 @@ const LeagueSection = memo(function LeagueSection({
       {/* League header */}
       <div className="flex items-center gap-2 mb-3 sticky top-0 bg-background backdrop-blur-sm py-2 z-10 -mx-3 px-3 sm:-mx-6 sm:px-6 border-b border-border/50">
         {config.logo && (
-          <img
-            src={config.logo}
+          <SmartLogo
+            logo={config.logo}
+            publishLogo={config.publishLogo}
             alt={config.label}
             className="w-5 h-5 object-contain"
-            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
           />
         )}
         {/* Bulk select toggle */}

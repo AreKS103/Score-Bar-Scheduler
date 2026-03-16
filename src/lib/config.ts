@@ -9,16 +9,16 @@ export const SPORTS_CONFIG: SportConfig[] = [
   { id: 'soccer-facup',          label: 'FA Cup',                             category: 'Football',    espnSlug: 'soccer/eng.fa',             logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/4.png' },
   { id: 'soccer-efl',            label: 'EFL Championship',                   category: 'Football',    espnSlug: 'soccer/eng.2',              logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/24.png' },
   { id: 'soccer-leagueone',      label: 'League One',                         category: 'Football',    espnSlug: 'soccer/eng.3',              logo: 'https://r2.thesportsdb.com/images/media/league/badge/afedb31688770443.png' },
-  { id: 'soccer-carabao',        label: 'Carabao Cup',                        category: 'Football',    espnSlug: 'soccer/eng.league_cup',     logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/41.png' },
+  { id: 'soccer-carabao',        label: 'Carabao Cup',                        category: 'Football',    espnSlug: 'soccer/eng.league_cup',     logo: '/EFL_(Carabao)_Cup_Logo.svg', publishLogo: 'https://raw.githubusercontent.com/AreKS103/Score-Bar-Scheduler/main/public/EFL_%28Carabao%29_Cup_Logo.svg' },
   { id: 'soccer-bundesliga',     label: 'Bundesliga',                         category: 'Football',    espnSlug: 'soccer/ger.1',              logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/10.png' },
   { id: 'soccer-ligue1',         label: 'Ligue 1',                            category: 'Football',    espnSlug: 'soccer/fra.1',              logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/9.png' },
   { id: 'soccer-laliga',         label: 'La Liga',                            category: 'Football',    espnSlug: 'soccer/esp.1',              logo: 'https://r2.thesportsdb.com/images/media/league/badge/ja4it51687628717.png' },
   { id: 'soccer-seriea',         label: 'Serie A',                            category: 'Football',    espnSlug: 'soccer/ita.1',              logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/12.png' },
-  { id: 'soccer-spfl',           label: 'SPFL Scottish Prem',                 category: 'Football',    espnSlug: 'soccer/sco.1',              logo: 'https://r2.thesportsdb.com/images/media/league/badge/72d3zc1688333496.png' },
+  { id: 'soccer-spfl',           label: 'SPFL Scottish Prem',                 category: 'Football',    espnSlug: 'soccer/sco.1',              logo: '/spfl.jpg', publishLogo: 'https://raw.githubusercontent.com/AreKS103/Score-Bar-Scheduler/main/public/spfl.jpg' },
   { id: 'soccer-eredivisie',     label: 'Eredivisie',                         category: 'Football',    espnSlug: 'soccer/ned.1',              logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/11.png' },
   { id: 'soccer-mls',            label: 'MLS',                                category: 'Football',    espnSlug: 'soccer/usa.1',              logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/19.png' },
-  { id: 'soccer-aleague',        label: 'A-League',                           category: 'Football',    espnSlug: 'soccer/aus.1',              logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/1308.png' },
-  { id: 'soccer-saudipro',       label: 'Saudi Pro League',                   category: 'Football',    espnSlug: 'soccer/ksa.1',              logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/2488.png' },
+  { id: 'soccer-aleague',        label: 'A-League',                           category: 'Football',    espnSlug: 'soccer/aus.1',              logo: '/A-League-logo-2.png', publishLogo: 'https://raw.githubusercontent.com/AreKS103/Score-Bar-Scheduler/main/public/A-League-logo-2.png' },
+  { id: 'soccer-saudipro',       label: 'Saudi Pro League',                   category: 'Football',    espnSlug: 'soccer/ksa.1',              logo: '/Roshn_Saudi_League_Logo.svg.png', publishLogo: 'https://raw.githubusercontent.com/AreKS103/Score-Bar-Scheduler/main/public/Roshn_Saudi_League_Logo.svg.png' },
   { id: 'soccer-jleague',        label: 'J-League',                           category: 'Football',    espnSlug: 'soccer/jpn.1',              logo: 'https://r2.thesportsdb.com/images/media/league/badge/3j8bni1675170553.png' },
   { id: 'soccer-afc',            label: 'AFC Champions League Elite',         category: 'Football',    espnSlug: 'soccer/afc.champions',      sportsdbId: '4719', logo: '/AFC.png', publishLogo: 'https://r2.thesportsdb.com/images/media/league/badge/gsbq4k1719686780.png' },
   { id: 'soccer-afc2',           label: 'AFC Champions League Two',           category: 'Football',    espnSlug: 'soccer/afc.cup',            sportsdbId: '4804', logo: 'https://r2.thesportsdb.com/images/media/league/badge/sfg2dl1719686962.png' },
@@ -50,7 +50,7 @@ export const SPORTS_CONFIG: SportConfig[] = [
 
   // ── Motorsport ─────────────────────────────────────────────────────────────
   { id: 'f1',                    label: 'Formula 1',                           category: 'Motorsport',  espnSlug: 'racing/f1',                 openf1: true, logo: 'https://r2.thesportsdb.com/images/media/league/badge/g8cofl1513623681.png' },
-  { id: 'motogp',                label: 'MotoGP',                              category: 'Motorsport',  espnSlug: null,                        sportsdbId: '4407', logo: 'https://r2.thesportsdb.com/images/media/league/badge/gg3c201768486075.png' },
+  { id: 'motogp',                label: 'MotoGP',                              category: 'Motorsport',  espnSlug: null,                        sportsdbId: '4407', logo: '/motogp.png', publishLogo: 'https://raw.githubusercontent.com/AreKS103/Score-Bar-Scheduler/main/public/motogp.png' },
   { id: 'indycar',               label: 'IndyCar',                             category: 'Motorsport',  espnSlug: 'racing/irl',                logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/indycar.png' },
 
   // ── Combat Sports ──────────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ export const SPORTS_CONFIG: SportConfig[] = [
   { id: 'boxing',                label: 'Boxing',                              category: 'Combat Sports', espnSlug: null,                     sportsdbId: '4445', logo: 'https://r2.thesportsdb.com/images/media/league/badge/6enin21740228549.png' },
 
   // ── Rugby Union ────────────────────────────────────────────────────────────
-  { id: 'rugby-superrugby',      label: 'Super Rugby Pacific',                category: 'Rugby',       espnSlug: 'rugby/242041', sportsdbId: '4401', logo: '/Super_Rugby_Pacific_logo.png' },
+  { id: 'rugby-superrugby',      label: 'Super Rugby Pacific',                category: 'Rugby',       espnSlug: 'rugby/242041', sportsdbId: '4401', logo: '/Super_Rugby_Pacific_logo.png', publishLogo: 'https://raw.githubusercontent.com/AreKS103/Score-Bar-Scheduler/main/public/Super_Rugby_Pacific_logo.png' },
   { id: 'rugby-sixnations',      label: 'Six Nations',                        category: 'Rugby',       espnSlug: 'rugby/180659',              logo: 'https://r2.thesportsdb.com/images/media/league/badge/7h1wr91738670253.png' },
   { id: 'rugby-premship',        label: 'Premiership Rugby',                  category: 'Rugby',       espnSlug: 'rugby/267979',              logo: 'https://r2.thesportsdb.com/images/media/league/badge/r59qxy1755025703.png' },
   { id: 'rugby-top14',           label: 'Top 14',                             category: 'Rugby',       espnSlug: 'rugby/270559',              logo: 'https://r2.thesportsdb.com/images/media/league/badge/xrsqtw1452903237.png' },
@@ -78,7 +78,7 @@ export const SPORTS_CONFIG: SportConfig[] = [
   { id: 'tennis-wta',            label: 'WTA Tour',                           category: 'Tennis',      espnSlug: 'tennis/wta',                logo: 'https://www.thesportsdb.com/images/media/league/badge/bddhun1768210678.png' },
 
   // ── Golf ───────────────────────────────────────────────────────────────────
-  { id: 'golf-pga',              label: 'PGA Tour',                           category: 'Golf',        espnSlug: 'golf/pga',                  logo: 'https://a.espncdn.com/combiner/i?img=/i/teamlogos/leagues/500/pgatour.png' },
+  { id: 'golf-pga',              label: 'PGA Tour',                           category: 'Golf',        espnSlug: 'golf/pga',                  logo: '/PGA_Tour_logo.svg', publishLogo: 'https://raw.githubusercontent.com/AreKS103/Score-Bar-Scheduler/main/public/PGA_Tour_logo.svg' },
   { id: 'golf-lpga',             label: 'LPGA Tour',                          category: 'Golf',        espnSlug: 'golf/lpga',                 logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/lpga.png' },
 ];
 

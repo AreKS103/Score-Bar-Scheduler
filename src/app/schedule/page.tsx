@@ -19,6 +19,8 @@ import {
   Menu,
   LogOut,
   Pencil,
+  Undo2,
+  Redo2,
 } from 'lucide-react';
 import { useScheduleStore } from '@/lib/store';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
@@ -40,6 +42,41 @@ import SettingsModal from '@/components/SettingsModal';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+
+interface ScheduleHistoryState {
+  events: MatchEvent[];
+  leagueOrder: string[];
+  featuredLeagues: Array<[string, string]>;
+  signature: string;
+}
+
+function buildHistorySignature(
+  events: MatchEvent[],
+  leagueOrder: string[],
+  featuredLeagues: Map<string, string>
+): string {
+  const eventSig = events
+    .map((e) => [
+      e.id,
+      e.sportId,
+      e.date,
+      e.time,
+      e.home,
+      e.away,
+      e.round,
+      e.tags.join(','),
+      e.isSelected ? '1' : '0',
+      e.isFeatured ? '1' : '0',
+    ].join('~'))
+    .join('|');
+
+  const orderSig = leagueOrder.join('|');
+  const featureSig = Array.from(featuredLeagues.entries())
+    .map(([id, label]) => `${id}:${label}`)
+    .join('|');
+
+  return `${eventSig}@@${orderSig}@@${featureSig}`;
+}
 
 export default function SchedulePage() {
   const {
@@ -136,8 +173,67 @@ export default function SchedulePage() {
   const sidebarScrollRef = useRef<HTMLDivElement>(null);
   const htmlPreviewRef = useRef<HTMLDivElement>(null);
   const highlightMenuRef = useRef<HTMLDivElement>(null);
+  const undoStackRef = useRef<ScheduleHistoryState[]>([]);
+  const redoStackRef = useRef<ScheduleHistoryState[]>([]);
+  const lastHistoryStateRef = useRef<ScheduleHistoryState | null>(null);
+  const isApplyingHistoryRef = useRef(false);
+  const [historyVersion, setHistoryVersion] = useState(0);
   // Ref mirror of selectedByLeague so moveLeague never closes over stale data
   const selectedByLeagueRef = useRef<Map<string, MatchEvent[]>>(new Map());
+
+  const captureHistoryState = useCallback((): ScheduleHistoryState => ({
+    events,
+    leagueOrder: [...leagueOrder],
+    featuredLeagues: Array.from(featuredLeagues.entries()),
+    signature: buildHistorySignature(events, leagueOrder, featuredLeagues),
+  }), [events, leagueOrder, featuredLeagues]);
+
+  const applyHistoryState = useCallback((state: ScheduleHistoryState) => {
+    isApplyingHistoryRef.current = true;
+    setEvents(state.events);
+    setLeagueOrder(state.leagueOrder);
+    setFeaturedLeagues(new Map(state.featuredLeagues));
+    setHistoryVersion((v) => v + 1);
+  }, [setEvents]);
+
+  const undo = useCallback(() => {
+    const previous = undoStackRef.current.pop();
+    if (!previous) return;
+
+    const current = captureHistoryState();
+    redoStackRef.current.push(current);
+    applyHistoryState(previous);
+  }, [applyHistoryState, captureHistoryState]);
+
+  const redo = useCallback(() => {
+    const next = redoStackRef.current.pop();
+    if (!next) return;
+
+    const current = captureHistoryState();
+    undoStackRef.current.push(current);
+    applyHistoryState(next);
+  }, [applyHistoryState, captureHistoryState]);
+
+  const canUndo = historyVersion >= 0 && undoStackRef.current.length > 0;
+  const canRedo = historyVersion >= 0 && redoStackRef.current.length > 0;
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const isUndoShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z';
+      if (!isUndoShortcut) return;
+
+      const isRedoShortcut = event.shiftKey;
+      event.preventDefault();
+      if (isRedoShortcut) {
+        redo();
+        return;
+      }
+      undo();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [undo, redo]);
 
   // ─── Fetch all sports data via Server API (cached) ───────────────────────────
   const handleFetch = useCallback(async (forceRefresh = false) => {
@@ -362,6 +458,34 @@ export default function SchedulePage() {
 
   const previewContentCount = selectedCount + featuredOnlyLeagues.length;
 
+  // ─── History tracking for undo/redo ───────────────────────────────────────
+  useEffect(() => {
+    const current = captureHistoryState();
+
+    if (!lastHistoryStateRef.current) {
+      lastHistoryStateRef.current = current;
+      return;
+    }
+
+    const previous = lastHistoryStateRef.current;
+    const changed = previous.signature !== current.signature;
+    if (!changed) return;
+
+    if (isApplyingHistoryRef.current) {
+      isApplyingHistoryRef.current = false;
+      lastHistoryStateRef.current = current;
+      return;
+    }
+
+    undoStackRef.current.push(previous);
+    if (undoStackRef.current.length > 80) {
+      undoStackRef.current.shift();
+    }
+    redoStackRef.current = [];
+    lastHistoryStateRef.current = current;
+    setHistoryVersion((v) => v + 1);
+  }, [captureHistoryState]);
+
   // Auto-clear stale league spotlights when that league has no events
   // in the currently loaded date range (e.g. F1 week with no races).
   useEffect(() => {
@@ -386,13 +510,13 @@ export default function SchedulePage() {
     });
   }, [events]);
 
-  // Keep leagueOrder in sync: preserve user's order, append new leagues, drop removed ones
+  // Keep leagueOrder in sync: preserve user's order history and append new leagues.
+  // Do not drop unselected leagues so undo/redo can restore exact prior positions.
   useEffect(() => {
     setLeagueOrder((prev) => {
       const keys = Array.from(selectedByLeague.keys());
-      const existing = prev.filter((k) => selectedByLeague.has(k));
       const added = keys.filter((k) => !prev.includes(k));
-      return [...existing, ...added];
+      return added.length ? [...prev, ...added] : prev;
     });
   }, [selectedByLeague]);
 
@@ -1005,7 +1129,25 @@ export default function SchedulePage() {
               </Button>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={undo}
+                disabled={!canUndo}
+                title="Undo last schedule change (Ctrl+Z)"
+              >
+                <Undo2 className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={redo}
+                disabled={!canRedo}
+                title="Redo last undone change (Ctrl+Shift+Z)"
+              >
+                <Redo2 className="w-4 h-4" />
+              </Button>
               <PublishButton
                 getHTML={getHTML}
                 disabled={selectedCount === 0}

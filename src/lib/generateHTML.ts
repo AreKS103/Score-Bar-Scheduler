@@ -4,6 +4,7 @@ import {
   FOOTBALL_LEAGUE_ORDER,
   SPORTS_CONFIG,
 } from '@/lib/config';
+import { LOGO_PLACEHOLDER_REMOTE, resolvePublishLogoUrl } from '@/lib/logo';
 import { formatDisplayDate } from '@/lib/timezone';
 
 /**
@@ -47,7 +48,7 @@ function footballLeagueSort(sportId: string): number {
  * - `publishLogo` is used in generated HTML for WordPress
  */
 function getPublishLogoSrc(logo: string, publishLogo?: string): string {
-  return (publishLogo || logo || '').trim();
+  return resolvePublishLogoUrl(logo, publishLogo);
 }
 
 /**
@@ -297,7 +298,7 @@ export function generateHTML(events: MatchEvent[], leagueOrder?: string[], featu
     // League header with logo
     if (leagueLogo) {
       parts.push(
-        `<img data-preview-league="1" data-preview-sport-id="${escapedLeagueKey}" data-preview-league-label="${escapedLeagueLabel}" src="${leagueLogo}" alt="${escapedLeagueLabel}" style="height:40px;vertical-align:middle;margin-right:8px;" loading="lazy" decoding="async" referrerpolicy="no-referrer" crossorigin="anonymous" />`
+        `<img data-preview-league="1" data-preview-sport-id="${escapedLeagueKey}" data-preview-league-label="${escapedLeagueLabel}" src="${leagueLogo}" alt="${escapedLeagueLabel}" style="height:40px;vertical-align:middle;margin-right:8px;" loading="lazy" decoding="async" referrerpolicy="no-referrer" crossorigin="anonymous" onerror="this.onerror=null;this.src='${LOGO_PLACEHOLDER_REMOTE}';" />`
       );
     }
     parts.push(`<h3 data-preview-league="1" data-preview-sport-id="${escapedLeagueKey}" data-preview-league-label="${escapedLeagueLabel}">${escapedLeagueLabel}</h3>`);
