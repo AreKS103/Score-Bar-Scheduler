@@ -126,7 +126,7 @@ export default function SchedulePage() {
   const [sortVersion, setSortVersion] = useState(0);
   const [headerHeight, setHeaderHeight] = useState(116);
   const hasFetchedRef = useRef(false);
-  const prevSelectedCountRef = useRef(0);
+  const prevPreviewContentCountRef = useRef(0);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const widthRef = useRef(700);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -336,6 +336,32 @@ export default function SchedulePage() {
     return map;
   }, [events]);
 
+  const featuredOnlyLeagues = useMemo(() => {
+    const selectedLeagueIds = new Set(Array.from(selectedByLeague.keys()));
+    const entries: { sportId: string; leagueLabel: string }[] = [];
+
+    for (const [sportId, customLabel] of featuredLeagues.entries()) {
+      if (selectedLeagueIds.has(sportId)) continue;
+      const configLabel = SPORTS_CONFIG.find((s) => s.id === sportId)?.label ?? sportId;
+      entries.push({ sportId, leagueLabel: customLabel || configLabel });
+    }
+
+    entries.sort((a, b) => {
+      const aIdx = leagueOrder.indexOf(a.sportId);
+      const bIdx = leagueOrder.indexOf(b.sportId);
+      if (aIdx !== -1 || bIdx !== -1) {
+        const normA = aIdx === -1 ? Number.MAX_SAFE_INTEGER : aIdx;
+        const normB = bIdx === -1 ? Number.MAX_SAFE_INTEGER : bIdx;
+        return normA - normB;
+      }
+      return a.leagueLabel.localeCompare(b.leagueLabel);
+    });
+
+    return entries;
+  }, [selectedByLeague, featuredLeagues, leagueOrder]);
+
+  const previewContentCount = selectedCount + featuredOnlyLeagues.length;
+
   // Auto-clear stale league spotlights when that league has no events
   // in the currently loaded date range (e.g. F1 week with no races).
   useEffect(() => {
@@ -417,18 +443,18 @@ export default function SchedulePage() {
     return () => window.removeEventListener('beforeunload', flush);
   }, [events, leagueOrder, featuredLeagues]);
 
-  // ─── Auto-show panel on first selection; auto-hide when none ─────────────
+  // ─── Auto-show panel on first preview item; auto-hide when none ──────────
   useEffect(() => {
-    if (selectedCount > prevSelectedCountRef.current) {
+    if (previewContentCount > prevPreviewContentCountRef.current) {
       setPreviewOpen(true);
     }
-    if (selectedCount === 0) {
+    if (previewContentCount === 0) {
       setPreviewOpen(false);
       setPreviewCheckedIds(new Set());
       setDeleteAllConfirm(false);
     }
-    prevSelectedCountRef.current = selectedCount;
-  }, [selectedCount]);
+    prevPreviewContentCountRef.current = previewContentCount;
+  }, [previewContentCount]);
 
   // Sync panel DOM width on state change (width is managed outside React for resize perf)
   useEffect(() => {
@@ -677,7 +703,9 @@ export default function SchedulePage() {
 
   // ─── HTML generation — recomputes whenever leagueOrder, events, or sortVersion changes ─
   const html = useMemo(
-    () => selectedCount > 0 ? generateHTML(events, leagueOrder, featuredLeagues) : '',
+    () => (selectedCount > 0 || featuredLeagues.size > 0)
+      ? generateHTML(events, leagueOrder, featuredLeagues)
+      : '',
     [events, leagueOrder, sortVersion, selectedCount, featuredLeagues] // sortVersion is the safety net
   );
 
@@ -1136,7 +1164,7 @@ export default function SchedulePage() {
       </main>
 
       {/* ── Preview panel (custom resizable, no overlay) ────────────────────── */}
-      {selectedCount > 0 && (
+      {previewContentCount > 0 && (
         <button
           ref={toggleBtnRef}
           onClick={() => { setPreviewOpen((o) => !o); setDeleteAllConfirm(false); }}
@@ -1220,10 +1248,35 @@ export default function SchedulePage() {
             </div>
 
             <div ref={sidebarScrollRef} className="flex-1 overflow-y-auto p-2 space-y-3">
-              {selectedCount === 0 ? (
+              {selectedCount === 0 && featuredOnlyLeagues.length === 0 ? (
                 <p className="text-[10px] text-muted-foreground text-center pt-8">No matches selected</p>
               ) : (
-                orderedSelectedByLeague.map(([sportId, matches], leagueIdx) => (
+                <>
+                {featuredOnlyLeagues.map((league) => (
+                  <div
+                    key={`featured-only-${league.sportId}`}
+                    className="border border-yellow-500/40 bg-yellow-500/5 rounded-lg p-2 transition-colors"
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      openHighlightMenu({
+                        type: 'league',
+                        sportId: league.sportId,
+                        leagueLabel: league.leagueLabel,
+                        x: event.clientX,
+                        y: event.clientY,
+                      });
+                    }}
+                  >
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide truncate pr-1">
+                      {league.leagueLabel}
+                      <span className="ml-1 text-yellow-400">★</span>
+                    </p>
+                    <p className="mt-1 text-[10px] text-muted-foreground/80">
+                    </p>
+                  </div>
+                ))}
+
+                {orderedSelectedByLeague.map(([sportId, matches], leagueIdx) => (
                   <div
                     key={sportId}
                     ref={(el) => { if (el) leagueItemRefs.current.set(sportId, el); else leagueItemRefs.current.delete(sportId); }}
@@ -1333,7 +1386,8 @@ export default function SchedulePage() {
                       })}
                     </div>
                   </div>
-                ))
+                ))}
+                </>
               )}
             </div>
 

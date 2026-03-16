@@ -216,9 +216,6 @@ function getLeagueAbbrev(sportId: string, label: string): string {
  */
 export function generateHTML(events: MatchEvent[], leagueOrder?: string[], featuredLeagues?: Map<string, string>): string {
   const selected = events.filter((e) => e.isSelected);
-  if (!selected.length) return '<p>No matches selected for this week.</p>';
-
-  // Featured events: show even if not in the selected list
   const featured = events.filter((e) => e.isFeatured);
   const leagueSpotlights = featuredLeagues ?? new Map<string, string>();
 
@@ -228,6 +225,10 @@ export function generateHTML(events: MatchEvent[], leagueOrder?: string[], featu
   const highlightsHTML = generateHighlights(featured, leagueSpotlights);
   if (highlightsHTML) {
     parts.push(highlightsHTML);
+  }
+
+  if (!selected.length) {
+    return parts.length > 0 ? parts.join('\n') : '<p>No matches selected for this week.</p>';
   }
 
   // Group events by league → date (flat, no category nesting)
