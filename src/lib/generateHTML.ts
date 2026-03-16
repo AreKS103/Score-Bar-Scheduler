@@ -225,6 +225,9 @@ export function generateHTML(events: MatchEvent[], leagueOrder?: string[], featu
   const highlightsHTML = generateHighlights(featured, leagueSpotlights);
   if (highlightsHTML) {
     parts.push(highlightsHTML);
+    // Add an explicit post-highlights gap so published output clearly separates
+    // the highlight bullets from the first sport category heading.
+    parts.push('<p>&nbsp;</p>');
   }
 
   if (!selected.length) {
@@ -257,6 +260,7 @@ export function generateHTML(events: MatchEvent[], leagueOrder?: string[], featu
 
   // Emit leagues in order; insert a category <h2> only when category changes
   let lastCategory = '';
+  let previousLeagueCategory = '';
 
   for (const leagueKey of ordered) {
     const dateMap = byLeague.get(leagueKey)!;
@@ -275,6 +279,12 @@ export function generateHTML(events: MatchEvent[], leagueOrder?: string[], featu
         lastCategory = category;
       }
     }
+
+    // Add a subtle gap between leagues inside the same sport category.
+    if (previousLeagueCategory !== '' && category === previousLeagueCategory) {
+      parts.push('<br/>');
+    }
+    previousLeagueCategory = category;
 
     const config = SPORTS_CONFIG.find((s) => s.id === leagueKey);
     const leagueLabel = config?.label || firstEvent?.leagueLabel || leagueKey;
