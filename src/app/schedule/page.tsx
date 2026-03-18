@@ -160,6 +160,7 @@ export default function SchedulePage() {
     setActiveSportFilter,
   } = useScheduleStore();
 
+  const [scrollToMatch, setScrollToMatch] = useState<{ id: string; ts: number } | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<MatchEvent | null>(null);
   const [isFetching, setIsFetching] = useState(true);
@@ -193,6 +194,17 @@ export default function SchedulePage() {
       }
     | null
   >(null);
+  const handleToggleSelected = useCallback(
+    (id: string) => {
+      const match = useScheduleStore.getState().events.find(e => e.id === id);
+      toggleSelected(id);
+      if (match && !match.isSelected) {
+        setScrollToMatch({ id, ts: Date.now() });
+      }
+    },
+    [toggleSelected]
+  );
+
   const [flashKey, setFlashKey] = useState(0);
   const router = useRouter();
 
@@ -812,6 +824,7 @@ export default function SchedulePage() {
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
+    setScrollToMatch({ id, ts: Date.now() });
   }, []);
 
   const deleteManualEventsPermanently = useCallback(async (ids: string[]) => {
@@ -1363,7 +1376,7 @@ export default function SchedulePage() {
               events={leagueEvents}
               isLoading={fetchStatuses[sportId]?.loading}
               error={fetchStatuses[sportId]?.error}
-              onToggleSelected={toggleSelected}
+              onToggleSelected={handleToggleSelected}
               onToggleFeatured={toggleFeatured}
               onToggleTag={toggleTag}
               isFeaturedLeague={featuredLeagues.has(sportId)}
@@ -1628,6 +1641,7 @@ export default function SchedulePage() {
                 onCopy={handleCopyHTML}
                 copied={copied}
                 onPreviewContextMenu={openHighlightMenu}
+                scrollToMatchId={scrollToMatch?.id}
               />
             </div>
           </div>

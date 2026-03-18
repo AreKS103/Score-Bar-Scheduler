@@ -1,4 +1,5 @@
 'use client';
+import { useRef, useEffect } from 'react';
 import { Copy, CheckCircle } from 'lucide-react';
 import type { MouseEvent } from 'react';
 import { cn } from '@/lib/utils';
@@ -27,6 +28,7 @@ interface PreviewPanelProps {
         y: number;
       }
   ) => void;
+  scrollToMatchId?: string | null;
 }
 
 export default function PreviewPanel({
@@ -37,7 +39,38 @@ export default function PreviewPanel({
   onCopy,
   copied,
   onPreviewContextMenu,
+  scrollToMatchId,
 }: PreviewPanelProps) {
+  const previewRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!scrollToMatchId || !previewRef.current) return;
+    
+    // We delay slightly to ensure dangerouslySetInnerHTML has painted the new nodes
+    const timer = setTimeout(() => {
+      const el = previewRef.current?.querySelector(`[data-preview-match-id="${scrollToMatchId}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        
+        // Add a temporary highlight effect by directly modifying the DOM element
+        const htmlElement = el as HTMLElement;
+        const originalBg = htmlElement.style.backgroundColor;
+        htmlElement.style.transition = 'background-color 0.5s ease-out';
+        htmlElement.style.backgroundColor = 'rgba(234, 179, 8, 0.3)'; // Highlight color (amber-500 with opacity)
+        
+        setTimeout(() => {
+          htmlElement.style.backgroundColor = originalBg;
+          // Clear transition after fading out
+          setTimeout(() => {
+            htmlElement.style.transition = '';
+          }, 500);
+        }, 1500);
+      }
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [scrollToMatchId, html]);
+
   const handlePreviewContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     // In preview, always suppress the browser context menu.
     event.preventDefault();
@@ -130,6 +163,7 @@ export default function PreviewPanel({
 
       {/* HTML preview — adapts to current theme */}
       <div
+        ref={previewRef}
         className="bg-card border border-border rounded-lg p-8 overflow-y-auto prose prose-sm max-w-none
           dark:prose-invert
           [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mt-0 [&_h2]:mb-0
