@@ -136,6 +136,13 @@ const FightCardGroup = memo(function FightCardGroup({
       })()}
     </div>
   );
+}, (prev, next) => {
+  if (prev.main !== next.main) return false;
+  if (prev.undercards.length !== next.undercards.length) return false;
+  for (let i = 0; i < prev.undercards.length; i++) {
+    if (prev.undercards[i] !== next.undercards[i]) return false;
+  }
+  return true;
 });
 
 const LeagueSection = memo(function LeagueSection({
@@ -313,6 +320,16 @@ const LeagueSection = memo(function LeagueSection({
       )}
     </div>
   );
+}, (prev, next) => {
+  if (prev.sportId !== next.sportId) return false;
+  if (prev.isLoading !== next.isLoading) return false;
+  if (prev.error !== next.error) return false;
+  if (prev.isFeaturedLeague !== next.isFeaturedLeague) return false;
+  if (prev.events.length !== next.events.length) return false;
+  for (let i = 0; i < prev.events.length; i++) {
+    if (prev.events[i] !== next.events[i]) return false;
+  }
+  return true;
 });
 
 export default LeagueSection;

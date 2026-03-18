@@ -37,6 +37,8 @@ export default function SmartLogo({
       alt={alt}
       title={title}
       className={className}
+      loading="lazy"
+      decoding="async"
       onError={(event) => {
         if (index < candidates.length - 1) {
           setIndex((prev) => prev + 1);

@@ -798,9 +798,9 @@ export default function SchedulePage() {
   }, [highlightMenu, closeHighlightMenu]);
 
   const bulkSelectLeague = useCallback((sportId: string, selectAll: boolean) => {
-    const ids = events.filter((e) => e.sportId === sportId).map((e) => e.id);
+    const ids = useScheduleStore.getState().events.filter((e) => e.sportId === sportId).map((e) => e.id);
     batchSetSelected(ids, selectAll);
-  }, [events, batchSetSelected]);
+  }, [batchSetSelected]);
 
   const handleDeleteSchedule = useCallback(async () => {
     await fetch('/api/delete-schedule', { method: 'POST' });
