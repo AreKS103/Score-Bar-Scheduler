@@ -1,19 +1,18 @@
-const RAW_PUBLIC_BASE = 'https://raw.githubusercontent.com/AreKS103/Score-Bar-Scheduler/main/public';
+// The absolute Base URL pointing to this app's deployed public folder.
+// This is used for generating absolute URLs for the WordPress integration
+// so it doesn't 404. Github Raw won't work because the repo is private.
+const APP_PUBLIC_BASE = 'https://score-bar-scheduler.vercel.app';
 
 export const LOGO_PLACEHOLDER_LOCAL = '/file.svg';
-export const LOGO_PLACEHOLDER_REMOTE = `${RAW_PUBLIC_BASE}/file.svg`;
+export const LOGO_PLACEHOLDER_REMOTE = `${APP_PUBLIC_BASE}/file.svg`;
 
 function isHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);
 }
 
-function toRawPublicUrl(pathValue: string): string {
-  const normalized = pathValue.startsWith('/') ? pathValue.slice(1) : pathValue;
-  const encoded = normalized
-    .split('/')
-    .map((segment) => encodeURIComponent(segment))
-    .join('/');
-  return `${RAW_PUBLIC_BASE}/${encoded}`;
+function toAbsolutePublicUrl(pathValue: string): string {
+  const normalized = pathValue.startsWith('/') ? pathValue : `/${pathValue}`;
+  return `${APP_PUBLIC_BASE}${normalized}`;
 }
 
 export function resolvePublishLogoUrl(logo: string, publishLogo?: string): string {
@@ -23,7 +22,7 @@ export function resolvePublishLogoUrl(logo: string, publishLogo?: string): strin
   const primary = (logo || '').trim();
   if (!primary) return '';
   if (isHttpUrl(primary)) return primary;
-  if (primary.startsWith('/')) return toRawPublicUrl(primary);
+  if (primary.startsWith('/')) return toAbsolutePublicUrl(primary);
   return primary;
 }
 
@@ -37,7 +36,7 @@ export function getLogoCandidates(logo?: string, publishLogo?: string): string[]
 
   // If a relative path is given, also try the opposite flavor explicitly.
   if (primary.startsWith('/')) {
-    out.push(toRawPublicUrl(primary));
+    out.push(toAbsolutePublicUrl(primary));
   }
 
   out.push(LOGO_PLACEHOLDER_LOCAL);

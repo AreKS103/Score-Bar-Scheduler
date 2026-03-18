@@ -136,11 +136,7 @@ export const SPORTS_CONFIG: SportConfig[] = [
 ].map((sport) => ({
   ...sport,
   logo: LOCAL_LEAGUE_LOGOS[sport.id] ?? sport.logo,
-  publishLogo:
-    sport.publishLogo ??
-    (LOCAL_LEAGUE_LOGOS[sport.id] && /^https?:\/\//i.test(sport.logo)
-      ? sport.logo
-      : undefined),
+  publishLogo: sport.publishLogo,
 }));
 
 export const CATEGORY_ORDER = [
