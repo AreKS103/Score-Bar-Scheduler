@@ -126,11 +126,13 @@ if (!function_exists('schedule_enqueue_editor_sync')) {
         $api_key = get_option('schedule_api_key', '');
         if (empty($api_key)) return;
         $embed_token = get_option('schedule_embed_token', '');
+        $sync_file = plugin_dir_path(__FILE__) . 'includes/elementor-editor-sync.js';
+        $sync_ver  = file_exists($sync_file) ? filemtime($sync_file) : '1.0.0';
         wp_enqueue_script(
             'schedule-editor-sync',
             SCHEDULE_PLUGIN_URL . 'includes/elementor-editor-sync.js',
             [],
-            '1.0.0',
+            (string)$sync_ver,
             true
         );
         wp_localize_script('schedule-editor-sync', '_sbEditorCfg', [

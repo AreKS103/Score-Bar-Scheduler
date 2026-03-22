@@ -158,6 +158,84 @@
 
   var deleteTimers = {};
 
+  function attachDocObserver(doc) {
+    new MutationObserver(function (mutations) {
+      mutations.forEach(function (mutation) {
+
+        // ── Removed nodes → potential DELETE ────────────────────────────
+        mutation.removedNodes.forEach(function (node) {
+          if (node.nodeType !== 1) return;
+          var candidates = [];
+          if (node.dataset && node.dataset.widget_type === 'schedule_widget.default') {
+            candidates.push(node);
+          }
+          if (typeof node.querySelectorAll === 'function') {
+            node.querySelectorAll('[data-widget_type^="schedule_widget"]').forEach(function (w) {
+              candidates.push(w);
+            });
+          }
+          candidates.forEach(function (w) {
+            var widgetId = (w.dataset && w.dataset.id) || null;
+            if (!widgetId) return;
+            if (deleteTimers[widgetId]) clearTimeout(deleteTimers[widgetId]);
+            deleteTimers[widgetId] = setTimeout(function () {
+              delete deleteTimers[widgetId];
+              try {
+                var stillExists = doc.querySelector('[data-id="' + widgetId + '"]');
+                if (stillExists) return;
+              } catch (e) {}
+              var embedId = null;
+              try {
+                var fr = w.querySelector('iframe[src]');
+                if (fr) embedId = new URL(fr.src).searchParams.get('embedId') || null;
+              } catch (e) {}
+              console.log('[SB] DOM observer delete:', widgetId, embedId);
+              apiDeleteOnce(widgetId, embedId);
+            }, 2000);
+          });
+        });
+
+        // ── Added nodes → potential REGISTER ────────────────────────────
+        mutation.addedNodes.forEach(function (node) {
+          if (node.nodeType !== 1) return;
+
+          var addedCandidates = [];
+          if (node.dataset && node.dataset.widget_type &&
+              node.dataset.widget_type.indexOf('schedule_widget') === 0) {
+            addedCandidates.push(node);
+          }
+          if (typeof node.querySelectorAll === 'function') {
+            node.querySelectorAll('[data-widget_type^="schedule_widget"]').forEach(function (w) {
+              addedCandidates.push(w);
+            });
+          }
+
+          addedCandidates.forEach(function (w) {
+            var wid = w.dataset && w.dataset.id;
+            // Cancel any pending delete for this widget (it's being re-added)
+            if (wid && deleteTimers[wid]) {
+              clearTimeout(deleteTimers[wid]);
+              delete deleteTimers[wid];
+            }
+            var widgetId = wid || null;
+            if (!widgetId) return;
+            // embedId may be null — iframe loads async after the wrapper appears.
+            // The embed beacon in elementor-widget.php will send full data once loaded.
+            var embedId = null;
+            try {
+              var fr = w.querySelector('iframe[src]');
+              if (fr) embedId = new URL(fr.src).searchParams.get('embedId') || null;
+            } catch (e) {}
+            console.log('[SB] DOM addedNode REGISTERING:', widgetId, embedId);
+            apiRegister(widgetId, embedId);
+          });
+        });
+
+      });
+    }).observe(doc.body, { childList: true, subtree: true });
+    console.log('[SB] MutationObserver attached to iframe body');
+  }
+
   function observePreviewIframe() {
     console.log('[SB] observePreviewIframe called');
     var _iframe = document.getElementById('elementor-preview-iframe');
@@ -170,63 +248,17 @@
         console.warn('[SB] observePreviewIframe: iframe not ready, MutationObserver not attached');
         return;
       }
-      console.log('[SB] attaching MutationObserver to preview iframe body');
-      var doc = iframe.contentDocument;
-
-      new MutationObserver(function (mutations) {
-        mutations.forEach(function (mutation) {
-          mutation.removedNodes.forEach(function (node) {
-            if (node.nodeType !== 1) return;
-            var candidates = [];
-
-            if (node.dataset && node.dataset.widget_type === 'schedule_widget.default') {
-              candidates.push(node);
-            }
-            if (typeof node.querySelectorAll === 'function') {
-              node.querySelectorAll('[data-widget_type^="schedule_widget"]').forEach(function (w) {
-                candidates.push(w);
-              });
-            }
-
-            candidates.forEach(function (w) {
-              var widgetId = (w.dataset && w.dataset.id) || null;
-              if (!widgetId) return;
-              if (deleteTimers[widgetId]) clearTimeout(deleteTimers[widgetId]);
-              deleteTimers[widgetId] = setTimeout(function () {
-                delete deleteTimers[widgetId];
-                try {
-                  var stillExists = doc.querySelector('[data-id="' + widgetId + '"]');
-                  if (stillExists) return;
-                } catch (e) {}
-                var embedId = null;
-                try {
-                  var fr = w.querySelector('iframe[src]');
-                  if (fr) embedId = new URL(fr.src).searchParams.get('embedId') || null;
-                } catch (e) {}
-                console.log('[SB] DOM observer delete:', widgetId, embedId);
-                apiDeleteOnce(widgetId, embedId);
-              }, 2000);
-            });
-          });
-
-          mutation.addedNodes.forEach(function (node) {
-            if (node.nodeType !== 1) return;
-            var check = function (el) {
-              if (el.dataset && el.dataset.widget_type &&
-                  el.dataset.widget_type.indexOf('schedule_widget') === 0 &&
-                  el.dataset.id && deleteTimers[el.dataset.id]) {
-                clearTimeout(deleteTimers[el.dataset.id]);
-                delete deleteTimers[el.dataset.id];
-              }
-            };
-            check(node);
-            if (typeof node.querySelectorAll === 'function') {
-              node.querySelectorAll('[data-widget_type^="schedule_widget"]').forEach(check);
-            }
-          });
-        });
-      }).observe(doc.body, { childList: true, subtree: true });
-      console.log('[SB] MutationObserver attached successfully');
+      attachDocObserver(iframe.contentDocument);
+      // Re-attach after every preview reload (e.g. when widget settings change)
+      iframe.addEventListener('load', function () {
+        console.log('[SB] preview iframe reloaded, re-attaching observer');
+        try {
+          var newDoc = iframe.contentDocument || iframe.contentWindow.document;
+          if (newDoc && newDoc.body) {
+            attachDocObserver(newDoc);
+          }
+        } catch (e) { console.warn('[SB] re-attach after reload failed', e); }
+      });
     } catch (e) {
       console.warn('[SB] observePreviewIframe failed', e);
     }
