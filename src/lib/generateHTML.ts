@@ -160,21 +160,13 @@ function countryFlag(code: string): string {
 }
 
 function generateMatchLine(event: MatchEvent): string {
-  const logoStyle = 'height:18px;width:auto;vertical-align:middle;margin-right:3px;flex-shrink:0';
   const isCombat = ['boxing', 'ufc', 'bellator'].includes(event.sportId);
   const homeFlag = isCombat && event.homeCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(event.homeCountry)}</span>` : '';
   const awayFlag = isCombat && event.awayCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(event.awayCountry)}</span>` : '';
-  const homeImg = event.homeLogo ? `<img src="${escapeHTML(event.homeLogo)}" alt="" loading="lazy" style="${logoStyle}" />` : '';
-  const awayImg = event.awayLogo && event.away ? `<img src="${escapeHTML(event.awayLogo)}" alt="" loading="lazy" style="${logoStyle}" />` : '';
-  const leagueSrc = !event.away && !homeImg ? (() => {
-    const cfg = SPORTS_CONFIG.find(sc => sc.id === event.sportId);
-    return cfg ? resolvePublishLogoUrl(cfg.logo || event.leagueLogo || '', cfg.publishLogo) : '';
-  })() : '';
-  const leagueImg = leagueSrc ? `<img src="${escapeHTML(leagueSrc)}" alt="" loading="lazy" style="${logoStyle}" />` : '';
   const vsStyle = 'font-style:italic;font-size:.85em;opacity:0.5';
   const matchName = event.away
-    ? `${homeImg}${homeFlag}${escapeHTML(event.home)} <span style="${vsStyle}">vs</span> ${awayImg}${awayFlag}${escapeHTML(event.away)}`
-    : `${leagueImg}${escapeHTML(event.home)}`;
+    ? `${homeFlag}${escapeHTML(event.home)} <span style="${vsStyle}">vs</span> ${awayFlag}${escapeHTML(event.away)}`
+    : `${escapeHTML(event.home)}`;
   const roundStr = event.round ? ` \u2013 ${escapeHTML(event.round)}` : '';
   const tags = formatTags(event.tags);
   return `${event.time} \u2013 ${matchName}${roundStr}${tags}`;
