@@ -33,10 +33,7 @@
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts",
-    "**/*.mts",
-    "../../../../AppData/Local/scorebarschedule-next/types/**/*.ts",
-    "../../../../AppData/Local/scorebarschedule-next/dev/types/**/*.ts"
+    "**/*.mts"
   ],
   "exclude": [
     "node_modules"
