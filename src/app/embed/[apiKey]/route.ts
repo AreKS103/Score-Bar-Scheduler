@@ -107,8 +107,7 @@ body{padding:${bodyPad}}
 .schedule-content p>strong{display:block;font-size:var(--sb-date-size)!important;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:${dateMargin}}
 .schedule-content p{margin:0;padding:0;line-height:${lineH}}
 .match-group{margin:2px 0 ${Math.round(lineH * 8)}px}
-.schedule-content span[data-preview-match]{display:flex;align-items:center;gap:6px;padding:5px 0;color:var(--text);font-size:var(--sb-match-size)!important;border-bottom:1px solid var(--border,#e5e7eb)}
-.schedule-content span[data-preview-match]:last-child{border-bottom:none}
+.schedule-content span[data-preview-match]{display:flex;align-items:center;gap:6px;padding:5px 0;color:var(--text);font-size:var(--sb-match-size)!important}
 .schedule-content>br,.sport-section>br{display:none}
 .schedule-content ul{list-style:none;padding:0;margin:0 0 10px}
 .schedule-content ul li{padding:4px 0;border-bottom:1px solid var(--border);font-size:.9em}
@@ -123,13 +122,13 @@ ${isCard ? `.league-block{background:var(--card-bg);border:1px solid var(--borde
 .mc-team{display:inline-flex;align-items:center;gap:3px}
 .mc-round{font-size:.82em;color:var(--muted,#888)}
 .hl-section{margin-bottom:22px}
-.hl-title{font-size:1.1em;font-weight:800;color:var(--heading,var(--text));margin:0 0 12px}
+.hl-title{font-size:var(--sb-h3-size)!important;font-weight:800;color:var(--heading,var(--text));margin:0 0 12px}
 .hl-date-group{margin-bottom:10px}
-.hl-date-header{font-size:.72em;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted,#888);padding:6px 0;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:8px}
+.hl-date-header{font-size:var(--sb-date-size)!important;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted,#888);padding:6px 0;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:8px}
 .hl-event{padding:7px 0}
 .hl-event-meta{display:flex;align-items:center;gap:6px;margin-bottom:4px}
-.hl-time{font-size:.8em;font-weight:600;color:var(--accent,#3b82f6)}
-.hl-league-name{font-size:.8em;font-weight:700;color:var(--muted,#888)}
+.hl-time{font-size:var(--sb-date-size)!important;font-weight:600;color:var(--accent,#3b82f6)}
+.hl-league-name{font-size:var(--sb-date-size)!important;font-weight:700;color:var(--muted,#888)}
 .hl-teams{display:flex;align-items:center;flex-wrap:wrap;gap:4px;font-size:var(--sb-hl-size)!important;font-weight:600;color:var(--heading,#111827)}
 .hl-team{display:inline-flex;align-items:center;gap:4px;font-weight:600}
 .hl-team-logo{height:24px;width:auto;flex-shrink:0}
@@ -187,8 +186,11 @@ function buildCalendarPage(
   const lightVars = `--bg:${bgOverride || '#fff'};--text:${textOverride || '#111827'};--muted:#6b7280;--heading:${textOverride || '#111827'};--border:#e5e7eb;--tab-bg:#f3f4f6;--surface:#f8f9fa;--accent:${accent};--card-bg:#f4f6f9;`;
   const darkVars  = `--bg:${bgOverride || '#0f1117'};--text:${textOverride || '#e8eaf0'};--muted:#8b92a8;--heading:${textOverride || '#f0f2f8'};--border:#2d3142;--tab-bg:#1e2130;--surface:#1a1d27;--accent:${accent};--card-bg:#181c28;`;
 
+  const h3SizeCal   = rpc(opts.headerSize,       '14px', '16px', '19px');
+  const dateSizeCal  = rpc(opts.dateFontSize,      '10px', '11px', '13px');
+
   const baseCss = `
-:root{${isAuto ? lightVars : isDark ? darkVars : lightVars};--sb-hl-size:${hlFontSizeCal}}
+:root{${isAuto ? lightVars : isDark ? darkVars : lightVars};--sb-hl-size:${hlFontSizeCal};--sb-h3-size:${h3SizeCal};--sb-date-size:${dateSizeCal}}
 ${isAuto ? `@media(prefers-color-scheme:dark){:root{${darkVars}}}` : ''}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{background:var(--bg);color:var(--text);font-family:${fontStack};font-size:${baseFontSize};line-height:1.5;-webkit-font-smoothing:antialiased;width:100%}
@@ -200,6 +202,10 @@ body{padding:${paddingVal}px}
 .vt-active{background:var(--accent,#3b82f6)!important;color:#fff!important;border-color:var(--accent,#3b82f6)!important}
 .hl-teams{font-size:var(--sb-hl-size)!important}
 .hl-league-spotlight{font-size:var(--sb-hl-size)!important;display:flex;align-items:center;gap:8px}
+.hl-title{font-size:var(--sb-h3-size)!important;font-weight:800;color:var(--heading,var(--text));margin:0 0 12px}
+.hl-date-header{font-size:var(--sb-date-size)!important;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted,#888);padding:6px 0;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:8px}
+.hl-time{font-size:var(--sb-date-size)!important;font-weight:600;color:var(--accent,#3b82f6)}
+.hl-league-name{font-size:var(--sb-date-size)!important;font-weight:700;color:var(--muted,#888)}
 `;
 
   const calendarCss = getCalendarCSS(accent);
@@ -213,7 +219,7 @@ body{padding:${paddingVal}px}
 
   const pollJS = `\n<script>\n(function(){\n  var INTERVAL=15000;\n  var root=document.getElementById('schedule-root');\n  if(!root)return;\n  var serial=root.getAttribute('data-serial')||'';\n  var base=location.href.split('#')[0];\n  var sep=base.indexOf('?')>=0?'&':'?';\n  var pollUrl=base+sep+'_poll=1';\n  function applyContent(d){\n    if(d.empty){\n      root.innerHTML='<div style="padding:16px;color:#9ca3af;font-size:13px">No schedule published yet.</div>';\n      root.setAttribute('data-serial','none');serial='none';\n      try{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}catch(e){}\n      return;\n    }\n    root.innerHTML=d.html;\n    root.setAttribute('data-serial',d.serial);serial=d.serial;\n    try{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}catch(e){}\n  }\n  function poll(){\n    fetch(pollUrl,{cache:'no-store'})\n      .then(function(r){return r.ok?r.json():null;})\n      .then(function(d){if(d&&d.serial!==serial)applyContent(d);})\n      .catch(function(){});\n  }\n  setInterval(poll,INTERVAL);\n  window.addEventListener('message',function(ev){\n    if(ev.data&&ev.data.sbRefresh)poll();\n  });\n})();\n</script>`;
 
-  const styleJSCal = `\n<script>\n(function(){\n  window.addEventListener('message',function(e){\n    if(!e.data||!e.data.sbStyle)return;\n    var r=document.documentElement;var s=e.data.sbStyle;\n    if(s.hlFontSize)r.style.setProperty('--sb-hl-size',s.hlFontSize);\n  });\n})();\n</script>`;
+  const styleJSCal = `\n<script>\n(function(){\n  window.addEventListener('message',function(e){\n    if(!e.data||!e.data.sbStyle)return;\n    var r=document.documentElement;var s=e.data.sbStyle;\n    if(s.hlFontSize)r.style.setProperty('--sb-hl-size',s.hlFontSize);\n    if(s.headerSize)r.style.setProperty('--sb-h3-size',s.headerSize);\n    if(s.dateFontSize)r.style.setProperty('--sb-date-size',s.dateFontSize);\n  });\n})();\n</script>`;
 
   const calNavJS = `\n<script>${getCalendarNavJS()}</script>`;
 

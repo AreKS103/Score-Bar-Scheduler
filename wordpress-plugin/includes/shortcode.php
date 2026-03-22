@@ -114,6 +114,7 @@ function schedule_shortcode_render($atts) {
             u.searchParams.set('layout', layout);
             if (layout === 'list') { u.searchParams.set('listStyle', '<?php echo esc_js($atts['list_style'] !== 'calendar' ? $atts['list_style'] : 'default'); ?>'); }
             u.searchParams.set('noInlineToggle', '1');
+            frame.style.height = '0';
             frame.src = u.toString();
         } catch(e) {}
         var ac = '#<?php echo esc_js($accent_hex); ?>';

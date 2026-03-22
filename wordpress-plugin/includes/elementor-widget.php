@@ -147,6 +147,7 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
                     u.searchParams.set('listStyle', '<?php echo esc_js($view_mode === 'calendar' ? 'default' : $view_mode); ?>');
                 }
                 u.searchParams.set('noInlineToggle', '1');
+                frame.style.height = '0';
                 frame.src = u.toString();
             } catch(e) {}
             var ac = '#<?php echo esc_js($accent_hex); ?>';

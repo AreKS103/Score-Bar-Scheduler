@@ -421,13 +421,13 @@ export function getCalendarCSS(accent: string): string {
 /* ── Highlights section ── */
 .cal-highlights{margin-bottom:32px}
 .hl-section{width:100%}
-.hl-title{font-size:1.15em;font-weight:800;color:var(--heading,var(--text));margin:0 0 12px}
+.hl-title{font-size:var(--sb-h3-size,1.15em)!important;font-weight:800;color:var(--heading,var(--text));margin:0 0 12px}
 .hl-date-group{margin-bottom:12px}
-.hl-date-header{font-size:.72em;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted,#888);padding:6px 0;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:8px}
+.hl-date-header{font-size:var(--sb-date-size,.72em)!important;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted,#888);padding:6px 0;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:8px}
 .hl-event{padding:7px 0}
 .hl-event-meta{display:flex;align-items:center;gap:6px;margin-bottom:4px}
-.hl-time{font-size:.8em;font-weight:600;color:var(--accent,#3b82f6)}
-.hl-league-name{font-size:.8em;font-weight:700;color:var(--muted,#888)}
+.hl-time{font-size:var(--sb-date-size,.8em)!important;font-weight:600;color:var(--accent,#3b82f6)}
+.hl-league-name{font-size:var(--sb-date-size,.8em)!important;font-weight:700;color:var(--muted,#888)}
 .hl-teams{display:flex;align-items:center;flex-wrap:wrap;gap:4px;font-size:var(--sb-hl-size,.9em);font-weight:600;color:var(--heading,#111827)}
 .hl-team-logo{height:24px;width:auto;flex-shrink:0}
 .hl-team{display:inline-flex;align-items:center;gap:4px;font-weight:600}
