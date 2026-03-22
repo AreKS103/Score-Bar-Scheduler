@@ -146,11 +146,50 @@
               }
             } catch (e) {}
           });
+          ch.on('element:after:add', function (model) {
+            try {
+              var el = model && (model.model || model);
+              if (isScheduleWidget(el)) {
+                var wid = getWidgetId(el);
+                var eid = getEmbedId(el);
+                console.log('[SB] Backbone element:after:add:', wid, eid);
+                apiRegister(wid, eid);
+              }
+            } catch (e) {
+              console.warn('[SB] element:after:add error', e);
+            }
+          });
           console.log('[SB] Backbone channel listener registered');
         } else {
           console.warn('[SB] elementor.channels.data not available — Backbone fallback skipped');
         }
       } catch (e) { console.warn('[SB] Backbone channel registration failed', e); }
+    }
+
+    // ── Safety net: re-scan all schedule widgets on every auto-save ────────
+    if (window.$e && window.$e.hooks && window.$e.commands) {
+      try {
+        $e.hooks.registerDataAfter('document/save/auto-save', function () {
+          console.log('[SB] auto-save detected');
+          try {
+            var iframe = document.getElementById('elementor-preview-iframe');
+            if (!iframe || !iframe.contentDocument) return;
+            var widgets = iframe.contentDocument.querySelectorAll('[data-widget_type^="schedule_widget"]');
+            widgets.forEach(function (w) {
+              var wid = w.dataset && w.dataset.id;
+              if (!wid || deletedWidgets[wid]) return;
+              var eid = null;
+              try {
+                var fr = w.querySelector('iframe[src]');
+                if (fr) eid = new URL(fr.src).searchParams.get('embedId') || null;
+              } catch (e) {}
+              console.log('[SB] auto-save scan registering:', wid, eid);
+              apiRegister(wid, eid);
+            });
+          } catch (e) {}
+        });
+        console.log('[SB] auto-save hook registered');
+      } catch (e) { console.warn('[SB] auto-save hook registration failed', e); }
     }
   }
 
@@ -249,6 +288,20 @@
         return;
       }
       attachDocObserver(iframe.contentDocument);
+      // Poll every 2s to detect iframe document replacement (Elementor swaps doc on preview refresh)
+      var lastDoc = iframe.contentDocument;
+      setInterval(function () {
+        try {
+          var currentIframe = document.getElementById('elementor-preview-iframe');
+          if (!currentIframe) return;
+          var currentDoc = currentIframe.contentDocument || currentIframe.contentWindow.document;
+          if (currentDoc && currentDoc !== lastDoc && currentDoc.body) {
+            console.log('[SB] iframe doc changed, re-attaching');
+            lastDoc = currentDoc;
+            attachDocObserver(currentDoc);
+          }
+        } catch (e) {}
+      }, 2000);
       // Re-attach after every preview reload (e.g. when widget settings change)
       iframe.addEventListener('load', function () {
         console.log('[SB] preview iframe reloaded, re-attaching observer');
