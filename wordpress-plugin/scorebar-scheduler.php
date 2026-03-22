@@ -67,6 +67,34 @@ register_activation_hook(__FILE__, function () {
     }
 });
 
+// ── Proactive ghost-entry cleanup (runs on every admin page load) ──────────
+// The activation hook above only fires once. If ghost entries accumulate
+// between activations (e.g. after a bad install), this keeps the list clean
+// so the plugin never appears twice in the Plugins admin list.
+add_action('admin_init', function () {
+    $canonical = plugin_basename(__FILE__);
+    $active    = get_option('active_plugins', []);
+
+    $seen_ours = false;
+    $cleaned   = [];
+    foreach ($active as $entry) {
+        if (str_contains($entry, 'scorebar-scheduler')) {
+            if ($entry === $canonical && !$seen_ours) {
+                $cleaned[]  = $entry;
+                $seen_ours  = true;
+            }
+            // else: skip ghost / duplicate entry silently
+        } else {
+            $cleaned[] = $entry;
+        }
+    }
+    $cleaned = array_values($cleaned);
+    if ($cleaned !== array_values($active)) {
+        update_option('active_plugins', $cleaned);
+        wp_clean_plugins_cache(false);
+    }
+}, 1);
+
 // ── Load plugin files defensively ─────────────────────────────────────────
 $_plugin_dir = plugin_dir_path(__FILE__);
 $_required = [
