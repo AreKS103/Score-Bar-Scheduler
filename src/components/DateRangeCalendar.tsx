@@ -26,7 +26,6 @@ export default function DateRangeCalendar({
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<CalendarMode>('range');
   const [rangeDraft, setRangeDraft] = useState<DateRange>({ from: undefined, to: undefined });
-  const [rangeStep, setRangeStep] = useState<'start' | 'end'>('start');
   const ref = useRef<HTMLDivElement>(null);
 
   const from = parse(startDate, 'yyyy-MM-dd', new Date());
@@ -42,19 +41,14 @@ export default function DateRangeCalendar({
 
   const singleSelected = isValid(from) ? from : undefined;
 
-  const handleRangeDayClick = (day: Date) => {
-    if (rangeStep === 'start') {
-      setRangeDraft({ from: day, to: undefined });
-      setRangeStep('end');
-      return;
+  const handleRangeSelect = (range: DateRange | undefined) => {
+    if (!range) return;
+    setRangeDraft(range);
+    if (range.from && range.to) {
+      const startDay = range.from < range.to ? range.from : range.to;
+      const endDay = range.from < range.to ? range.to : range.from;
+      onChange(format(startDay, 'yyyy-MM-dd'), format(endDay, 'yyyy-MM-dd'));
     }
-
-    const fromDay = rangeDraft.from ?? day;
-    const startDay = day < fromDay ? day : fromDay;
-    const endDay = day < fromDay ? fromDay : day;
-    setRangeDraft({ from: startDay, to: endDay });
-    onChange(format(startDay, 'yyyy-MM-dd'), format(endDay, 'yyyy-MM-dd'));
-    setRangeStep('start');
   };
 
   const handleSingleSelect = (day: Date | undefined) => {
@@ -78,12 +72,11 @@ export default function DateRangeCalendar({
     setRangeDraft((prev) => (isSameRange(prev, rangeSelectedFromProps) ? prev : rangeSelectedFromProps));
   }, [open, rangeSelectedFromProps]);
 
-  // Every time the picker opens in range mode, start by selecting "from" first.
+  // Every time the picker opens in range mode, sync draft with props.
   useEffect(() => {
     if (!open || mode !== 'range') return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setRangeDraft((prev) => (isSameRange(prev, rangeSelectedFromProps) ? prev : rangeSelectedFromProps));
-    setRangeStep('start');
   }, [open, mode, rangeSelectedFromProps]);
 
   // Close on click outside
@@ -162,7 +155,7 @@ export default function DateRangeCalendar({
             <Calendar
               mode="range"
               selected={rangeDraft}
-              onDayClick={handleRangeDayClick}
+              onSelect={handleRangeSelect}
               numberOfMonths={2}
               fixedWeeks
               today={new Date()}
@@ -202,9 +195,7 @@ export default function DateRangeCalendar({
                   ) : rangeDraft.from ? (
                     <>{format(rangeDraft.from, 'EEE, MMM d')} → pick end date</>
                   ) : (
-                    rangeStep === 'start'
-                      ? 'Click a start date'
-                      : 'Click an end date'
+                    'Click a start date'
                   )}
                 </>
               )}
@@ -213,7 +204,7 @@ export default function DateRangeCalendar({
               size="sm"
               variant="secondary"
               onClick={() => {
-                if (mode === 'range' && rangeStep === 'end' && rangeDraft.from) {
+                if (mode === 'range' && rangeDraft.from && !rangeDraft.to) {
                   const single = format(rangeDraft.from, 'yyyy-MM-dd');
                   onChange(single, single);
                 }

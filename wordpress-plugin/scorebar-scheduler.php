@@ -1,7 +1,7 @@
 ﻿<?php
 /**
  * Plugin Name: Scheduler
- * Plugin URI: https://score-bar-scheduler.vercel.app/
+ * Plugin URI:
  * Description: A sports schedule widget for your website.
  * Version: 1.1.0
  * Text Domain: scorebar-scheduler
@@ -22,78 +22,88 @@ if (version_compare(PHP_VERSION, '7.4', '<')) {
 if (!defined('SCHEDULE_PLUGIN_URL')) {
     define('SCHEDULE_PLUGIN_URL', plugin_dir_url(__FILE__));
 }
-if (!defined('SCHEDULE_APP_DOMAIN')) {
-    // Allow override from wp-config.php: define('SCHEDULE_APP_BASE_URL', 'http://localhost:3000');
-    if (defined('SCHEDULE_APP_BASE_URL') && SCHEDULE_APP_BASE_URL) {
-        define('SCHEDULE_APP_DOMAIN', rtrim(SCHEDULE_APP_BASE_URL, '/'));
-    } else {
-        define('SCHEDULE_APP_DOMAIN', 'https://score-bar-scheduler.vercel.app');
+// App URL resolver — reads from: 1) WP option (admin UI), 2) wp-config.php constant.
+// Returns empty string if neither is configured (API calls gracefully skip).
+// Uses a function instead of a constant because get_option() is not available at define() time.
+if (!function_exists('schedule_get_app_domain')) {
+    function schedule_get_app_domain() {
+        static $domain = null;
+        if ($domain !== null) return $domain;
+        $from_option = get_option('schedule_app_url', '');
+        if (!empty($from_option)) {
+            $domain = rtrim($from_option, '/');
+        } elseif (defined('SCHEDULE_APP_BASE_URL') && SCHEDULE_APP_BASE_URL) {
+            $domain = rtrim(SCHEDULE_APP_BASE_URL, '/');
+        } else {
+            $domain = '';
+        }
+        return $domain;
+    }
+}
+// Keep the constant for backward compatibility (fires on plugins_loaded when DB is available)
+add_action('plugins_loaded', function () {
+    if (!defined('SCHEDULE_APP_DOMAIN')) {
+        define('SCHEDULE_APP_DOMAIN', schedule_get_app_domain());
+    }
+}, 1);
+
+// ── Ghost-entry cleanup helper ───────────────────────────────────────────────
+// PHP 7.4-safe (no str_contains). Removes any active_plugins entry that either:
+//   (a) contains our slug but doesn't match the canonical path, or
+//   (b) matches the canonical path but the file no longer exists on disk.
+// Called both on activation and on every plugins_loaded (before WP renders admin notices).
+if (!function_exists('schedule_purge_ghost_entries')) {
+    function schedule_purge_ghost_entries() {
+        $canonical   = plugin_basename(__FILE__);
+        $plugin_file = WP_PLUGIN_DIR . '/' . $canonical;
+        $active      = get_option('active_plugins', []);
+
+        $seen_ours = false;
+        $cleaned   = [];
+        foreach ($active as $entry) {
+            if (strpos($entry, 'scorebar-scheduler') !== false) {
+                // Keep the canonical entry only once and only if the file exists.
+                if ($entry === $canonical && !$seen_ours && file_exists($plugin_file)) {
+                    $cleaned[] = $entry;
+                    $seen_ours = true;
+                }
+                // All other entries for our slug (wrong path, broken install, duplicate) are dropped.
+            } else {
+                $cleaned[] = $entry;
+            }
+        }
+        $cleaned = array_values($cleaned);
+        if ($cleaned !== array_values($active)) {
+            update_option('active_plugins', $cleaned);
+            if (function_exists('wp_clean_plugins_cache')) {
+                wp_clean_plugins_cache(false);
+            }
+        }
+
+        // Multisite: clean sitewide active plugins too
+        if (function_exists('is_multisite') && is_multisite()) {
+            $network_active = get_site_option('active_sitewide_plugins', []);
+            $changed = false;
+            foreach (array_keys($network_active) as $entry) {
+                if (strpos($entry, 'scorebar-scheduler') !== false && $entry !== $canonical) {
+                    unset($network_active[$entry]);
+                    $changed = true;
+                }
+            }
+            if ($changed) {
+                update_site_option('active_sitewide_plugins', $network_active);
+            }
+        }
     }
 }
 
-// ── On activation: purge any ghost/stale registrations for this plugin slug ─
-// Previous uploads with broken zips (backslash paths) can leave orphaned entries
-// in wp_options active_plugins that come back after every page refresh because
-// WordPress cannot delete them (the files don't exist at the expected path).
-register_activation_hook(__FILE__, function () {
-    $canonical = plugin_basename(__FILE__); // e.g. scorebar-scheduler/scorebar-scheduler.php
+// Run on activation (handles the install-time cleanup)
+register_activation_hook(__FILE__, 'schedule_purge_ghost_entries');
 
-    // Single-site active plugins
-    $active = get_option('active_plugins', []);
-    $cleaned = array_values(array_filter($active, function ($entry) use ($canonical) {
-        // Remove any entry containing our slug UNLESS it is exactly the canonical path
-        if (str_contains($entry, 'scorebar-scheduler')) {
-            return $entry === $canonical;
-        }
-        return true;
-    }));
-    if (count($cleaned) !== count($active)) {
-        update_option('active_plugins', $cleaned);
-    }
-
-    // Network-activated plugins (multisite)
-    if (is_multisite()) {
-        $network_active = get_site_option('active_sitewide_plugins', []);
-        $changed = false;
-        foreach (array_keys($network_active) as $entry) {
-            if (str_contains($entry, 'scorebar-scheduler') && $entry !== $canonical) {
-                unset($network_active[$entry]);
-                $changed = true;
-            }
-        }
-        if ($changed) {
-            update_site_option('active_sitewide_plugins', $network_active);
-        }
-    }
-});
-
-// ── Proactive ghost-entry cleanup (runs on every admin page load) ──────────
-// The activation hook above only fires once. If ghost entries accumulate
-// between activations (e.g. after a bad install), this keeps the list clean
-// so the plugin never appears twice in the Plugins admin list.
-add_action('admin_init', function () {
-    $canonical = plugin_basename(__FILE__);
-    $active    = get_option('active_plugins', []);
-
-    $seen_ours = false;
-    $cleaned   = [];
-    foreach ($active as $entry) {
-        if (str_contains($entry, 'scorebar-scheduler')) {
-            if ($entry === $canonical && !$seen_ours) {
-                $cleaned[]  = $entry;
-                $seen_ours  = true;
-            }
-            // else: skip ghost / duplicate entry silently
-        } else {
-            $cleaned[] = $entry;
-        }
-    }
-    $cleaned = array_values($cleaned);
-    if ($cleaned !== array_values($active)) {
-        update_option('active_plugins', $cleaned);
-        wp_clean_plugins_cache(false);
-    }
-}, 1);
+// Run on every plugins_loaded — fires before admin notices are rendered, so the
+// "Plugin file does not exist" notice never appears even on the first load after a
+// broken/duplicate install. Priority 1 = as early as possible.
+add_action('plugins_loaded', 'schedule_purge_ghost_entries', 1);
 
 // ── Load plugin files defensively ─────────────────────────────────────────
 $_plugin_dir = plugin_dir_path(__FILE__);
@@ -122,3 +132,65 @@ if (!function_exists('schedule_add_settings_link')) {
     }
 }
 add_filter('plugin_action_links_' . plugin_basename(__FILE__), 'schedule_add_settings_link');
+
+if (!function_exists('schedule_enqueue_editor_sync')) {
+    function schedule_enqueue_editor_sync() {
+        $api_key = get_option('schedule_api_key', '');
+        if (empty($api_key)) return;
+        $embed_token = get_option('schedule_embed_token', '');
+        wp_enqueue_script(
+            'schedule-editor-sync',
+            SCHEDULE_PLUGIN_URL . 'includes/elementor-editor-sync.js',
+            [],
+            '1.0.0',
+            true
+        );
+        wp_localize_script('schedule-editor-sync', '_sbEditorCfg', [
+            'appUrl' => schedule_get_app_domain(),
+            'apiKey' => !empty($embed_token) ? $embed_token : $api_key,
+        ]);
+    }
+}
+add_action('elementor/editor/after_enqueue_scripts', 'schedule_enqueue_editor_sync');
+
+// ── AJAX endpoint: return the CURRENT embed key (never baked into HTML) ─────
+// Used by sbFireDelete() in schedule-frontend.js so the MutationObserver DELETE
+// always sends the up-to-date key even if the user rotated it after the page was rendered.
+if (!function_exists('schedule_ajax_get_token')) {
+    function schedule_ajax_get_token() {
+        check_ajax_referer('schedule_token_nonce');
+        $embed_token = get_option('schedule_embed_token', '');
+        $api_key     = get_option('schedule_api_key', '');
+        $key = !empty($embed_token) ? $embed_token : $api_key;
+        if (empty($key)) {
+            wp_send_json_error('no_key', 403);
+        }
+        wp_send_json_success($key);
+    }
+}
+add_action('wp_ajax_schedule_get_token',        'schedule_ajax_get_token');
+add_action('wp_ajax_nopriv_schedule_get_token', 'schedule_ajax_get_token');
+
+// ── Frontend script: inject _sbFrontendCfg (ajaxUrl + nonce + appUrl) ───────
+// Enqueued on every front-end page load so that sbFireDelete() in the inline
+// MutationObserver can resolve the live key via AJAX instead of using a stale
+// value stamped into the HTML at render time.
+if (!function_exists('schedule_enqueue_frontend_config')) {
+    function schedule_enqueue_frontend_config() {
+        $api_key = get_option('schedule_api_key', '');
+        if (empty($api_key)) return;
+        wp_enqueue_script(
+            'schedule-frontend',
+            SCHEDULE_PLUGIN_URL . 'includes/schedule-frontend.js',
+            [],
+            '1.0.1',
+            true
+        );
+        wp_localize_script('schedule-frontend', '_sbFrontendCfg', [
+            'ajaxUrl' => admin_url('admin-ajax.php'),
+            'nonce'   => wp_create_nonce('schedule_token_nonce'),
+            'appUrl'  => schedule_get_app_domain(),
+        ]);
+    }
+}
+add_action('wp_enqueue_scripts', 'schedule_enqueue_frontend_config');

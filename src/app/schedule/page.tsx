@@ -250,8 +250,54 @@ export default function SchedulePage() {
   // and clears any selections from the previous embed.
   const isInitialEmbedRef = useRef(true);
   useEffect(() => {
-    // Skip on first mount — the auto-fetch effect handles the initial load.
-    if (isInitialEmbedRef.current) { isInitialEmbedRef.current = false; return; }
+    // Skip when embedInstances haven't loaded yet (effectiveTarget is still '')
+    if (!effectiveTarget) return;
+
+    if (isInitialEmbedRef.current) {
+      isInitialEmbedRef.current = false;
+      // The auto-fetch effect ran before embedInstances loaded, so it used '' as
+      // the selection key instead of the real embed ID. Re-apply the correct
+      // embed's saved state now that we know the actual effectiveTarget.
+      const target = effectiveTarget;
+      const applyInitial = async () => {
+        const savedState = loadSelectionState(target);
+        if (savedState && Object.keys(savedState.selections).length > 0) {
+          if (savedState.leagueOrder.length > 0) setLeagueOrder(savedState.leagueOrder);
+          if (Object.keys(savedState.featuredLeagues).length > 0) {
+            setFeaturedLeagues(new Map(Object.entries(savedState.featuredLeagues)));
+          }
+          const currentEvents = useScheduleStore.getState().events;
+          if (currentEvents.length > 0) {
+            isSwitchingEmbedRef.current = true;
+            const merged = currentEvents.map(e => {
+              const sel = savedState.selections[e.id];
+              if (sel) return { ...e, ...sel };
+              return e;
+            });
+            setEvents(merged);
+          }
+        }
+        // Also apply from Supabase (cross-device sync)
+        const supaState = await loadSelectionFromSupabase(target);
+        if (!supaState) return;
+        if (supaState.leagueOrder.length > 0) setLeagueOrder(supaState.leagueOrder);
+        if (Object.keys(supaState.featuredLeagues).length > 0) {
+          setFeaturedLeagues(new Map(Object.entries(supaState.featuredLeagues)));
+        }
+        const currentEvents = useScheduleStore.getState().events;
+        if (currentEvents.length > 0 && Object.keys(supaState.selections).length > 0) {
+          isSwitchingEmbedRef.current = true;
+          const merged = currentEvents.map(e => {
+            const sel = supaState.selections[e.id];
+            if (sel) return { ...e, ...sel };
+            return e;
+          });
+          setEvents(merged);
+        }
+      };
+      applyInitial();
+      return;
+    }
 
     isSwitchingEmbedRef.current = true;
     const target = effectiveTarget;
@@ -261,6 +307,8 @@ export default function SchedulePage() {
     redoStackRef.current = [];
     lastHistoryStateRef.current = null;
     setHistoryVersion(0);
+    // Reset the snapshot-applied guard so Supabase can apply if this embed has no snapshot
+    snapshotAppliedForTargetRef.current = '';
 
     // Reset in-memory events to their unselected base, then overlay the new embed's state
     const loadEmbedState = async () => {
@@ -297,19 +345,53 @@ export default function SchedulePage() {
 
       // Also check Supabase for a fresher copy (cross-device sync)
       const supaState = await loadSelectionFromSupabase(target);
-      if (!supaState) return;
-      const currentEvents = useScheduleStore.getState().events;
-      if (currentEvents.length > 0 && Object.keys(supaState.selections).length > 0) {
-        const reMerged = currentEvents.map(e => {
-          const sel = supaState.selections[e.id];
-          if (sel) return { ...e, ...sel };
-          return e;
-        });
-        setEvents(reMerged);
+      // If the snapshot effect already applied the published state while we were
+      // waiting for Supabase, don't overwrite it — the snapshot takes priority.
+      if (snapshotAppliedForTargetRef.current === target) return;
+      const hasSelections =
+        Object.keys(savedSel).length > 0 ||
+        (supaState && Object.keys(supaState.selections).length > 0);
+
+      if (supaState && Object.keys(supaState.selections).length > 0) {
+        const currentEvents = useScheduleStore.getState().events;
+        if (currentEvents.length > 0) {
+          const reMerged = currentEvents.map(e => {
+            const sel = supaState.selections[e.id];
+            if (sel) return { ...e, ...sel };
+            return e;
+          });
+          setEvents(reMerged);
+        }
+        if (supaState.leagueOrder.length > 0) setLeagueOrder(supaState.leagueOrder);
+        if (Object.keys(supaState.featuredLeagues).length > 0) {
+          setFeaturedLeagues(new Map(Object.entries(supaState.featuredLeagues)));
+        }
       }
-      if (supaState.leagueOrder.length > 0) setLeagueOrder(supaState.leagueOrder);
-      if (Object.keys(supaState.featuredLeagues).length > 0) {
-        setFeaturedLeagues(new Map(Object.entries(supaState.featuredLeagues)));
+
+      // Fallback: if this embed has no saved selections at all, restore from the
+      // last published snapshot so the user sees what was pushed rather than an
+      // empty list. This covers the case where localStorage was cleared or the
+      // user is on a new device and hasn't explicitly saved selections yet.
+      if (!hasSelections && publishTarget) {
+        try {
+          const r = await fetch(`/api/schedule-history?target=${encodeURIComponent(publishTarget)}`);
+          const { schedule } = await r.json() as { schedule: { events_snapshot: MatchEvent[]; league_order: string[]; featured_leagues: Record<string, string> } | null };
+          if (schedule?.events_snapshot?.length) {
+            const snapshotIds = new Set(schedule.events_snapshot.map((e: MatchEvent) => e.id));
+            const currentEvents = useScheduleStore.getState().events;
+            const restored = currentEvents.map(e => ({
+              ...e,
+              isSelected: snapshotIds.has(e.id),
+            }));
+            setEvents(restored);
+            if (schedule.league_order?.length > 0) setLeagueOrder(schedule.league_order);
+            if (schedule.featured_leagues && Object.keys(schedule.featured_leagues).length > 0) {
+              setFeaturedLeagues(new Map(Object.entries(schedule.featured_leagues)));
+            }
+          }
+        } catch {
+          // Snapshot fetch failed — leave events in cleared state
+        }
       }
     };
 
@@ -322,7 +404,7 @@ export default function SchedulePage() {
       setPublishedSnapshot(null);
       return;
     }
-    const load = () => {
+    const load = (isInitial = false) => {
       setSnapshotLoading(true);
       fetch(`/api/schedule-history?target=${encodeURIComponent(publishTarget)}`)
         .then((r) => r.json())
@@ -338,12 +420,38 @@ export default function SchedulePage() {
             html: generateHTML(evts, lo, fl),
             label: schedule.week_label || publishTarget,
           });
+          // ── Sync the editor (left panel) to match the published state ──────────────
+          // On initial load for an embed pill, the editor should mirror the preview.
+          // Background polls (isInitial=false) do NOT re-sync so in-progress edits
+          // made since the last publish are preserved.
+          if (isInitial && evts.length > 0) {
+            isSwitchingEmbedRef.current = true;
+            snapshotAppliedForTargetRef.current = publishTarget;
+            const snapshotById = new Map(evts.map((e: MatchEvent) => [e.id, e]));
+            const current = useScheduleStore.getState().events;
+            const currentIds = new Set(current.map((e: MatchEvent) => e.id));
+            // Apply snapshot selection/featured/tags state to currently loaded events
+            const updated = current.map((e: MatchEvent) => {
+              const snap = snapshotById.get(e.id);
+              return {
+                ...e,
+                isSelected: snap ? !!(snap.isSelected) : false,
+                isFeatured: snap ? !!(snap.isFeatured) : false,
+                tags: snap ? (snap.tags ?? []) : [],
+              };
+            });
+            // Include published events that fall outside the current date range
+            const snapOnly = evts.filter((e: MatchEvent) => !currentIds.has(e.id));
+            setEvents([...updated, ...snapOnly]);
+            if (lo.length > 0) setLeagueOrder(lo);
+            if (fl.size > 0) setFeaturedLeagues(fl);
+          }
         })
         .catch(() => setPublishedSnapshot(null))
         .finally(() => setSnapshotLoading(false));
     };
-    load();
-    const id = setInterval(load, 120_000);
+    load(true);
+    const id = setInterval(() => load(false), 120_000);
     return () => clearInterval(id);
   }, [publishTarget]);
 
@@ -375,6 +483,9 @@ export default function SchedulePage() {
   const hasFetchedRef = useRef(false);
   const prevPreviewContentCountRef = useRef(0);
   const isSwitchingEmbedRef = useRef(false);
+  // Tracks which embed's snapshot has been applied to the editor, so that a  
+  // concurrent Supabase fetch in loadEmbedState doesn't overwrite the snapshot.
+  const snapshotAppliedForTargetRef = useRef('');
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const widthRef = useRef(700);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -447,21 +558,22 @@ export default function SchedulePage() {
   }, [undo, redo]);
 
   // ─── Fetch all sports data via Server API (cached) ───────────────────────────
+  // IMPORTANT: Read dateRange directly from the store at call time so that
+  // `onDone={() => handleFetch(true)}` always uses the freshly-selected range
+  // even though the callback was created on the previous render (stale closure).
   const handleFetch = useCallback(async (forceRefresh = false) => {
-    // IMPORTANT: Capture saved selection state BEFORE any cache loading triggers
-    // the debounced save effect (which would overwrite localStorage with empty data).
-    // Use sync localStorage load first (instant), Supabase will override on mount.
-    const savedState = loadSelectionState(effectiveTargetRef.current);
-    const savedSel = savedState?.selections ?? {};
+    // Read the CURRENT range from the store – this is always fresh regardless
+    // of when this callback was created.
+    const currentRange = useScheduleStore.getState().dateRange;
 
     // Try to load from client cache first for instant display
     if (!forceRefresh && events.length === 0) {
-      const cached = getCachedEvents(dateRange);
+      const cached = getCachedEvents(currentRange);
       if (cached && cached.length > 0) {
         console.log(`[Schedule] Instant load: ${cached.length} events from local cache`);
-        // Merge cached events with saved selections so user sees picks immediately
+        const instantSavedSel = loadSelectionState(effectiveTargetRef.current)?.selections ?? {};
         const mergedCached = cached.map(e => {
-          const saved = savedSel[e.id];
+          const saved = instantSavedSel[e.id];
           if (saved) return { ...e, ...saved };
           return e;
         });
@@ -478,8 +590,7 @@ export default function SchedulePage() {
     );
 
     try {
-      // Use new cached API endpoint
-      const url = `/api/events?start=${dateRange.start}&end=${dateRange.end}`;
+      const url = `/api/events?start=${currentRange.start}&end=${currentRange.end}`;
       const res = await fetch(url);
       
       if (!res.ok) {
@@ -495,7 +606,7 @@ export default function SchedulePage() {
       );
       
       // Merge local fallback custom events to survive Supabase custom_events issues
-      const localCustom = loadLocalCustomEvents(dateRange);
+      const localCustom = loadLocalCustomEvents(currentRange);
       const mergedRawById = new Map<string, MatchEvent>();
       for (const e of allEventsRaw) mergedRawById.set(e.id, e);
       for (const e of localCustom) {
@@ -504,23 +615,18 @@ export default function SchedulePage() {
       const mergedRaw = Array.from(mergedRawById.values());
 
       // Merge with preserved selections (in-memory > localStorage > default)
+      const savedSel = loadSelectionState(effectiveTargetRef.current)?.selections ?? {};
       const allEvents = mergedRaw.map((e: MatchEvent) => {
-        // In-memory takes priority (user is actively using the page)
         const mem = memSel.get(e.id);
         if (mem && (mem.isSelected || mem.isFeatured || mem.tags.length > 0)) return { ...e, ...mem };
-        // Fall back to captured localStorage (restores state after page reload)
         const saved = savedSel[e.id];
         if (saved) return { ...e, ...saved };
         return e;
       });
 
       setEvents(allEvents);
+      setCachedEvents(currentRange, mergedRaw);
       
-      // Save to client cache (without selection state for clean cache)
-      // Include local custom fallback events so instant reload view is consistent.
-      setCachedEvents(dateRange, mergedRaw);
-      
-      // Mark all leagues as loaded
       setFetchStatuses(
         Object.fromEntries(
           SPORTS_CONFIG.map((s) => [s.id, { loading: false, error: null }])
@@ -528,9 +634,9 @@ export default function SchedulePage() {
       );
 
       if (data.cached) {
-        console.log(`[Schedule] Loaded ${allEvents.length} events (server cached, age: ${data.age}s${data.stale ? ', stale' : ''})`);
+        console.log(`[Schedule] Loaded ${allEvents.length} events from ${currentRange.start} to ${currentRange.end} (server cached, age: ${data.age}s${data.stale ? ', stale' : ''})`);
       } else {
-        console.log(`[Schedule] Loaded ${allEvents.length} events (fresh from APIs)`);
+        console.log(`[Schedule] Loaded ${allEvents.length} events from ${currentRange.start} to ${currentRange.end} (fresh)`);
       }
     } catch (err) {
       console.error('Fetch failed:', err);
@@ -542,7 +648,8 @@ export default function SchedulePage() {
     } finally {
       setIsFetching(false);
     }
-  }, [dateRange, events, setEvents, setFetchStatuses]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events, setEvents, setFetchStatuses]);
 
   // ─── Auto-fetch on mount ───────────────────────────────────────────────────
   useEffect(() => {
@@ -571,24 +678,8 @@ export default function SchedulePage() {
           }
         })
         .catch(() => {});
-      // After initial fetch, try to load from Supabase (may override localStorage)
-      loadSelectionFromSupabase(effectiveTargetRef.current).then(supaState => {
-        if (!supaState) return;
-        // Apply event-level selections from Supabase (may be fresher than localStorage)
-        const currentEvents = useScheduleStore.getState().events;
-        if (currentEvents.length > 0 && Object.keys(supaState.selections).length > 0) {
-          const merged = currentEvents.map(e => {
-            const sel = supaState.selections[e.id];
-            if (sel) return { ...e, ...sel };
-            return e;
-          });
-          setEvents(merged);
-        }
-        if (supaState.leagueOrder.length > 0) setLeagueOrder(supaState.leagueOrder);
-        if (Object.keys(supaState.featuredLeagues).length > 0) {
-          setFeaturedLeagues(new Map(Object.entries(supaState.featuredLeagues)));
-        }
-      });
+      // NOTE: Supabase selection sync is handled by the isInitialEmbedRef effect
+      // which fires when embedInstances load and fires with the correct embed key.
     }
   }, [handleFetch, setEvents]);
 

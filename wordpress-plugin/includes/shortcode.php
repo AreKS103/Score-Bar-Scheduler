@@ -91,7 +91,11 @@ function schedule_shortcode_render($atts) {
     }
 
     $uid        = 'sb' . substr(md5(serialize($atts) . rand()), 0, 8);
-    $iframe_url = SCHEDULE_APP_DOMAIN . '/embed/' . sanitize_text_field($iframe_key) . '?' . http_build_query($query_args);
+    $app_domain  = schedule_get_app_domain();
+    if (empty($app_domain)) {
+        return '<p style="color:#c00;font-size:14px;">Scheduler: App URL is not configured. Go to <strong>Settings &gt; Scheduler</strong> to set it.</p>';
+    }
+    $iframe_url = $app_domain . '/embed/' . sanitize_text_field($iframe_key) . '?' . http_build_query($query_args);
     $auto       = ($atts['height'] === 'auto');
     $height_css = $auto ? 'auto' : esc_attr($atts['height']);
     $overflow   = $auto ? 'visible' : 'auto';
@@ -159,7 +163,6 @@ function schedule_shortcode_render($atts) {
         }
     })();
     </script>
-    <?php if ($auto) : ?>
     <script>
     (function(){
         var fid = '<?php echo esc_js($uid); ?>-frame';
@@ -169,9 +172,48 @@ function schedule_shortcode_render($atts) {
                 try { if (f && new URL(f.src).origin === e.origin) { f.style.height = e.data.sbHeight + 'px'; } } catch(err) {}
             }
         });
+        // MutationObserver: fire DELETE to clean up Supabase when this embed is removed from the DOM.
+        // Observe document.body (not the wrapper's parent) because when Elementor deletes a widget
+        // the entire container is removed — if we observed the parent, it gets disconnected silently.
+        (function(){
+            var wid = document.getElementById('<?php echo esc_js($uid); ?>');
+            if (!wid || !window.MutationObserver) return;
+            var deleted = false;
+            var widId = '<?php echo esc_js($uid); ?>';
+            var obs = new MutationObserver(function(mutations) {
+                // Only fire from WordPress context, never from inside the embed iframe
+                try {
+                    var _inWpCtx = (
+                        (window.elementorFrontend && typeof window.elementorFrontend.isEditMode === 'function' && window.elementorFrontend.isEditMode()) ||
+                        !!(window.parent && window.parent !== window && window.parent.elementor)
+                    );
+                    if (!_inWpCtx) return;
+                } catch(e) { return; }
+                if (deleted) return;
+                for (var i = 0; i < mutations.length; i++) {
+                    var rn = mutations[i].removedNodes;
+                    for (var j = 0; j < rn.length; j++) {
+                        var node = rn[j];
+                        if (node.nodeType !== 1) continue;
+                        if (node === wid || (node.contains && node.contains(wid))) {
+                            deleted = true;
+                            // Debounce: wait 2s to avoid false positives from Elementor re-renders
+                            setTimeout(function() {
+                                if (document.getElementById(widId)) { deleted = false; return; }
+                                obs.disconnect();
+                                var delParams = {};
+                                <?php if (!empty($atts['embed_id'])): ?>delParams.embedId = '<?php echo esc_js($atts['embed_id']); ?>';<?php else: ?>delParams.embedId = '__null__';<?php endif; ?>
+                                if (typeof sbFireDelete === 'function') sbFireDelete(delParams);
+                            }, 2000);
+                            return;
+                        }
+                    }
+                }
+            });
+            obs.observe(document.body, { childList: true, subtree: true });
+        })();
     })();
     </script>
-    <?php endif; ?>
     <?php
     return ob_get_clean();
 }

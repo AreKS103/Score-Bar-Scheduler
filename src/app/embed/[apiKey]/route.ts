@@ -124,13 +124,13 @@ ${isCard ? `.league-block{background:var(--card-bg);border:1px solid var(--borde
 .mc-team{display:inline-flex;align-items:center;gap:3px}
 .mc-round{font-size:.82em;color:var(--muted,#888)}
 .hl-section{margin-bottom:22px}
-.hl-title{font-size:var(--sb-h3-size)!important;font-weight:800;color:var(--heading,var(--text));margin:0 0 12px}
+.hl-title{font-size:var(--sb-h3-size)!important;font-weight:800;color:var(--heading,var(--text));margin:0 0 12px;text-transform:uppercase}
 .hl-date-group{margin-bottom:10px}
-.hl-date-header{font-size:var(--sb-date-size)!important;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted,#888);padding:6px 0;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:8px}
+.hl-date-header{font-size:var(--sb-date-size)!important;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--heading,var(--text));padding:6px 0;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:8px}
 .hl-event{padding:7px 0}
 .hl-event-meta{display:flex;align-items:center;gap:6px;margin-bottom:4px}
 .hl-time{font-size:var(--sb-date-size)!important;font-weight:600;color:var(--accent,#3b82f6)}
-.hl-league-name{font-size:var(--sb-date-size)!important;font-weight:700;color:var(--muted,#888)}
+.hl-league-name{font-size:var(--sb-date-size)!important;font-weight:700;color:var(--heading,var(--text))}
 .hl-teams{display:flex;align-items:center;flex-wrap:wrap;gap:4px;font-size:var(--sb-hl-size)!important;font-weight:600;color:var(--heading,#111827)}
 .hl-team{display:inline-flex;align-items:center;gap:4px;font-weight:600}
 .hl-team-logo{height:24px;width:auto;flex-shrink:0}
@@ -153,10 +153,11 @@ ${isCard ? `.league-block{background:var(--card-bg);border:1px solid var(--borde
   const safeEmbedId  = (opts.embedId  || '').replace(/[^\w#\- ]/g, '').substring(0, 64);
   const safeWidgetId = (opts.widgetId || '').replace(/[^\w-]/g,    '').substring(0, 64);
   const safeApiKey   = (opts.apiKey   || '').replace(/[^\w-]/g,    '').substring(0, 128);
-  const beaconJS = (opts.appUrl && safeApiKey) ? `\n<script>\n(function(){\n  setTimeout(function(){\n    try{\n      fetch('${opts.appUrl}/api/embed-instances',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:'${safeApiKey}',embedId:'${safeEmbedId}',widgetId:'${safeWidgetId}',pageUrl:document.referrer||location.href}),keepalive:true}).catch(function(){});\n    }catch(e){}\n  },800);\n})();\n</script>` : '';
+  // Skip beacon when _wid is present — WordPress plugin handles registration via elementor-editor-sync.js
+  const beaconJS = (!safeWidgetId && opts.appUrl && safeApiKey) ? `\n<script>\n(function(){\n  setTimeout(function(){\n    try{\n      fetch('${opts.appUrl}/api/embed-instances',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:'${safeApiKey}',embedId:'${safeEmbedId}',widgetId:'${safeWidgetId}',pageUrl:document.referrer||location.href}),keepalive:true}).catch(function(){});\n    }catch(e){}\n  },800);\n})();\n</script>` : '';
 
   const _ic = isCard ? 'true' : 'false';
-  const pollJS = `\n<script>\n(function(){\n  var INTERVAL=15000;\n  var root=document.getElementById('schedule-root');\n  if(!root)return;\n  var serial=root.getAttribute('data-serial')||'';\n  var base=location.href.split('#')[0];\n  var sep=base.indexOf('?')>=0?'&':'?';\n  var pollUrl=base+sep+'_poll=1';\n  var isCard=${_ic};\n  function applyContent(d){\n    if(d.empty){\n      var sc=root.querySelector('.schedule-content');\n      if(sc)sc.innerHTML='<div style="padding:16px;color:#9ca3af;font-size:13px">No schedule published yet.</div>';\n      var ot=document.getElementById('sport-tabs');if(ot)ot.remove();\n      root.setAttribute('data-serial','none');serial='none';\n      try{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}catch(e){}\n      return;\n    }\n    var oldT=document.getElementById('sport-tabs');\n    if(d.tabsHtml){\n      var tmp=document.createElement('div');tmp.innerHTML=d.tabsHtml;\n      var newT=tmp.firstElementChild;\n      if(oldT){oldT.replaceWith(newT);}else{root.insertBefore(newT,root.firstChild);}\n    }else if(oldT){oldT.remove();}\n    var sc=root.querySelector('.schedule-content');\n    if(sc){\n      sc.innerHTML=d.html;\n      if(isCard&&window._sbWrapCards){\n        var s=sc.querySelectorAll('.sport-section,.sport-always');\n        if(s.length>0){s.forEach(window._sbWrapCards);}else{window._sbWrapCards(sc);}\n      }\n    }\n    root.setAttribute('data-serial',d.serial);serial=d.serial;\n    try{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}catch(e){}\n  }\n  function poll(){\n    fetch(pollUrl,{cache:'no-store'})\n      .then(function(r){return r.ok?r.json():null;})\n      .then(function(d){if(d&&d.serial!==serial)applyContent(d);})\n      .catch(function(){});\n  }\n  setInterval(poll,INTERVAL);\n  window.addEventListener('message',function(ev){\n    if(ev.data&&ev.data.sbRefresh)poll();\n  });\n})();\n</script>`;
+  const pollJS = `\n<script>\n(function(){\n  var INTERVAL=15000;\n  var root=document.getElementById('schedule-root');\n  if(!root)return;\n  var serial=root.getAttribute('data-serial')||'';\n  var base=location.href.split('#')[0];\n  var sep=base.indexOf('?')>=0?'&':'?';\n  var pollUrl=base+sep+'_poll=1';\n  var isCard=${_ic};\n  function applyContent(d){\n    if(d.empty){\n      var sc=root.querySelector('.schedule-content');\n      if(sc)sc.innerHTML='<div style="display:inline-flex;align-items:center;gap:8px;font-size:13px;border:1px dashed #d1d5db;border-radius:8px;padding:10px 16px;background:#f9fafb;color:#9ca3af">No schedule published yet.</div>';\n      var ot=document.getElementById('sport-tabs');if(ot)ot.remove();\n      root.setAttribute('data-serial','none');serial='none';\n      try{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}catch(e){}\n      return;\n    }\n    var oldT=document.getElementById('sport-tabs');\n    if(d.tabsHtml){\n      var tmp=document.createElement('div');tmp.innerHTML=d.tabsHtml;\n      var newT=tmp.firstElementChild;\n      if(oldT){oldT.replaceWith(newT);}else{root.insertBefore(newT,root.firstChild);}\n    }else if(oldT){oldT.remove();}\n    var sc=root.querySelector('.schedule-content');\n    if(sc){\n      sc.innerHTML=d.html;\n      if(isCard&&window._sbWrapCards){\n        var s=sc.querySelectorAll('.sport-section,.sport-always');\n        if(s.length>0){s.forEach(window._sbWrapCards);}else{window._sbWrapCards(sc);}\n      }\n    }\n    root.setAttribute('data-serial',d.serial);serial=d.serial;\n    try{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}catch(e){}\n  }\n  function poll(){\n    fetch(pollUrl,{cache:'no-store'})\n      .then(function(r){return r.ok?r.json():null;})\n      .then(function(d){if(d&&d.serial!==serial)applyContent(d);})\n      .catch(function(){});\n  }\n  setInterval(poll,INTERVAL);\n  window.addEventListener('message',function(ev){\n    if(ev.data&&ev.data.sbRefresh)poll();\n  });\n})();\n</script>`;
 
   const toggleBar = !opts.hideViewToggle && !opts.noInlineToggle ? `<div class="vt-bar" style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:10px"><button class="vt-btn vt-active" data-layout="list" style="padding:4px 14px;border-radius:999px;border:1px solid var(--accent,#3b82f6);background:var(--accent,#3b82f6);color:#fff;cursor:pointer;font-size:12px;font-family:inherit;font-weight:600">List</button><button class="vt-btn" data-layout="calendar" style="padding:4px 14px;border-radius:999px;border:1px solid var(--border,#e5e7eb);background:var(--tab-bg,#f3f4f6);color:var(--tab-text,#6b7280);cursor:pointer;font-size:12px;font-family:inherit;font-weight:500">Calendar</button></div>` : '';
   const toggleJS = !opts.hideViewToggle ? `\n<script>\n(function(){document.querySelectorAll('.vt-btn').forEach(function(b){b.addEventListener('click',function(){var u=new URL(location.href);u.searchParams.set('layout',b.getAttribute('data-layout'));location.replace(u.toString());});});})();\n</script>` : '';
@@ -204,10 +205,10 @@ body{padding:${paddingVal}px}
 .vt-active{background:var(--accent,#3b82f6)!important;color:#fff!important;border-color:var(--accent,#3b82f6)!important}
 .hl-teams{font-size:var(--sb-hl-size)!important}
 .hl-league-spotlight{font-size:var(--sb-hl-size)!important;display:flex;align-items:center;gap:8px}
-.hl-title{font-size:var(--sb-h3-size)!important;font-weight:800;color:var(--heading,var(--text));margin:0 0 12px}
-.hl-date-header{font-size:var(--sb-date-size)!important;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted,#888);padding:6px 0;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:8px}
+.hl-title{font-size:var(--sb-h3-size)!important;font-weight:800;color:var(--heading,var(--text));margin:0 0 12px;text-transform:uppercase}
+.hl-date-header{font-size:var(--sb-date-size)!important;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--heading,var(--text));padding:6px 0;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:8px}
 .hl-time{font-size:var(--sb-date-size)!important;font-weight:600;color:var(--accent,#3b82f6)}
-.hl-league-name{font-size:var(--sb-date-size)!important;font-weight:700;color:var(--muted,#888)}
+.hl-league-name{font-size:var(--sb-date-size)!important;font-weight:700;color:var(--heading,var(--text))}
 `;
 
   const calendarCss = getCalendarCSS(accent);
@@ -215,11 +216,12 @@ body{padding:${paddingVal}px}
   const safeEmbedId  = (opts.embedId  || '').replace(/[^\w#\- ]/g, '').substring(0, 64);
   const safeWidgetId = (opts.widgetId || '').replace(/[^\w-]/g,    '').substring(0, 64);
   const safeApiKey   = (opts.apiKey   || '').replace(/[^\w-]/g,    '').substring(0, 128);
-  const beaconJS = (opts.appUrl && safeApiKey) ? `\n<script>\n(function(){\n  setTimeout(function(){\n    try{\n      fetch('${opts.appUrl}/api/embed-instances',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:'${safeApiKey}',embedId:'${safeEmbedId}',widgetId:'${safeWidgetId}',pageUrl:document.referrer||location.href}),keepalive:true}).catch(function(){});\n    }catch(e){}\n  },800);\n})();\n</script>` : '';
+  // Skip beacon when _wid is present — WordPress plugin handles registration via elementor-editor-sync.js
+  const beaconJS = (!safeWidgetId && opts.appUrl && safeApiKey) ? `\n<script>\n(function(){\n  setTimeout(function(){\n    try{\n      fetch('${opts.appUrl}/api/embed-instances',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:'${safeApiKey}',embedId:'${safeEmbedId}',widgetId:'${safeWidgetId}',pageUrl:document.referrer||location.href}),keepalive:true}).catch(function(){});\n    }catch(e){}\n  },800);\n})();\n</script>` : '';
 
   const resizeJS = `\n<script>\n(function(){\n  function send(){ try{ window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*'); }catch(e){} }\n  if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded',send); } else { send(); }\n  if(typeof ResizeObserver!=='undefined'){ new ResizeObserver(send).observe(document.body); }\n})();\n</script>`;
 
-  const pollJS = `\n<script>\n(function(){\n  var INTERVAL=15000;\n  var root=document.getElementById('schedule-root');\n  if(!root)return;\n  var serial=root.getAttribute('data-serial')||'';\n  var base=location.href.split('#')[0];\n  var sep=base.indexOf('?')>=0?'&':'?';\n  var pollUrl=base+sep+'_poll=1';\n  function applyContent(d){\n    if(d.empty){\n      root.innerHTML='<div style="padding:16px;color:#9ca3af;font-size:13px">No schedule published yet.</div>';\n      root.setAttribute('data-serial','none');serial='none';\n      try{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}catch(e){}\n      return;\n    }\n    root.innerHTML=d.html;\n    root.setAttribute('data-serial',d.serial);serial=d.serial;\n    try{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}catch(e){}\n  }\n  function poll(){\n    fetch(pollUrl,{cache:'no-store'})\n      .then(function(r){return r.ok?r.json():null;})\n      .then(function(d){if(d&&d.serial!==serial)applyContent(d);})\n      .catch(function(){});\n  }\n  setInterval(poll,INTERVAL);\n  window.addEventListener('message',function(ev){\n    if(ev.data&&ev.data.sbRefresh)poll();\n  });\n})();\n</script>`;
+  const pollJS = `\n<script>\n(function(){\n  var INTERVAL=15000;\n  var root=document.getElementById('schedule-root');\n  if(!root)return;\n  var serial=root.getAttribute('data-serial')||'';\n  var base=location.href.split('#')[0];\n  var sep=base.indexOf('?')>=0?'&':'?';\n  var pollUrl=base+sep+'_poll=1';\n  function applyContent(d){\n    if(d.empty){\n      root.innerHTML='<div style="display:inline-flex;align-items:center;gap:8px;font-size:13px;border:1px dashed #d1d5db;border-radius:8px;padding:10px 16px;background:#f9fafb;color:#9ca3af">No schedule published yet.</div>';\n      root.setAttribute('data-serial','none');serial='none';\n      try{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}catch(e){}\n      return;\n    }\n    root.innerHTML=d.html;\n    root.setAttribute('data-serial',d.serial);serial=d.serial;\n    try{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}catch(e){}\n  }\n  function poll(){\n    fetch(pollUrl,{cache:'no-store'})\n      .then(function(r){return r.ok?r.json():null;})\n      .then(function(d){if(d&&d.serial!==serial)applyContent(d);})\n      .catch(function(){});\n  }\n  setInterval(poll,INTERVAL);\n  window.addEventListener('message',function(ev){\n    if(ev.data&&ev.data.sbRefresh)poll();\n  });\n})();\n</script>`;
 
   const styleJSCal = `\n<script>\n(function(){\n  window.addEventListener('message',function(e){\n    if(!e.data||!e.data.sbStyle)return;\n    var r=document.documentElement;var s=e.data.sbStyle;\n    if(s.hlFontSize)r.style.setProperty('--sb-hl-size',s.hlFontSize);\n    if(s.headerSize)r.style.setProperty('--sb-h3-size',s.headerSize);\n    if(s.dateFontSize)r.style.setProperty('--sb-date-size',s.dateFontSize);\n  });\n})();\n</script>`;
 
@@ -243,22 +245,17 @@ export async function GET(
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
 
-  // Accept two forms of token in the URL:
-  //   1. A raw API key starting with "sb_" (legacy embeds — backward compat only).
-  //   2. A pre-hashed embed token (64 lowercase hex chars) — the safe public form.
-  // Raw keys are never logged or stored; only the hash touches the DB.
-  let hash: string | null = null;
+  // Resolve the incoming token to a key_hash for DB lookup:
+  //   1. Starts with "sb_" → raw API key → hash it
+  //   2. 64 lowercase hex chars → already a hashed embed token → use as-is
+  //   3. Anything else → legacy raw key (pre-prefix era) → hash it
+  let hash: string;
   if (/^sb_/.test(apiKey)) {
     hash = crypto.createHash('sha256').update(apiKey).digest('hex');
   } else if (/^[0-9a-f]{64}$/.test(apiKey)) {
     hash = apiKey; // already a hash — no secret in the URL
-  }
-
-  if (!hash) {
-    return new Response(
-      `<!DOCTYPE html><html><body style="font-family:sans-serif;padding:2rem;color:#888;text-align:center">Invalid embed token.</body></html>`,
-      { status: 401, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
-    );
+  } else {
+    hash = crypto.createHash('sha256').update(apiKey).digest('hex'); // legacy raw key
   }
 
   const { data: keyData } = await supabase
@@ -282,7 +279,9 @@ export async function GET(
   //  • Named embed    → use embedId directly  (e.g. "home", "main")
   //  • Unnamed widget → look up its auto-assigned embed_id ("1", "2", …) via widget_id
   //  • No id at all   → empty string → match against null embed_target (global publish)
+  //  • Widget present but not yet in DB (just added) → widgetNotRegistered=true → show empty
   let scheduleTarget = embedId;
+  let widgetNotRegistered = false;
   if (!embedId && widgetId) {
     const { data: inst } = await supabase
       .from('embed_instances')
@@ -290,16 +289,23 @@ export async function GET(
       .eq('user_id', keyData.user_id)
       .eq('widget_id', widgetId)
       .maybeSingle();
-    if (inst?.embed_id) scheduleTarget = inst.embed_id;
+    if (inst?.embed_id) {
+      scheduleTarget = inst.embed_id;
+    } else {
+      // Widget exists in the page but hasn't been registered yet (or just added).
+      // Do NOT fall through to the global schedule — show the empty state instead.
+      widgetNotRegistered = true;
+    }
   }
 
   // Strict schedule resolution: match exactly on embed_target.
   // If scheduleTarget is set → only return a schedule published to that exact embed.
-  // If scheduleTarget is absent → only return a schedule published globally (embed_target IS NULL).
+  // If scheduleTarget is absent AND no widget context → global schedule (embed_target IS NULL).
+  // If widgetNotRegistered → skip DB query entirely (avoids leaking the global schedule).
   let schedule: { events_snapshot: unknown; league_order: unknown; featured_leagues: unknown; published_at?: string } | null = null;
   let scheduleAt = '';
 
-  {
+  if (!widgetNotRegistered) {
     const baseQuery = supabase
       .from('published_schedules')
       .select('events_snapshot, league_order, featured_leagues, published_at')
@@ -327,8 +333,9 @@ export async function GET(
     const safeEmbedId  = embedId.replace(/'/g, '');
     const safeWidgetId = (sp._wid ?? '').replace(/[^\w-]/g, '').substring(0, 64);
     const appUrl       = `${request.nextUrl.protocol}//${request.nextUrl.host}`;
-    const emptyBeacon  = (appUrl && safeApiKey) ? `<script>(function(){setTimeout(function(){try{fetch('${appUrl}/api/embed-instances',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:'${safeApiKey}',embedId:'${safeEmbedId}',widgetId:'${safeWidgetId}',pageUrl:document.referrer||location.href}),keepalive:true}).catch(function(){});}catch(e){}},800);})();</script>` : '';
-    const emptyHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:transparent;display:flex;align-items:center;justify-content:center;min-height:72px;padding:12px;color:#9ca3af}</style></head><body><div style="display:flex;align-items:center;gap:8px;font-size:13px;border:1px dashed #d1d5db;border-radius:8px;padding:12px 18px;background:#f9fafb"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>No schedule published yet.</div><script>(function(){function send(){try{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}catch(e){}}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',send);}else{send();}if(typeof ResizeObserver!=='undefined'){new ResizeObserver(send).observe(document.body);}})();</script>${emptyBeacon}<script>setTimeout(function(){location.reload();},15000);window.addEventListener('message',function(ev){if(ev.data&&ev.data.sbRefresh)location.reload();});</script></body></html>`;
+    // Skip beacon when _wid is present — WordPress plugin handles registration via elementor-editor-sync.js
+    const emptyBeacon  = (!safeWidgetId && appUrl && safeApiKey) ? `<script>(function(){setTimeout(function(){try{fetch('${appUrl}/api/embed-instances',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:'${safeApiKey}',embedId:'${safeEmbedId}',widgetId:'${safeWidgetId}',pageUrl:document.referrer||location.href}),keepalive:true}).catch(function(){});}catch(e){}},800);})();</script>` : '';
+    const emptyHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:transparent;padding:12px;color:#9ca3af}</style></head><body><div style="display:inline-flex;align-items:center;gap:8px;font-size:13px;border:1px dashed #d1d5db;border-radius:8px;padding:10px 16px;background:#f9fafb"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>No schedule published yet.</div><script>(function(){function send(){try{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}catch(e){}}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',send);}else{send();}if(typeof ResizeObserver!=='undefined'){new ResizeObserver(send).observe(document.body);}})();</script>${emptyBeacon}<script>setTimeout(function(){location.reload();},15000);window.addEventListener('message',function(ev){if(ev.data&&ev.data.sbRefresh)location.reload();});</script></body></html>`;
     return new Response(emptyHtml, {
       status: 200,
       headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },

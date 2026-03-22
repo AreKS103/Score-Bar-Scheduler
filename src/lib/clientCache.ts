@@ -344,12 +344,28 @@ export function saveSelectionToSupabase(state: SavedSelectionState, embedTarget 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      const selectedCount = Object.values(state.selections).filter(
+        (v: any) => v?.isSelected === true
+      ).length;
+
+      // If nothing is selected/featured/tagged, delete the row entirely
+      // so Supabase doesn't accumulate stale empty rows.
+      if (Object.keys(state.selections).length === 0) {
+        await supabase
+          .from('user_selections')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('embed_target', embedTarget);
+        return;
+      }
+
       await supabase.from('user_selections').upsert({
         user_id: user.id,
         embed_target: embedTarget,
         selections: state.selections,
         league_order: state.leagueOrder,
         featured_leagues: state.featuredLeagues,
+        selected_count: selectedCount,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id,embed_target' });
     } catch (e) {

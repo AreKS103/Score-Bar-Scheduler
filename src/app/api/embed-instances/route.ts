@@ -30,8 +30,20 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
-function hashKey(apiKey: string) {
-  return crypto.createHash('sha256').update(apiKey).digest('hex');
+function hashKey(raw: string) {
+  return crypto.createHash('sha256').update(raw).digest('hex');
+}
+
+/**
+ * Resolve an incoming apiKey to the key_hash stored in the DB.
+ *  - Starts with "sb_" → raw API key → hash it
+ *  - 64 lowercase hex chars → already a hashed embed token → use as-is
+ *  - Anything else → legacy raw key (pre-prefix era) → hash it
+ */
+function resolveKeyHash(apiKey: string): string {
+  if (apiKey.startsWith('sb_')) return hashKey(apiKey);
+  if (/^[0-9a-f]{64}$/.test(apiKey)) return apiKey;
+  return hashKey(apiKey);
 }
 
 /** POST /api/embed-instances — called by beacon in embed HTML to register/refresh an instance */
@@ -40,8 +52,7 @@ export async function POST(req: NextRequest) {
     const { apiKey, embedId, widgetId, pageUrl } = await req.json();
     if (!apiKey) return NextResponse.json({ error: 'Missing apiKey' }, { status: 400, headers: corsHeaders });
 
-    // Beacon may send a raw "sb_..." key or a pre-hashed 64-char hex token — avoid double-hashing
-    const hash = /^[0-9a-f]{64}$/.test(apiKey) ? apiKey : hashKey(apiKey);
+    const hash = resolveKeyHash(apiKey);
     const { data: keyData } = await supabase
       .from('user_api_keys')
       .select('user_id')
@@ -190,7 +201,7 @@ export async function GET(req: NextRequest) {
   let userId: string;
 
   if (apiKey) {
-    const hash = /^[0-9a-f]{64}$/.test(apiKey) ? apiKey : hashKey(apiKey);
+    const hash = resolveKeyHash(apiKey);
     const { data: keyData } = await supabase
       .from('user_api_keys')
       .select('user_id')
@@ -207,23 +218,60 @@ export async function GET(req: NextRequest) {
 
   const { data: instances } = await supabase
     .from('embed_instances')
-    .select('embed_id, page_url, last_seen, created_at')
+    .select('embed_id, widget_id, page_url, last_seen, created_at')
     .eq('user_id', userId)
     .order('created_at', { ascending: true });
 
-  // Async TTL cleanup: remove rows not seen in 7 days. Fire-and-forget —
+  // Async TTL cleanup: remove rows not seen in 3 days. Fire-and-forget —
   // don't await so it doesn't slow down the response.
-  const ttlCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const ttlCutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
   void supabase
     .from('embed_instances')
     .delete()
     .eq('user_id', userId)
     .lt('last_seen', ttlCutoff);
 
+  // Orphan cleanup: remove user_selections and published_schedules rows
+  // whose embed_target no longer matches any alive embed instance.
+  void (async () => {
+    try {
+      const { data: alive } = await supabase
+        .from('embed_instances')
+        .select('embed_id')
+        .eq('user_id', userId);
+      const aliveIds = new Set((alive ?? []).map(r => r.embed_id).filter(Boolean));
+
+      // Clean orphaned user_selections
+      const { data: allSel } = await supabase
+        .from('user_selections')
+        .select('id, embed_target')
+        .eq('user_id', userId);
+      const orphanedSelIds = (allSel ?? [])
+        .filter(r => r.embed_target && r.embed_target !== '' && !aliveIds.has(r.embed_target))
+        .map(r => r.id);
+      if (orphanedSelIds.length > 0) {
+        await supabase.from('user_selections').delete().in('id', orphanedSelIds);
+      }
+
+      // Clean orphaned published_schedules
+      const { data: allPub } = await supabase
+        .from('published_schedules')
+        .select('id, embed_target')
+        .eq('user_id', userId);
+      const orphanedPubIds = (allPub ?? [])
+        .filter(r => r.embed_target && r.embed_target !== '' && !aliveIds.has(r.embed_target))
+        .map(r => r.id);
+      if (orphanedPubIds.length > 0) {
+        await supabase.from('published_schedules').delete().in('id', orphanedPubIds);
+      }
+    } catch { /* best-effort cleanup */ }
+  })();
+
   // embed_id is always set for widget-based embeds (numeric "1","2",… or user label).
   // Only legacy null rows (old shortcode embeds) get a fallback auto-label.
   const labeled = (instances ?? []).map((inst, idx) => ({
     ...inst,
+    widget_id: inst.widget_id ?? null,
     display_id: inst.embed_id ?? `#${idx + 1}`,
   }));
 
@@ -233,16 +281,61 @@ export async function GET(req: NextRequest) {
 /** DELETE /api/embed-instances?embedId=NAME
  *  Removes a single embed instance row for the authenticated user.
  *  Pass embedId=__null__ to delete the unnamed (embed_id IS NULL) row.
+ *  Pass embedId=__all__ to delete ALL embed instances (used by WordPress uninstall).
+ *  Auth: session cookie OR apiKey query param.
  */
 export async function DELETE(req: NextRequest) {
   const sessionCors = getSessionCorsHeaders(req);
-  const sessionClient = await createServerClient();
-  const { data: { user } } = await sessionClient.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: sessionCors });
 
-  const rawId = req.nextUrl.searchParams.get('embedId');
+  // Support both session auth and API key auth (for WordPress uninstall)
+  let userId: string;
+  const apiKey = req.nextUrl.searchParams.get('apiKey');
+  if (apiKey) {
+    const hash = resolveKeyHash(apiKey);
+    const { data: keyData } = await supabase
+      .from('user_api_keys')
+      .select('user_id')
+      .eq('key_hash', hash)
+      .single();
+    if (!keyData) return NextResponse.json({ error: 'Invalid key' }, { status: 401, headers: corsHeaders });
+    userId = keyData.user_id;
+  } else {
+    const sessionClient = await createServerClient();
+    const { data: { user } } = await sessionClient.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: sessionCors });
+    userId = user.id;
+  }
+
+  const rawWidgetId = req.nextUrl.searchParams.get('widgetId');
+  let rawId = req.nextUrl.searchParams.get('embedId');
+
+  // If widgetId is provided without embedId, resolve the embed_id from the DB.
+  if (rawWidgetId && !rawId) {
+    const { data: inst } = await supabase
+      .from('embed_instances')
+      .select('embed_id')
+      .eq('user_id', userId)
+      .eq('widget_id', rawWidgetId)
+      .maybeSingle();
+    if (!inst) {
+      // Nothing registered under this widgetId — treat as success
+      return NextResponse.json({ ok: true }, { headers: apiKey ? corsHeaders : sessionCors });
+    }
+    rawId = inst.embed_id ?? '__null__';
+  }
+
   if (rawId === null) {
-    return NextResponse.json({ error: 'Missing embedId param' }, { status: 400, headers: sessionCors });
+    return NextResponse.json({ error: 'Missing embedId param' }, { status: 400, headers: apiKey ? corsHeaders : sessionCors });
+  }
+
+  const headers = apiKey ? corsHeaders : sessionCors;
+
+  // '__all__' sentinel: delete ALL embed instances + related data for this user
+  if (rawId === '__all__') {
+    await supabase.from('embed_instances').delete().eq('user_id', userId);
+    await supabase.from('published_schedules').delete().eq('user_id', userId);
+    await supabase.from('user_selections').delete().eq('user_id', userId);
+    return NextResponse.json({ ok: true }, { headers });
   }
 
   // '__null__' is the sentinel for the unnamed (NULL embed_id) row
@@ -252,7 +345,7 @@ export async function DELETE(req: NextRequest) {
   const query = supabase
     .from('embed_instances')
     .delete()
-    .eq('user_id', user.id);
+    .eq('user_id', userId);
 
   if (instanceId === null) {
     await query.is('embed_id', null);
@@ -265,7 +358,7 @@ export async function DELETE(req: NextRequest) {
   const scheduleDeleteQuery = supabase
     .from('published_schedules')
     .delete()
-    .eq('user_id', user.id);
+    .eq('user_id', userId);
 
   if (instanceId === null) {
     await scheduleDeleteQuery.is('embed_target', null);
@@ -278,7 +371,7 @@ export async function DELETE(req: NextRequest) {
   const selDeleteQuery = supabase
     .from('user_selections')
     .delete()
-    .eq('user_id', user.id);
+    .eq('user_id', userId);
 
   if (instanceId === null) {
     await selDeleteQuery.is('embed_target', null);
@@ -286,5 +379,5 @@ export async function DELETE(req: NextRequest) {
     await selDeleteQuery.eq('embed_target', instanceId);
   }
 
-  return NextResponse.json({ ok: true }, { headers: sessionCors });
+  return NextResponse.json({ ok: true }, { headers });
 }

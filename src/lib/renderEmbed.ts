@@ -134,11 +134,9 @@ function buildMatchLine(event: MatchEvent, showTime: boolean, sharedRound: strin
   const isCombat = ['boxing', 'ufc', 'bellator'].includes(e.sportId);
   const homeFlag = isCombat && e.homeCountry ? `<span style="font-size:1em;margin-right:2px" title="${esc(e.homeCountry)}">${countryFlag(e.homeCountry)}</span>` : '';
   const awayFlag = isCombat && e.awayCountry ? `<span style="font-size:1em;margin-right:2px" title="${esc(e.awayCountry)}">${countryFlag(e.awayCountry)}</span>` : '';
-  const homeImg = e.homeLogo ? `<img class="team-logo" src="${esc(e.homeLogo)}" alt="" onerror="this.onerror=null;this.style.display='none'" />` : '';
-  const awayImg = e.awayLogo && e.away ? `<img class="team-logo" src="${esc(e.awayLogo)}" alt="" onerror="this.onerror=null;this.style.display='none'" />` : '';
   const matchContent = e.away
-    ? `<span class="mc-team">${homeImg}${homeFlag}${esc(e.home)}</span><span class="vs-sep">vs</span><span class="mc-team">${awayImg}${awayFlag}${esc(e.away)}</span>`
-    : `<span class="mc-team">${homeImg}${esc(e.home)}</span>`;
+    ? `<span class="mc-team">${homeFlag}${esc(e.home)}</span><span class="vs-sep">vs</span><span class="mc-team">${awayFlag}${esc(e.away)}</span>`
+    : `<span class="mc-team">${esc(e.home)}</span>`;
   const roundStr = e.round ? `<span class="mc-round"> \u2013 ${esc(e.round)}</span>` : '';
   const tagsStr = e.tags?.length ? ` \u2013 <em>(${e.tags.join(', ')})</em>` : '';
   return showTime
@@ -161,6 +159,7 @@ function renderHighlights(
   featured: MatchEvent[],
   featuredLeagues: Map<string, string>,
   allEvents: MatchEvent[],
+  opts: EmbedRenderOpts,
 ): string {
   if (!featured.length && !featuredLeagues.size) return '';
 
@@ -186,10 +185,10 @@ function renderHighlights(
       const isCombat = ['boxing', 'ufc', 'bellator'].includes(e.sportId);
       const homeFlag = isCombat && e.homeCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(e.homeCountry)}</span>` : '';
       const awayFlag = isCombat && e.awayCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(e.awayCountry)}</span>` : '';
-      const homeImg = e.homeLogo ? `<img class="hl-team-logo" src="${esc(e.homeLogo)}" alt="" onerror="this.onerror=null;this.style.display='none'" />` : '';
-      const awayImg = e.awayLogo && e.away ? `<img class="hl-team-logo" src="${esc(e.awayLogo)}" alt="" onerror="this.onerror=null;this.style.display='none'" />` : '';
+      const homeImg = (!opts.hideLogos && e.homeLogo) ? `<img class="hl-team-logo" src="${esc(e.homeLogo)}" alt="" onerror="this.onerror=null;this.style.display='none'" />` : '';
+      const awayImg = (!opts.hideLogos && e.awayLogo && e.away) ? `<img class="hl-team-logo" src="${esc(e.awayLogo)}" alt="" onerror="this.onerror=null;this.style.display='none'" />` : '';
       // For singular events with no team logo, show league logo
-      const leagueFallback = !e.away && !homeImg ? (() => {
+      const leagueFallback = !opts.hideLogos && !e.away && !homeImg ? (() => {
         const cfg = SPORTS_CONFIG.find(s => s.id === e.sportId);
         return cfg ? resolvePublishLogoUrl(cfg.logo || e.leagueLogo || '', cfg.publishLogo) : '';
       })() : '';
@@ -212,12 +211,12 @@ function renderHighlights(
       allEvents.find(e => e.sportId === sportId && !!e.away && e.isFeatured) ||
       allEvents.find(e => e.sportId === sportId && !!e.away);
     if (teamEvent) {
-      const homeImg = teamEvent.homeLogo ? `<img class="hl-team-logo" src="${esc(teamEvent.homeLogo)}" alt="" onerror="this.onerror=null;this.style.display='none'" />` : '';
-      const awayImg = teamEvent.awayLogo ? `<img class="hl-team-logo" src="${esc(teamEvent.awayLogo)}" alt="" onerror="this.onerror=null;this.style.display='none'" />` : '';
+      const homeImg = (!opts.hideLogos && teamEvent.homeLogo) ? `<img class="hl-team-logo" src="${esc(teamEvent.homeLogo)}" alt="" onerror="this.onerror=null;this.style.display='none'" />` : '';
+      const awayImg = (!opts.hideLogos && teamEvent.awayLogo) ? `<img class="hl-team-logo" src="${esc(teamEvent.awayLogo)}" alt="" onerror="this.onerror=null;this.style.display='none'" />` : '';
       const teamsHtml = `<span class="hl-team">${homeImg}${esc(teamEvent.home)}</span><span class="hl-vs">vs</span><span class="hl-team">${awayImg}${esc(teamEvent.away!)}</span>`;
       parts.push(`<div class="hl-event"><div class="hl-event-meta">${teamEvent.time ? `<span class="hl-time">${esc(teamEvent.time)}</span>` : ''}<span class="hl-league-name">${esc(leagueLabel)}</span></div><div class="hl-teams">${teamsHtml}</div></div>`);
     } else {
-      const logoUrl = config ? resolvePublishLogoUrl(config.logo || '', config.publishLogo) : '';
+      const logoUrl = (!opts.hideLogos && config) ? resolvePublishLogoUrl(config.logo || '', config.publishLogo) : '';
       const logoImg = logoUrl ? `<img class="hl-team-logo" src="${esc(logoUrl)}" alt="" onerror="this.onerror=null;this.style.display='none'" />` : '';
       const label = (customLabel || '').trim() || leagueLabel;
       parts.push(`<div class="hl-league-spotlight">${logoImg}${esc(label)}</div>`);
@@ -396,7 +395,7 @@ export function renderEmbedContent(
   }
 
   // ── Render highlights ─────────────────────────────────────────────────────
-  const highlightsHTML = renderHighlights(featured, featuredLeagues, events);
+  const highlightsHTML = renderHighlights(featured, featuredLeagues, events, opts);
   const htmlParts: string[] = [];
 
   if (highlightsHTML) {

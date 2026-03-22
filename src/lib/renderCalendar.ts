@@ -83,9 +83,15 @@ function renderCard(e: MatchEvent, opts: CalendarRenderOpts): string {
     ? `${homeTeam}<span class="cal-vs">vs</span>${awayTeam}`
     : homeTeam;
 
-  const featuredClass = e.isFeatured ? ' cal-featured' : '';
+  const isBigScreen = Array.isArray(e.tags) && e.tags.includes('Live Big Screen');
+  const cardClasses = `cal-card${e.isFeatured ? ' cal-featured' : ''}${isBigScreen ? ' cal-bigscreen' : ''}`;
+  const tagsHtml = Array.isArray(e.tags) && e.tags.length > 0
+    ? `<div class="cal-tags">${e.tags.map(t =>
+        `<span class="cal-tag${t === 'Live Big Screen' ? ' cal-tag-bigscreen' : ''}">${esc(t)}</span>`
+      ).join('')}</div>`
+    : '';
 
-  return `<div class="cal-card${featuredClass}" data-sport-id="${esc(e.sportId)}">
+  return `<div class="${cardClasses}" data-sport-id="${esc(e.sportId)}">
   ${opts.showTime ? `<div class="cal-time">${esc(e.time)}</div>` : ''}
   <div class="cal-league">
     ${!opts.hideLogos && leagueLogo ? `<img class="cal-league-logo" src="${leagueLogo}" alt="${esc(leagueLabel)}" onerror="this.onerror=null;this.src='${LOGO_PLACEHOLDER_REMOTE}';" />` : ''}
@@ -93,6 +99,7 @@ function renderCard(e: MatchEvent, opts: CalendarRenderOpts): string {
   </div>
   <div class="cal-teams">${matchHtml}</div>
   ${e.round ? `<div class="cal-round">${esc(e.round)}</div>` : ''}
+  ${tagsHtml}
 </div>`;
 }
 
@@ -404,6 +411,31 @@ export function getCalendarCSS(accent: string): string {
   margin-top:2px;
   font-style:italic;
 }
+.cal-tags{
+  display:flex;
+  flex-wrap:wrap;
+  gap:3px;
+  margin-top:5px;
+}
+.cal-tag{
+  font-size:.6em;
+  font-weight:700;
+  padding:1px 6px;
+  border-radius:999px;
+  border:1px solid var(--border,#e5e7eb);
+  color:var(--muted,#888);
+  white-space:nowrap;
+  letter-spacing:.03em;
+}
+.cal-tag-bigscreen{
+  background:color-mix(in srgb,${accent} 90%,#fff);
+  color:#fff;
+  border-color:transparent;
+}
+.cal-bigscreen{
+  border-color:${accent};
+  box-shadow:0 0 0 2px color-mix(in srgb,${accent} 25%,transparent);
+}
 
 
 /* ── Responsive: container queries ── */
@@ -421,13 +453,13 @@ export function getCalendarCSS(accent: string): string {
 /* ── Highlights section ── */
 .cal-highlights{margin-bottom:32px}
 .hl-section{width:100%}
-.hl-title{font-size:var(--sb-h3-size,1.15em)!important;font-weight:800;color:var(--heading,var(--text));margin:0 0 12px}
+.hl-title{font-size:var(--sb-h3-size,1.15em)!important;font-weight:800;color:var(--heading,var(--text));margin:0 0 12px;text-transform:uppercase}
 .hl-date-group{margin-bottom:12px}
-.hl-date-header{font-size:var(--sb-date-size,.72em)!important;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted,#888);padding:6px 0;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:8px}
+.hl-date-header{font-size:var(--sb-date-size,.72em)!important;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--heading,var(--text));padding:6px 0;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:8px}
 .hl-event{padding:7px 0}
 .hl-event-meta{display:flex;align-items:center;gap:6px;margin-bottom:4px}
 .hl-time{font-size:var(--sb-date-size,.8em)!important;font-weight:600;color:var(--accent,#3b82f6)}
-.hl-league-name{font-size:var(--sb-date-size,.8em)!important;font-weight:700;color:var(--muted,#888)}
+.hl-league-name{font-size:var(--sb-date-size,.8em)!important;font-weight:700;color:var(--heading,var(--text))}
 .hl-teams{display:flex;align-items:center;flex-wrap:wrap;gap:4px;font-size:var(--sb-hl-size,.9em);font-weight:600;color:var(--heading,#111827)}
 .hl-team-logo{height:24px;width:auto;flex-shrink:0}
 .hl-team{display:inline-flex;align-items:center;gap:4px;font-weight:600}

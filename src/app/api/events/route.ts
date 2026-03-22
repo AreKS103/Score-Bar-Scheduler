@@ -25,8 +25,9 @@ interface CustomEventsCacheEntry {
 const CUSTOM_EVENTS_CACHE = new Map<string, CustomEventsCacheEntry>();
 const CUSTOM_EVENTS_CACHE_TTL = 60 * 1000;
 
-// Fetch lock to prevent thundering herd
-let fetchPromise: Promise<MatchEvent[]> | null = null;
+// Fetch locks to prevent thundering herd — keyed by cacheKey so different
+// date ranges never share the same in-flight promise.
+const fetchPromises = new Map<string, Promise<MatchEvent[]>>();
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ESPN API
@@ -1122,17 +1123,18 @@ export async function GET(req: NextRequest) {
   }
 
   // Return stale data while refreshing in background
-  if (cached && now - cached.timestamp < STALE_OK_TTL && !fetchPromise) {
+  if (cached && now - cached.timestamp < STALE_OK_TTL && !fetchPromises.has(cacheKey)) {
     // Start background refresh
-    fetchPromise = fetchAllEvents(startDate, endDate).then(events => {
+    const bgPromise = fetchAllEvents(startDate, endDate).then(events => {
       CACHE.set(cacheKey, { data: events, timestamp: Date.now() });
-      fetchPromise = null;
+      fetchPromises.delete(cacheKey);
       return events;
     }).catch(err => {
       console.error('[Events API] Background refresh failed:', err);
-      fetchPromise = null;
+      fetchPromises.delete(cacheKey);
       return cached.data;
     });
+    fetchPromises.set(cacheKey, bgPromise);
 
     const customEvents = await getCustomEvents();
     return NextResponse.json({
@@ -1145,24 +1147,27 @@ export async function GET(req: NextRequest) {
 
   // Need fresh data
   try {
-    // Prevent thundering herd - reuse existing fetch if in progress
-    if (fetchPromise) {
-      const [events, customEvents] = await Promise.all([fetchPromise, getCustomEvents()]);
+    // Prevent thundering herd — reuse existing fetch for the same date range.
+    // Each date range gets its own promise so different-range requests never
+    // return each other's data.
+    if (fetchPromises.has(cacheKey)) {
+      const [events, customEvents] = await Promise.all([fetchPromises.get(cacheKey)!, getCustomEvents()]);
       return NextResponse.json({ events: [...events, ...customEvents], cached: false });
     }
 
-    fetchPromise = fetchAllEvents(startDate, endDate);
-    const events = await fetchPromise;
+    const p = fetchAllEvents(startDate, endDate);
+    fetchPromises.set(cacheKey, p);
+    const events = await p;
     
     CACHE.set(cacheKey, { data: events, timestamp: Date.now() });
-    fetchPromise = null;
+    fetchPromises.delete(cacheKey);
 
     const customEvents = await getCustomEvents();
     return NextResponse.json({ events: [...events, ...customEvents], cached: false }, {
       headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600' },
     });
   } catch (err) {
-    fetchPromise = null;
+    fetchPromises.delete(cacheKey);
     console.error('[Events API] Fetch failed:', err);
     
     // Return stale data on error if available

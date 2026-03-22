@@ -86,11 +86,11 @@ function generateHighlights(
   const s = {
     section: 'margin-bottom:20px',
     title: 'font-size:1.1em;font-weight:800;margin:0 0 12px',
-    dateHeader: 'font-size:0.72em;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;opacity:0.65;padding:6px 0;border-bottom:1px solid rgba(128,128,128,0.25);margin-bottom:8px',
+    dateHeader: 'font-size:0.72em;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;opacity:1;padding:6px 0;border-bottom:1px solid rgba(128,128,128,0.25);margin-bottom:8px',
     event: 'padding:7px 0',
     meta: 'display:flex;align-items:center;gap:6px;margin-bottom:4px',
     time: 'font-size:0.8em;font-weight:700',
-    league: 'font-size:0.8em;font-weight:600;opacity:0.65',
+    league: 'font-size:0.8em;font-weight:600;opacity:1',
     teams: 'display:flex;align-items:center;flex-wrap:wrap;gap:4px;font-size:1em;font-weight:600',
     teamLogo: 'height:20px;width:auto;vertical-align:middle;flex-shrink:0',
     vs: 'font-style:italic;font-size:0.82em;opacity:0.4;margin:0 3px',
@@ -163,12 +163,10 @@ function generateMatchLine(event: MatchEvent): string {
   const isCombat = ['boxing', 'ufc', 'bellator'].includes(event.sportId);
   const homeFlag = isCombat && event.homeCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(event.homeCountry)}</span>` : '';
   const awayFlag = isCombat && event.awayCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(event.awayCountry)}</span>` : '';
-  const logoStyle = 'height:20px;width:auto;vertical-align:middle;flex-shrink:0';
-  const homeImg = event.homeLogo ? `<img src="${escapeHTML(event.homeLogo)}" alt="" loading="lazy" style="${logoStyle}" onerror="this.onerror=null;this.style.display='none'" />` : '';
-  const awayImg = event.awayLogo && event.away ? `<img src="${escapeHTML(event.awayLogo)}" alt="" loading="lazy" style="${logoStyle}" onerror="this.onerror=null;this.style.display='none'" />` : '';
+  // Team logos are only shown in the highlights section, not in the schedule list rows.
   const matchContent = event.away
-    ? `<span class="mc-team">${homeImg}${homeFlag}${escapeHTML(event.home)}</span><span class="vs-sep">vs</span><span class="mc-team">${awayImg}${awayFlag}${escapeHTML(event.away)}</span>`
-    : `<span class="mc-team">${homeImg}${escapeHTML(event.home)}</span>`;
+    ? `<span class="mc-team">${homeFlag}${escapeHTML(event.home)}</span><span class="vs-sep">vs</span><span class="mc-team">${awayFlag}${escapeHTML(event.away)}</span>`
+    : `<span class="mc-team">${escapeHTML(event.home)}</span>`;
   const roundStr = event.round ? `<span class="mc-round"> \u2013 ${escapeHTML(event.round)}</span>` : '';
   const tags = formatTags(event.tags);
   return `<span class="ml-time">${escapeHTML(event.time)}</span><span class="ml-match">${matchContent}${roundStr}${tags}</span>`;

@@ -67,14 +67,14 @@ const MatchCard = memo(function MatchCard({
         {/* Teams with logos */}
         <div className="flex items-center gap-1.5 text-[11px] font-medium text-foreground">
           {event.homeLogo && (
-            <img src={event.homeLogo} alt="" className="w-4 h-4 object-contain" loading="lazy" decoding="async" />
+            <img src={event.homeLogo} alt="" className="h-4 w-4 object-contain flex-shrink-0" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
           )}
           <span>{event.home}</span>
           {event.away && (
             <>
               <span className="text-muted-foreground mx-0.5">vs</span>
               {event.awayLogo && (
-                <img src={event.awayLogo} alt="" className="w-4 h-4 object-contain" loading="lazy" decoding="async" />
+                <img src={event.awayLogo} alt="" className="h-4 w-4 object-contain flex-shrink-0" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
               )}
               <span>{event.away}</span>
             </>

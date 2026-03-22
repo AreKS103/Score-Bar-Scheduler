@@ -31,7 +31,11 @@ class Schedule_Settings {
             return $input;
         }
 
-        $verify_url = rtrim(SCHEDULE_APP_DOMAIN, '/') . '/api/plugin/verify';
+        $verify_url = rtrim(schedule_get_app_domain(), '/') . '/api/plugin/verify';
+        if (empty(schedule_get_app_domain())) {
+            add_settings_error('schedule_api_key', 'no_app_url', 'Please enter the App URL first, then save the API key.', 'error');
+            return $input;
+        }
         $site_url = home_url();
 
         $response = wp_remote_post($verify_url, [
@@ -87,7 +91,10 @@ class Schedule_Settings {
             wp_send_json_error('No API key configured.');
         }
 
-        $verify_url = rtrim(SCHEDULE_APP_DOMAIN, '/') . '/api/plugin/verify';
+        $verify_url = rtrim(schedule_get_app_domain(), '/') . '/api/plugin/verify';
+        if (empty(schedule_get_app_domain())) {
+            wp_send_json_error('App URL is not configured. Go to Settings > Scheduler to set it.');
+        }
 
         $response = wp_remote_post($verify_url, [
             'timeout' => 15,
@@ -109,6 +116,9 @@ class Schedule_Settings {
 
         if ($code === 200 && !empty($body['ok'])) {
             set_transient('schedule_connection_status', ['ok' => true, 'message' => 'Connected'], 0);
+            if (!empty($body['embedToken'])) {
+                update_option('schedule_embed_token', sanitize_text_field($body['embedToken']));
+            }
             wp_send_json_success('✅ Connection verified!');
         } else {
             $err = $body['error'] ?? 'HTTP ' . $code;
@@ -137,6 +147,16 @@ class Schedule_Settings {
             if (wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['schedule_save_key_nonce'])), 'schedule_save_key')) {
                 $new_key = sanitize_text_field(trim(wp_unslash($_POST['schedule_api_key'] ?? '')));
                 update_option('schedule_api_key', $this->sanitize_and_verify_key($new_key));
+                // Save App URL (advanced)
+                $new_app_url = isset($_POST['schedule_app_url']) ? trim(wp_unslash($_POST['schedule_app_url'])) : '';
+                if (!empty($new_app_url)) {
+                    $new_app_url = esc_url_raw($new_app_url);
+                    if (preg_match('#^https?://#', $new_app_url)) {
+                        update_option('schedule_app_url', rtrim($new_app_url, '/'));
+                    }
+                } else {
+                    delete_option('schedule_app_url');
+                }
                 $saved_ok = true;
             } else {
                 $saved_ok = false;
@@ -146,13 +166,19 @@ class Schedule_Settings {
         $api_key    = get_option('schedule_api_key', '');
         $status     = get_transient('schedule_connection_status');
         $is_connected = is_array($status) && !empty($status['ok']);
-        $frontend_url = SCHEDULE_APP_DOMAIN;
-        $verify_url   = rtrim(SCHEDULE_APP_DOMAIN, '/') . '/api/plugin/verify';
+        $frontend_url = schedule_get_app_domain();
+        $verify_url   = rtrim(schedule_get_app_domain(), '/') . '/api/plugin/verify';
         ?>
         <div class="wrap">
             <h1>Scheduler</h1>
 
             <?php if (!$api_key): ?>
+                <?php if (empty($frontend_url)): ?>
+                <div class="notice notice-warning" style="padding: 20px; border-left-color: #dba617; background: #fff; margin-bottom: 20px;">
+                    <h2>Welcome to the Scheduler!</h2>
+                    <p style="font-size: 15px;">Enter your <strong>App URL</strong> below to get started, then save your API key.</p>
+                </div>
+                <?php else: ?>
                 <div class="notice notice-info" style="padding: 20px; text-align: center; border-left-color: #2271b1; background: #fff; margin-bottom: 20px;">
                     <h2>Welcome to the Scheduler!</h2>
                     <p style="font-size: 16px;">To display your custom sports schedules on your WordPress site, you need to connect your account.</p>
@@ -163,11 +189,13 @@ class Schedule_Settings {
                     </ol>
                     <p><a href="<?php echo esc_url($frontend_url . '/login'); ?>" target="_blank" class="button button-primary button-hero">Go to Dashboard</a></p>
                 </div>
+                <?php endif; ?>
             <?php else: ?>
                 <?php if ($is_connected): ?>
                     <div class="notice notice-success" style="padding: 10px 20px; background: #fff; border-left-color: #00a32a; margin-bottom: 20px;">
                         <h2 style="margin: 0 0 10px 0;">&#9989; Connected</h2>
                         <p style="margin: 0;">Your account is linked. Use the <strong>Scheduler</strong> Elementor widget or the shortcode <code>[schedule]</code> to display your schedule.</p>
+                        <p style="margin-top: 8px;"><button type="button" class="button" id="schedule-refresh-token-btn">Refresh Token</button> <span id="schedule-refresh-result" style="margin-left: 8px;"></span></p>
                     </div>
                 <?php else: ?>
                     <div class="notice notice-warning" style="padding: 10px 20px; background: #fff; border-left-color: #dba617; margin-bottom: 20px;">
@@ -194,6 +222,13 @@ class Schedule_Settings {
                         <tr>
                             <th scope="row"><label for="schedule_api_key">API Key</label></th>
                             <td><?php $this->api_key_callback(); ?></td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="schedule_app_url">App URL <small>(advanced)</small></label></th>
+                            <td>
+                                <input type="url" id="schedule_app_url" name="schedule_app_url" value="<?php echo esc_attr(get_option('schedule_app_url', '')); ?>" style="width: 350px;" placeholder="https://your-app-domain.com" />
+                                <p class="description">Leave blank to use the default. Only change this if you are self-hosting the Scheduler app on your own domain.</p>
+                            </td>
                         </tr>
                     </tbody>
                 </table>
@@ -229,6 +264,35 @@ class Schedule_Settings {
                             result.style.color = '#d63638';
                         })
                         .finally(function() { btn.disabled = false; });
+                });
+            })();
+            (function(){
+                var rbtn = document.getElementById('schedule-refresh-token-btn');
+                var rres = document.getElementById('schedule-refresh-result');
+                if (!rbtn) return;
+                rbtn.addEventListener('click', function() {
+                    rbtn.disabled = true;
+                    rres.textContent = '⏳ Refreshing token…';
+                    rres.style.color = '#666';
+                    var data = new FormData();
+                    data.append('action', 'schedule_test_connection');
+                    data.append('nonce', '<?php echo esc_js(wp_create_nonce("schedule_test_nonce")); ?>');
+                    fetch(ajaxurl, { method: 'POST', body: data })
+                        .then(function(r) { return r.json(); })
+                        .then(function(json) {
+                            if (json.success) {
+                                rres.textContent = '✅ Token refreshed';
+                                rres.style.color = '#00a32a';
+                            } else {
+                                rres.textContent = '❌ ' + (json.data || 'Failed');
+                                rres.style.color = '#d63638';
+                            }
+                        })
+                        .catch(function(e) {
+                            rres.textContent = '❌ ' + (e && e.message ? e.message : 'unknown');
+                            rres.style.color = '#d63638';
+                        })
+                        .finally(function() { rbtn.disabled = false; });
                 });
             })();
             </script>

@@ -5,14 +5,38 @@
  */
 if (!defined('WP_UNINSTALL_PLUGIN')) exit;
 
+// ── Notify the Supabase backend to clean up embed instances for this site ──
+// This fires a best-effort DELETE to the app so stale rows don't accumulate.
+$api_key = get_option('schedule_api_key', '');
+if ($api_key) {
+    // Resolve app URL: option > wp-config constant. Skip cleanup if not configured.
+    $from_option = get_option('schedule_app_url', '');
+    if (!empty($from_option)) {
+        $app_url = rtrim($from_option, '/');
+    } elseif (defined('SCHEDULE_APP_BASE_URL') && SCHEDULE_APP_BASE_URL) {
+        $app_url = rtrim(SCHEDULE_APP_BASE_URL, '/');
+    } else {
+        $app_url = '';
+    }
+    if (!empty($app_url)) {
+        $endpoint = $app_url . '/api/embed-instances?embedId=__all__&apiKey=' . urlencode($api_key);
+        wp_remote_request($endpoint, [
+            'method'  => 'DELETE',
+            'timeout' => 5,
+            'blocking' => false,
+        ]);
+    }
+}
+
 delete_option('schedule_api_key');
 delete_option('schedule_embed_token');
+delete_option('schedule_app_url');
 delete_transient('schedule_connection_status');
 
 // Also remove any stale active_plugins ghost entries left by previous broken installs
 $active = get_option('active_plugins', []);
 $cleaned = array_values(array_filter($active, function ($entry) {
-    return str_contains($entry, 'scorebar-scheduler') === false;
+    return strpos($entry, 'scorebar-scheduler') === false;
 }));
 if (count($cleaned) !== count($active)) {
     update_option('active_plugins', $cleaned);
@@ -22,7 +46,7 @@ if (is_multisite()) {
     delete_site_option('schedule_api_key');
     $network_active = get_site_option('active_sitewide_plugins', []);
     foreach (array_keys($network_active) as $entry) {
-        if (str_contains($entry, 'scorebar-scheduler')) {
+        if (strpos($entry, 'scorebar-scheduler') !== false) {
             unset($network_active[$entry]);
         }
     }
