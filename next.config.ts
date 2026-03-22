@@ -1,16 +1,25 @@
 import type { NextConfig } from 'next';
 import path from 'path';
 
-// Put build output outside OneDrive to prevent EBUSY file-lock errors during sync.
-// Next.js internally does path.join(projectRoot, distDir) so we must supply a
-// *relative* path — an absolute path with a drive letter gets treated as a literal
-// path segment on Windows (path.join, not path.resolve).
-const appDataLocal = process.env.LOCALAPPDATA || path.join('C:', 'Users', 'alpla', 'AppData', 'Local');
-const distAbsolute = path.join(appDataLocal, 'scorebarschedule-next');
-const distDir = path.relative(process.cwd(), distAbsolute);
+// On local Windows/OneDrive dev: put build output in AppData to avoid EBUSY file-lock errors.
+// On Vercel/CI: LOCALAPPDATA is not set and the fallback Windows path would resolve OUTSIDE
+// the project root, which Turbopack refuses (Invalid distDirRoot). So skip custom distDir
+// on CI/Vercel and use the default '.next'.
+function resolveDistDir(): string | undefined {
+  if (process.env.VERCEL || process.env.CI || !process.env.LOCALAPPDATA) {
+    return undefined; // use default '.next'
+  }
+  const distAbsolute = path.join(process.env.LOCALAPPDATA, 'scorebarschedule-next');
+  const rel = path.relative(process.cwd(), distAbsolute);
+  // Safety check: never navigate outside the project (e.g. if someone runs locally on Linux)
+  if (rel.startsWith('..')) return undefined;
+  return rel;
+}
+
+const distDir = resolveDistDir();
 
 const nextConfig: NextConfig = {
-  distDir,
+  ...(distDir ? { distDir } : {}),
   async headers() {
     return [
       {
