@@ -163,9 +163,12 @@ function generateMatchLine(event: MatchEvent): string {
   const isCombat = ['boxing', 'ufc', 'bellator'].includes(event.sportId);
   const homeFlag = isCombat && event.homeCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(event.homeCountry)}</span>` : '';
   const awayFlag = isCombat && event.awayCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(event.awayCountry)}</span>` : '';
+  const logoStyle = 'height:20px;width:auto;vertical-align:middle;flex-shrink:0';
+  const homeImg = event.homeLogo ? `<img src="${escapeHTML(event.homeLogo)}" alt="" loading="lazy" style="${logoStyle}" onerror="this.onerror=null;this.style.display='none'" />` : '';
+  const awayImg = event.awayLogo && event.away ? `<img src="${escapeHTML(event.awayLogo)}" alt="" loading="lazy" style="${logoStyle}" onerror="this.onerror=null;this.style.display='none'" />` : '';
   const matchContent = event.away
-    ? `<span class="mc-team">${homeFlag}${escapeHTML(event.home)}</span><span class="vs-sep">vs</span><span class="mc-team">${awayFlag}${escapeHTML(event.away)}</span>`
-    : `<span class="mc-team">${escapeHTML(event.home)}</span>`;
+    ? `<span class="mc-team">${homeImg}${homeFlag}${escapeHTML(event.home)}</span><span class="vs-sep">vs</span><span class="mc-team">${awayImg}${awayFlag}${escapeHTML(event.away)}</span>`
+    : `<span class="mc-team">${homeImg}${escapeHTML(event.home)}</span>`;
   const roundStr = event.round ? `<span class="mc-round"> \u2013 ${escapeHTML(event.round)}</span>` : '';
   const tags = formatTags(event.tags);
   return `<span class="ml-time">${escapeHTML(event.time)}</span><span class="ml-match">${matchContent}${roundStr}${tags}</span>`;

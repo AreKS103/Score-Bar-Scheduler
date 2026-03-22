@@ -134,9 +134,11 @@ function buildMatchLine(event: MatchEvent, showTime: boolean, sharedRound: strin
   const isCombat = ['boxing', 'ufc', 'bellator'].includes(e.sportId);
   const homeFlag = isCombat && e.homeCountry ? `<span style="font-size:1em;margin-right:2px" title="${esc(e.homeCountry)}">${countryFlag(e.homeCountry)}</span>` : '';
   const awayFlag = isCombat && e.awayCountry ? `<span style="font-size:1em;margin-right:2px" title="${esc(e.awayCountry)}">${countryFlag(e.awayCountry)}</span>` : '';
+  const homeImg = e.homeLogo ? `<img class="team-logo" src="${esc(e.homeLogo)}" alt="" onerror="this.onerror=null;this.style.display='none'" />` : '';
+  const awayImg = e.awayLogo && e.away ? `<img class="team-logo" src="${esc(e.awayLogo)}" alt="" onerror="this.onerror=null;this.style.display='none'" />` : '';
   const matchContent = e.away
-    ? `<span class="mc-team">${homeFlag}${esc(e.home)}</span><span class="vs-sep">vs</span><span class="mc-team">${awayFlag}${esc(e.away)}</span>`
-    : `<span class="mc-team">${esc(e.home)}</span>`;
+    ? `<span class="mc-team">${homeImg}${homeFlag}${esc(e.home)}</span><span class="vs-sep">vs</span><span class="mc-team">${awayImg}${awayFlag}${esc(e.away)}</span>`
+    : `<span class="mc-team">${homeImg}${esc(e.home)}</span>`;
   const roundStr = e.round ? `<span class="mc-round"> \u2013 ${esc(e.round)}</span>` : '';
   const tagsStr = e.tags?.length ? ` \u2013 <em>(${e.tags.join(', ')})</em>` : '';
   return showTime

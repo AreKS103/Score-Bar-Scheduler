@@ -16,6 +16,9 @@
 
 const TOURNAMENT_PREFIX = 'NCAA Tournament - ';
 
+/** Local path to the NCAA / March Madness logo (same branding). */
+export const MARCH_MADNESS_LOGO = '/league-logos/basketball-ncaam.png';
+
 /** Maps the raw ESPN round value (after stripping the prefix) to a display label. */
 export const MARCH_MADNESS_ROUND_MAP: Record<string, string> = {
   'First Four':            'First Four',

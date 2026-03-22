@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { MatchEvent } from '@/types';
 import { createClient } from '@/lib/supabase/server';
-import { normalizeTournamentGame, formatTeamWithSeed } from '@/lib/marchMadness';
+import { normalizeTournamentGame, MARCH_MADNESS_LOGO } from '@/lib/marchMadness';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SERVER-SIDE CACHE — Stores fetched events in memory with TTL
@@ -476,6 +476,7 @@ function mapTeamSportEvents(
 
     let leagueLabel = meta.label;
     let round = '';
+    let leagueLogo = meta.logo;
 
     if (isNCAA) {
       const info = normalizeTournamentGame({
@@ -486,8 +487,7 @@ function mapTeamSportEvents(
       leagueLabel = info.leagueLabel;
       round = info.round;
       if (info.leagueLabel === 'March Madness') {
-        homeName = formatTeamWithSeed(homeName, home?.curatedRank);
-        if (away) awayName = formatTeamWithSeed(awayName, away?.curatedRank);
+        leagueLogo = MARCH_MADNESS_LOGO;
       }
     } else {
       // Round info from event name
@@ -504,7 +504,7 @@ function mapTeamSportEvents(
       sportId: league.id,
       category: meta.category,
       leagueLabel,
-      leagueLogo: meta.logo,
+      leagueLogo,
       date,
       time,
       home: homeName || 'TBD',

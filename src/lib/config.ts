@@ -28,6 +28,7 @@ const LOCAL_LEAGUE_LOGOS: Record<string, string> = {
   'soccer-cpl': '/league-logos/soccer-cpl.png',
   'basketball-nba': '/league-logos/basketball-nba.png',
   'basketball-wnba': '/league-logos/basketball-wnba.png',
+  'basketball-ncaam': '/league-logos/basketball-ncaam.png',
   'football-nfl': '/league-logos/football-nfl.png',
   'baseball-mlb': '/league-logos/baseball-mlb.png',
   'hockey-nhl': '/league-logos/hockey-nhl.png',
