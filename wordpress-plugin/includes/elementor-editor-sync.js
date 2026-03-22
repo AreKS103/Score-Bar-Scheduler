@@ -14,7 +14,12 @@
   var appUrl = (cfg.appUrl || '').replace(/\/$/, '');
   var apiKey = cfg.apiKey || '';
 
-  if (!appUrl || !apiKey) return;
+  console.log('[SB] script loaded, appUrl:', appUrl, 'apiKey length:', apiKey.length);
+
+  if (!appUrl || !apiKey) {
+    console.warn('[SB] missing appUrl or apiKey — aborting. appUrl:', appUrl, 'apiKey length:', apiKey.length);
+    return;
+  }
 
   /* ── Dedup: prevent multiple hooks from sending duplicate DELETEs ────── */
   var deletedWidgets = {};
@@ -89,6 +94,12 @@
   /* ── Elementor JS hooks ────────────────────────────────────────────────── */
 
   function setupElementorHooks() {
+    console.log('[SB] setupElementorHooks called');
+    console.log('[SB] $e available:', typeof window.$e);
+    console.log('[SB] $e.hooks available:', !!(window.$e && window.$e.hooks));
+    console.log('[SB] $e.commands available:', !!(window.$e && window.$e.commands));
+    console.log('[SB] elementor.channels available:', !!(window.elementor && window.elementor.channels));
+
     // ── Primary: $e.hooks (Elementor 3.x command-based hooks) ─────────────
     if (window.$e && window.$e.hooks) {
       try {
@@ -115,6 +126,7 @@
             }
           } catch (e) { console.warn('[SB] create hook error', e); }
         });
+        console.log('[SB] $e.hooks registered successfully');
       } catch (e) {
         console.warn('[SB] $e.hooks registration failed, falling back', e);
       }
@@ -134,8 +146,11 @@
               }
             } catch (e) {}
           });
+          console.log('[SB] Backbone channel listener registered');
+        } else {
+          console.warn('[SB] elementor.channels.data not available — Backbone fallback skipped');
         }
-      } catch (e) {}
+      } catch (e) { console.warn('[SB] Backbone channel registration failed', e); }
     }
   }
 
@@ -144,9 +159,18 @@
   var deleteTimers = {};
 
   function observePreviewIframe() {
+    console.log('[SB] observePreviewIframe called');
+    var _iframe = document.getElementById('elementor-preview-iframe');
+    console.log('[SB] iframe found:', !!_iframe,
+      'contentDoc:', !!(_iframe && _iframe.contentDocument),
+      'body:', !!(_iframe && _iframe.contentDocument && _iframe.contentDocument.body));
     try {
-      var iframe = document.getElementById('elementor-preview-iframe');
-      if (!iframe || !iframe.contentDocument || !iframe.contentDocument.body) return;
+      var iframe = _iframe;
+      if (!iframe || !iframe.contentDocument || !iframe.contentDocument.body) {
+        console.warn('[SB] observePreviewIframe: iframe not ready, MutationObserver not attached');
+        return;
+      }
+      console.log('[SB] attaching MutationObserver to preview iframe body');
       var doc = iframe.contentDocument;
 
       new MutationObserver(function (mutations) {
@@ -202,6 +226,7 @@
           });
         });
       }).observe(doc.body, { childList: true, subtree: true });
+      console.log('[SB] MutationObserver attached successfully');
     } catch (e) {
       console.warn('[SB] observePreviewIframe failed', e);
     }
@@ -211,36 +236,58 @@
 
   var _initialized = false;
   function init() {
+    console.log('[SB] init() called, already initialized:', _initialized);
     if (_initialized) {
       console.log('[SB] already initialized, skipping');
       return;
     }
     _initialized = true;
-    console.log('[SB] editor sync init');
+    console.log('[SB] init() running — setting up hooks and observer');
     setupElementorHooks();
     observePreviewIframe();
   }
 
   function tryInit() {
+    console.log('[SB] tryInit called');
+    var _diag_iframe = document.getElementById('elementor-preview-iframe');
+    console.log('[SB] iframe check:', {
+      iframeExists: !!_diag_iframe,
+      hasDoc: !!(_diag_iframe && _diag_iframe.contentDocument),
+      hasBody: !!(_diag_iframe && _diag_iframe.contentDocument && _diag_iframe.contentDocument.body),
+      hasElementor: typeof window.elementor
+    });
     try {
-      var iframe = document.getElementById('elementor-preview-iframe');
+      var iframe = _diag_iframe;
       if (iframe && iframe.contentDocument &&
           iframe.contentDocument.body && window.elementor) {
+        console.log('[SB] tryInit: preview already ready — calling init() immediately');
         init();
         return;
       }
-    } catch (e) {}
+    } catch (e) { console.warn('[SB] tryInit immediate check threw', e); }
 
     if (window.elementor) {
+      console.log('[SB] tryInit: elementor exists but iframe not ready — registering preview:loaded + 500ms timeout');
       try {
-        window.elementor.on('preview:loaded', function () { init(); });
-      } catch (e) {}
-      setTimeout(function () { try { init(); } catch (e) {} }, 500);
+        window.elementor.on('preview:loaded', function () {
+          console.log('[SB] preview:loaded fired — calling init()');
+          init();
+        });
+      } catch (e) { console.warn('[SB] elementor.on(preview:loaded) failed', e); }
+      setTimeout(function () {
+        console.log('[SB] 500ms timeout fired');
+        try { init(); } catch (e) {}
+      }, 500);
     } else {
+      console.log('[SB] tryInit: elementor not yet available — waiting for elementor:init');
       window.addEventListener('elementor:init', function () {
+        console.log('[SB] elementor:init event fired');
         setTimeout(function () { try { init(); } catch (e) {} }, 200);
       });
-      setTimeout(function () { try { init(); } catch (e) {} }, 2000);
+      setTimeout(function () {
+        console.log('[SB] 2000ms fallback timeout fired');
+        try { init(); } catch (e) {}
+      }, 2000);
     }
   }
 
