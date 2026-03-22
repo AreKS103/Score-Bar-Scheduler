@@ -173,12 +173,21 @@ export default function PreviewPanel({
           [&_hr]:border-border [&_hr]:my-6
           [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1.5
           [&_li]:leading-relaxed [&_li]:text-zinc-600 dark:[&_li]:text-zinc-300
-          [&_p]:leading-relaxed [&_p]:my-3 [&_p]:text-zinc-600 dark:[&_p]:text-zinc-300
-          [&_strong]:text-zinc-900 dark:[&_strong]:text-white
+          [&_p]:leading-relaxed [&_p]:my-1 [&_p]:text-zinc-600 dark:[&_p]:text-zinc-300
+          [&_p_strong]:block [&_p_strong]:text-[0.73em] [&_p_strong]:font-semibold
+          [&_p_strong]:uppercase [&_p_strong]:tracking-widest
+          [&_p_strong]:!text-zinc-500 dark:[&_p_strong]:!text-zinc-400
+          [&_p_strong]:mt-3 [&_p_strong]:mb-1
           [&_em]:not-italic [&_em]:text-xs [&_em]:px-1.5 [&_em]:py-0.5 [&_em]:rounded
           [&_em]:bg-primary/10 [&_em]:text-primary
           [&_img]:inline [&_img]:h-8 [&_img]:w-auto [&_img]:my-0
-          [&_br]:leading-8
+          [&_.match-group]:my-0 [&_.match-group]:mb-2
+          [&_.match-row]:flex [&_.match-row]:items-center [&_.match-row]:gap-1.5 [&_.match-row]:py-0.5
+          [&_.ml-time]:text-[0.8em] [&_.ml-time]:font-semibold [&_.ml-time]:text-blue-500 dark:[&_.ml-time]:text-blue-400 [&_.ml-time]:shrink-0 [&_.ml-time]:min-w-[38px]
+          [&_.ml-match]:flex [&_.ml-match]:items-center [&_.ml-match]:gap-1 [&_.ml-match]:flex-1 [&_.ml-match]:flex-wrap [&_.ml-match]:text-zinc-800 dark:[&_.ml-match]:text-zinc-200
+          [&_.mc-team]:inline-flex [&_.mc-team]:items-center [&_.mc-team]:gap-0.5
+          [&_.vs-sep]:italic [&_.vs-sep]:text-[0.82em] [&_.vs-sep]:opacity-50 [&_.vs-sep]:mx-1.5
+          [&_.mc-round]:text-[0.82em] [&_.mc-round]:opacity-50
         "
         onContextMenu={handlePreviewContextMenu}
         dangerouslySetInnerHTML={{ __html: html }}

@@ -163,13 +163,12 @@ function generateMatchLine(event: MatchEvent): string {
   const isCombat = ['boxing', 'ufc', 'bellator'].includes(event.sportId);
   const homeFlag = isCombat && event.homeCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(event.homeCountry)}</span>` : '';
   const awayFlag = isCombat && event.awayCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(event.awayCountry)}</span>` : '';
-  const vsStyle = 'font-style:italic;font-size:.85em;opacity:0.5';
-  const matchName = event.away
-    ? `${homeFlag}${escapeHTML(event.home)} <span style="${vsStyle}">vs</span> ${awayFlag}${escapeHTML(event.away)}`
-    : `${escapeHTML(event.home)}`;
-  const roundStr = event.round ? ` \u2013 ${escapeHTML(event.round)}` : '';
+  const matchContent = event.away
+    ? `<span class="mc-team">${homeFlag}${escapeHTML(event.home)}</span><span class="vs-sep">vs</span><span class="mc-team">${awayFlag}${escapeHTML(event.away)}</span>`
+    : `<span class="mc-team">${escapeHTML(event.home)}</span>`;
+  const roundStr = event.round ? `<span class="mc-round"> \u2013 ${escapeHTML(event.round)}</span>` : '';
   const tags = formatTags(event.tags);
-  return `${event.time} \u2013 ${matchName}${roundStr}${tags}`;
+  return `<span class="ml-time">${escapeHTML(event.time)}</span><span class="ml-match">${matchContent}${roundStr}${tags}</span>`;
 }
 
 /**
@@ -404,15 +403,15 @@ export function generateHTML(events: MatchEvent[], leagueOrder?: string[], featu
         const escapedEventId = escapeHTML(event.id);
         const escapedLeagueKey = escapeHTML(leagueKey);
         const escapedLeagueLabel = escapeHTML(leagueLabel);
-        const wrappedLine = `<span data-preview-match="1" data-preview-match-id="${escapedEventId}" data-preview-sport-id="${escapedLeagueKey}" data-preview-league-label="${escapedLeagueLabel}">${line}</span>`;
+        const wrappedLine = `<span class="match-row" data-preview-match="1" data-preview-match-id="${escapedEventId}" data-preview-sport-id="${escapedLeagueKey}" data-preview-league-label="${escapedLeagueLabel}">${line}</span>`;
         // Indent prelim fights (non-main-card fights in combat leagues)
         if (isCombatLeague && e.fightOrder !== undefined && !e.isMainCard) {
-          return `&nbsp;&nbsp;&nbsp;&nbsp;${wrappedLine}`;
+          return wrappedLine.replace('class="match-row"', 'class="match-row" style="padding-left:18px"');
         }
         return wrappedLine;
       });
 
-      parts.push(`<p>\n${matchLines.join('<br/>\n')}\n</p>`);
+      parts.push(`<div class="match-group">\n${matchLines.join('\n')}\n</div>`);
       parts.push('');
     }
   }
