@@ -28,7 +28,6 @@ const LOCAL_LEAGUE_LOGOS: Record<string, string> = {
   'soccer-cpl': '/league-logos/soccer-cpl.png',
   'basketball-nba': '/league-logos/basketball-nba.png',
   'basketball-wnba': '/league-logos/basketball-wnba.png',
-  'basketball-nbl': '/league-logos/basketball-nbl.png',
   'football-nfl': '/league-logos/football-nfl.png',
   'baseball-mlb': '/league-logos/baseball-mlb.png',
   'hockey-nhl': '/league-logos/hockey-nhl.png',
@@ -86,7 +85,6 @@ export const SPORTS_CONFIG: SportConfig[] = [
   { id: 'basketball-wnba',       label: 'WNBA',                               category: 'Basketball',  espnSlug: 'basketball/wnba',           logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/wnba.png' },
   { id: 'basketball-ncaam',      label: 'NCAA Men\'s Basketball',             category: 'Basketball',  espnSlug: 'basketball/mens-college-basketball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/ncaa.png' },
   { id: 'basketball-ncaaw',      label: 'NCAA Women\'s Basketball',           category: 'Basketball',  espnSlug: 'basketball/womens-college-basketball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/ncaa.png' },
-  { id: 'basketball-nbl',        label: 'NBL Australia',                       category: 'Basketball',  espnSlug: 'basketball/nbl',            logo: 'https://r2.thesportsdb.com/images/media/league/badge/gvz6vb1726086476.png' },
 
   // ── American Football ──────────────────────────────────────────────────────
   { id: 'football-nfl',          label: 'NFL',                                category: 'American Football', espnSlug: 'football/nfl',          logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png' },

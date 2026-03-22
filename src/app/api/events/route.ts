@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { MatchEvent } from '@/types';
 import { createClient } from '@/lib/supabase/server';
+import { normalizeTournamentGame, formatTeamWithSeed } from '@/lib/marchMadness';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SERVER-SIDE CACHE — Stores fetched events in memory with TTL
@@ -71,7 +72,6 @@ const ESPN_SECONDARY_LEAGUES = [
   { id: 'basketball-wnba', slug: 'basketball/wnba' },
   { id: 'basketball-ncaam', slug: 'basketball/mens-college-basketball' },
   { id: 'basketball-ncaaw', slug: 'basketball/womens-college-basketball' },
-  { id: 'basketball-nbl', slug: 'basketball/nbl' },
   { id: 'football-ncaaf', slug: 'football/college-football' },
   { id: 'baseball-mlb', slug: 'baseball/mlb' },
   { id: 'hockey-nhl', slug: 'hockey/nhl' },
@@ -127,7 +127,6 @@ const LEAGUE_METADATA: Record<string, { label: string; category: string; logo: s
   'basketball-wnba': { label: 'WNBA', category: 'Basketball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/wnba.png' },
   'basketball-ncaam': { label: "NCAA Men's Basketball", category: 'Basketball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/ncaa.png' },
   'basketball-ncaaw': { label: "NCAA Women's Basketball", category: 'Basketball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/ncaa.png' },
-  'basketball-nbl': { label: 'NBL Australia', category: 'Basketball', logo: 'https://r2.thesportsdb.com/images/media/league/badge/gvz6vb1726086476.png' },
   'football-nfl': { label: 'NFL', category: 'American Football', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png' },
   'football-ncaaf': { label: 'NCAA Football', category: 'American Football', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/ncaa.png' },
   'baseball-mlb': { label: 'MLB', category: 'Baseball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/mlb.png' },
@@ -228,6 +227,7 @@ interface ESPNCompetitorRaw {
   order?: number;
   team?: { displayName?: string; logo?: string };
   athlete?: { displayName?: string; fullName?: string; flag?: { href: string; alt: string } };
+  curatedRank?: { current?: number };
 }
 
 interface ESPNCompetitionRaw {
@@ -243,11 +243,17 @@ interface ESPNEvent {
   name?: string;
   shortName?: string;
   date: string;
+  notes?: Array<{ headline?: string }>;
   competitions?: ESPNCompetitionRaw[];
   groupings?: {
     grouping: { id: string; slug: string; displayName: string };
     competitions: ESPNCompetitionRaw[];
   }[];
+}
+
+interface ESPNScoreboardResponse {
+  events?: ESPNEvent[];
+  leagues?: Array<{ season?: { type?: { id?: string | number } } }>;
 }
 
 // ── Helper: extract competitor name from ESPN competitor object ───────────────
@@ -447,9 +453,11 @@ function mapTennisMatches(
 function mapTeamSportEvents(
   events: ESPNEvent[],
   league: { id: string; slug: string },
-  meta: { label: string; category: string; logo: string }
+  meta: { label: string; category: string; logo: string },
+  seasonTypeId?: string | number
 ): MatchEvent[] {
   const isGolf = league.slug.startsWith('golf/');
+  const isNCAA = league.id === 'basketball-ncaam';
 
   return events.map((event): MatchEvent => {
     const comp = event.competitions?.[0];
@@ -466,12 +474,28 @@ function mapTeamSportEvents(
       awayName = '';
     }
 
-    // Round info from event name
+    let leagueLabel = meta.label;
     let round = '';
-    const name = event.name || '';
-    if (name.includes(' - ')) {
-      const parts = name.split(' - ');
-      if (parts.length > 1) round = parts[parts.length - 1].trim();
+
+    if (isNCAA) {
+      const info = normalizeTournamentGame({
+        seasonTypeId,
+        notesHeadline: event.notes?.[0]?.headline,
+        competitors: competitors.map(c => ({ curatedRank: c.curatedRank })),
+      });
+      leagueLabel = info.leagueLabel;
+      round = info.round;
+      if (info.leagueLabel === 'March Madness') {
+        homeName = formatTeamWithSeed(homeName, home?.curatedRank);
+        if (away) awayName = formatTeamWithSeed(awayName, away?.curatedRank);
+      }
+    } else {
+      // Round info from event name
+      const name = event.name || '';
+      if (name.includes(' - ')) {
+        const parts = name.split(' - ');
+        if (parts.length > 1) round = parts[parts.length - 1].trim();
+      }
     }
 
     return {
@@ -479,7 +503,7 @@ function mapTeamSportEvents(
       source: 'espn',
       sportId: league.id,
       category: meta.category,
-      leagueLabel: meta.label,
+      leagueLabel,
       leagueLogo: meta.logo,
       date,
       time,
@@ -510,13 +534,13 @@ async function fetchESPNLeague(
     const dateParam = espnDateRange(startDate, endDate);
     const url = `${ESPN_BASE}/${league.slug}/scoreboard?dates=${dateParam}&limit=1000`;
 
-    let data = await espnFetchWithRetry<{ events?: ESPNEvent[] }>(url, 3_500);
+    let data = await espnFetchWithRetry<ESPNScoreboardResponse>(url, 3_500);
 
     // Fallback: if date-range fetch returned null (404 — common for NCAA tournament which uses a
     // whitelist calendar and returns 404 for ranges spanning non-game days), retry without dates.
     if (data === null) {
       const fallbackUrl = `${ESPN_BASE}/${league.slug}/scoreboard?limit=1000`;
-      const fallbackData = await espnFetchWithRetry<{ events?: ESPNEvent[] }>(fallbackUrl, 3_500);
+      const fallbackData = await espnFetchWithRetry<ESPNScoreboardResponse>(fallbackUrl, 3_500);
       if (fallbackData?.events?.length) {
         data = fallbackData;
         console.log(`[ESPN] ${league.id}: 404 with date range → fallback without dates returned ${fallbackData.events.length} events`);
@@ -541,6 +565,7 @@ async function fetchESPNLeague(
     }
 
     const events: ESPNEvent[] = data.events ?? [];
+    const seasonTypeId = data.leagues?.[0]?.season?.type?.id;
 
     // Route to the correct mapper based on sport type
     let parsed: MatchEvent[];
@@ -551,7 +576,7 @@ async function fetchESPNLeague(
     } else if (isTennis) {
       parsed = mapTennisMatches(events, league, meta);
     } else {
-      parsed = mapTeamSportEvents(events, league, meta);
+      parsed = mapTeamSportEvents(events, league, meta, seasonTypeId);
     }
 
     if (parsed.length > 0) {

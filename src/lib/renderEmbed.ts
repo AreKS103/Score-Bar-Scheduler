@@ -96,7 +96,7 @@ function getAbbrev(sportId: string, label: string): string {
     'basketball-nba': 'NBA',
     'basketball-wnba': 'WNBA',
     'basketball-ncaam': 'NCAAM',
-    'basketball-nbl': 'NBL',
+    'basketball-ncaaw': 'NCAAW',
     'football-nfl': 'NFL',
     'football-ncaaf': 'NCAAF',
     'baseball-mlb': 'MLB',
@@ -233,7 +233,9 @@ function renderLeagueBlock(
 ): string {
   const config = SPORTS_CONFIG.find((s) => s.id === leagueKey);
   const firstEvent = Array.from(dateMap.values())[0]?.[0];
-  const leagueLabel = config?.label || firstEvent?.leagueLabel || leagueKey;
+  const leagueLabel = (leagueKey === 'basketball-ncaam' && firstEvent?.leagueLabel)
+    ? firstEvent.leagueLabel
+    : (config?.label || firstEvent?.leagueLabel || leagueKey);
   const rawLogo = config?.logo || firstEvent?.leagueLogo || '';
   const leagueLogo = resolvePublishLogoUrl(rawLogo, config?.publishLogo);
 
