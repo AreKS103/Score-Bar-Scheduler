@@ -22,30 +22,18 @@ if (version_compare(PHP_VERSION, '7.4', '<')) {
 if (!defined('SCHEDULE_PLUGIN_URL')) {
     define('SCHEDULE_PLUGIN_URL', plugin_dir_url(__FILE__));
 }
-// App URL resolver — reads from: 1) WP option (admin UI), 2) wp-config.php constant.
-// Returns empty string if neither is configured (API calls gracefully skip).
-// Uses a function instead of a constant because get_option() is not available at define() time.
+
+// The Vercel app URL is hardcoded — the plugin is purpose-built for this endpoint.
+if (!defined('SCHEDULE_APP_DOMAIN')) {
+    define('SCHEDULE_APP_DOMAIN', 'https://score-bar-scheduler.vercel.app');
+}
+
+// Backward-compatible helper used by settings.php, shortcode.php, elementor-widget.php.
 if (!function_exists('schedule_get_app_domain')) {
     function schedule_get_app_domain() {
-        static $domain = null;
-        if ($domain !== null) return $domain;
-        $from_option = get_option('schedule_app_url', '');
-        if (!empty($from_option)) {
-            $domain = rtrim($from_option, '/');
-        } elseif (defined('SCHEDULE_APP_BASE_URL') && SCHEDULE_APP_BASE_URL) {
-            $domain = rtrim(SCHEDULE_APP_BASE_URL, '/');
-        } else {
-            $domain = '';
-        }
-        return $domain;
+        return SCHEDULE_APP_DOMAIN;
     }
 }
-// Keep the constant for backward compatibility (fires on plugins_loaded when DB is available)
-add_action('plugins_loaded', function () {
-    if (!defined('SCHEDULE_APP_DOMAIN')) {
-        define('SCHEDULE_APP_DOMAIN', schedule_get_app_domain());
-    }
-}, 1);
 
 // ── Ghost-entry cleanup helper ───────────────────────────────────────────────
 // PHP 7.4-safe (no str_contains). Removes any active_plugins entry that either:

@@ -29,6 +29,22 @@ function getCorsHeaders(req?: NextRequest): Record<string, string> {
   };
 }
 
+function hashKey(raw: string): string {
+  return crypto.createHash('sha256').update(raw).digest('hex');
+}
+
+/**
+ * Resolve an incoming apiKey to the key_hash stored in the DB.
+ *  - Starts with "sb_" → raw API key → hash it
+ *  - 64 lowercase hex chars → already a hashed embed token → use as-is
+ *  - Anything else → legacy raw key (pre-prefix era) → hash it
+ */
+function resolveKeyHash(apiKey: string): string {
+  if (apiKey.startsWith('sb_')) return hashKey(apiKey);
+  if (/^[0-9a-f]{64}$/.test(apiKey)) return apiKey;
+  return hashKey(apiKey);
+}
+
 export async function OPTIONS(req: NextRequest) {
   return new NextResponse(null, { status: 204, headers: getCorsHeaders(req) });
 }
@@ -54,8 +70,8 @@ export async function POST(req: NextRequest) {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Hash the incoming key to verify against DB
-    const hash = crypto.createHash('sha256').update(apiKey).digest('hex');
+    // Resolve the key to its DB hash using the same logic as embed-instances
+    const hash = resolveKeyHash(apiKey);
 
     // Verify key exists
     const { data: keyData, error: findError } = await supabase

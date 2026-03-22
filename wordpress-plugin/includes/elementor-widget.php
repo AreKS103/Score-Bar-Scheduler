@@ -116,10 +116,6 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
             $query_args['textColor'] = sanitize_text_field($text_hex);
         }
         $app_domain = schedule_get_app_domain();
-        if (empty($app_domain)) {
-            echo '<p style="color:#c00;font-size:14px;">Scheduler: App URL is not configured. Go to <strong>Settings &gt; Scheduler</strong> to set it.</p>';
-            return;
-        }
         $iframe_url = $app_domain . '/embed/' . sanitize_text_field($iframe_key) . '?' . http_build_query($query_args);
         $height_val = ($settings['iframe_height']['size'] ?? 600) . ($settings['iframe_height']['unit'] ?? 'px');
         $uid = 'sb' . substr(md5($iframe_url . rand()), 0, 8);

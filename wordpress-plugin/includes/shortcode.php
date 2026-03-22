@@ -92,9 +92,6 @@ function schedule_shortcode_render($atts) {
 
     $uid        = 'sb' . substr(md5(serialize($atts) . rand()), 0, 8);
     $app_domain  = schedule_get_app_domain();
-    if (empty($app_domain)) {
-        return '<p style="color:#c00;font-size:14px;">Scheduler: App URL is not configured. Go to <strong>Settings &gt; Scheduler</strong> to set it.</p>';
-    }
     $iframe_url = $app_domain . '/embed/' . sanitize_text_field($iframe_key) . '?' . http_build_query($query_args);
     $auto       = ($atts['height'] === 'auto');
     $height_css = $auto ? 'auto' : esc_attr($atts['height']);
