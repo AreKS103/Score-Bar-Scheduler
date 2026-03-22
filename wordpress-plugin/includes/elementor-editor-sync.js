@@ -221,15 +221,28 @@
     observePreviewIframe();
   }
 
-  if (window.elementor) {
+  function tryInit() {
     try {
-      window.elementor.on('preview:loaded', function () { init(); });
+      var iframe = document.getElementById('elementor-preview-iframe');
+      if (iframe && iframe.contentDocument &&
+          iframe.contentDocument.body && window.elementor) {
+        init();
+        return;
+      }
     } catch (e) {}
-    setTimeout(function () { try { init(); } catch (e) {} }, 500);
-  } else {
-    window.addEventListener('elementor:init', function () {
-      setTimeout(function () { try { init(); } catch (e) {} }, 200);
-    });
-    setTimeout(function () { try { init(); } catch (e) {} }, 2000);
+
+    if (window.elementor) {
+      try {
+        window.elementor.on('preview:loaded', function () { init(); });
+      } catch (e) {}
+      setTimeout(function () { try { init(); } catch (e) {} }, 500);
+    } else {
+      window.addEventListener('elementor:init', function () {
+        setTimeout(function () { try { init(); } catch (e) {} }, 200);
+      });
+      setTimeout(function () { try { init(); } catch (e) {} }, 2000);
+    }
   }
+
+  tryInit();
 })();
