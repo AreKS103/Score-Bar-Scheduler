@@ -183,7 +183,7 @@ export default function PreviewPanel({
           [&_img]:inline [&_img]:h-8 [&_img]:w-auto [&_img]:my-0
           [&_.match-group]:my-0 [&_.match-group]:mb-2
           [&_.match-row]:flex [&_.match-row]:items-center [&_.match-row]:gap-1.5 [&_.match-row]:py-0.5
-          [&_.ml-time]:text-[0.8em] [&_.ml-time]:font-semibold [&_.ml-time]:text-blue-500 dark:[&_.ml-time]:text-blue-400 [&_.ml-time]:shrink-0 [&_.ml-time]:min-w-[38px]
+          [&_.ml-time]:text-[0.8em] [&_.ml-time]:font-semibold [&_.ml-time]:text-zinc-800 dark:[&_.ml-time]:text-zinc-200 [&_.ml-time]:shrink-0 [&_.ml-time]:min-w-[38px]
           [&_.ml-match]:flex [&_.ml-match]:items-center [&_.ml-match]:gap-1 [&_.ml-match]:flex-1 [&_.ml-match]:flex-wrap [&_.ml-match]:text-zinc-800 dark:[&_.ml-match]:text-zinc-200
           [&_.mc-team]:inline-flex [&_.mc-team]:items-center [&_.mc-team]:gap-0.5
           [&_.vs-sep]:italic [&_.vs-sep]:text-[0.82em] [&_.vs-sep]:opacity-50 [&_.vs-sep]:mx-1.5

@@ -45,6 +45,7 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
         $this->add_control('text_color',  ['label' => 'Text Color',        'type' => \Elementor\Controls_Manager::COLOR,   'default' => '', 'description' => 'Leave empty for theme default']);
         $this->add_control('font',        ['label' => 'Font Style',       'type' => \Elementor\Controls_Manager::SELECT,  'default' => 'system', 'options' => ['system' => 'System', 'serif' => 'Serif', 'mono' => 'Monospace']]);
         $this->add_control('match_font_size', ['label' => 'Match Text Size (px)', 'type' => \Elementor\Controls_Manager::NUMBER, 'default' => 14, 'min' => 6, 'max' => 120, 'step' => 1, 'render_type' => 'template', 'description' => 'Font size for match lines in pixels']);
+        $this->add_control('time_font_size',  ['label' => 'Time Text Size (px)',   'type' => \Elementor\Controls_Manager::NUMBER, 'default' => 11, 'min' => 6, 'max' => 120, 'step' => 1, 'render_type' => 'template', 'description' => 'Font size for the match kick-off time']);
         $this->add_control('date_font_size',  ['label' => 'Date Label Size (px)',  'type' => \Elementor\Controls_Manager::NUMBER, 'default' => 11, 'min' => 6, 'max' => 120, 'step' => 1, 'render_type' => 'template']);
         $this->add_control('header_size', ['label' => 'League Name Size (px)', 'type' => \Elementor\Controls_Manager::NUMBER, 'default' => 16, 'min' => 6, 'max' => 120, 'step' => 1, 'render_type' => 'template']);
         $this->add_control('highlight_font_size', ['label' => 'Highlight Text Size (px)', 'type' => \Elementor\Controls_Manager::NUMBER, 'default' => 18, 'min' => 6, 'max' => 120, 'step' => 1, 'render_type' => 'template', 'description' => 'Font size for team names in the highlights section']);
@@ -84,6 +85,7 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
             'accent'        => sanitize_text_field($accent_hex),
             'font'          => sanitize_text_field($settings['font']            ?? 'system'),
             'matchFontSize' => sanitize_text_field((string)($settings['match_font_size'] ?? '14')),
+            'timeFontSize'  => sanitize_text_field((string)($settings['time_font_size']  ?? '11')),
             'dateFontSize'  => sanitize_text_field((string)($settings['date_font_size']  ?? '11')),
             'logoSize'      => sanitize_text_field($settings['logo_size']       ?? 'md'),
             'headerSize'    => sanitize_text_field((string)($settings['header_size']     ?? '16')),

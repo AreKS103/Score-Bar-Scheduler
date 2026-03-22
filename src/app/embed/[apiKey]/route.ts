@@ -35,6 +35,7 @@ interface EmbedOpts {
   hideViewToggle: boolean;
   noInlineToggle: boolean;
   highlightFontSize: string;
+  timeFontSize: string;
 }
 
 function buildEmbedPage(
@@ -54,6 +55,7 @@ function buildEmbedPage(
   const matchSize   = rp(opts.matchFontSize,         '12px', '14px',  '16px');
   const dateSize    = rp(opts.dateFontSize,          '10px', '11px',  '13px');
   const hlFontSize  = rp(opts.highlightFontSize||'18','14px','18px',  '22px');
+  const timeSize    = rp(opts.timeFontSize||'11',     '9px',  '11px',  '13px');
   const fontStack    = ({
     system: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     serif:  "Georgia, 'Times New Roman', Times, serif",
@@ -88,7 +90,7 @@ function buildEmbedPage(
   const darkVars  = `--bg:${bgOverride || '#0f1117'};--text:${textOverride || '#e8eaf0'};--muted:#8b92a8;--heading:${textOverride || '#f0f2f8'};--border:#2d3142;--tab-bg:#1e2130;--tab-text:#8b92a8;--tab-active:${accent};--tab-active-text:#fff;--accent:${accent};--card-bg:#181c28;`;
 
   const css = `
-:root{${isAuto ? lightVars : isDark ? darkVars : lightVars};--sb-match-size:${matchSize};--sb-date-size:${dateSize};--sb-h3-size:${h3Size};--sb-logo-height:${logoHeight};--sb-hl-size:${hlFontSize}}
+:root{${isAuto ? lightVars : isDark ? darkVars : lightVars};--sb-match-size:${matchSize};--sb-date-size:${dateSize};--sb-h3-size:${h3Size};--sb-logo-height:${logoHeight};--sb-hl-size:${hlFontSize};--sb-time-size:${timeSize}}
 ${isAuto ? `@media(prefers-color-scheme:dark){:root{${darkVars}}}` : ''}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{background:var(--bg);color:var(--text);font-family:${fontStack};font-size:15px;line-height:${lineH};-webkit-font-smoothing:antialiased;width:100%}
@@ -117,7 +119,7 @@ ${isCard ? `.league-block{background:var(--card-bg);border:1px solid var(--borde
 .schedule-content p:empty{display:none}
 .team-logo{height:16px;width:auto;flex-shrink:0}
 .vs-sep{font-style:italic;font-size:.82em;color:var(--muted,#888);margin:0 3px}
-.ml-time{font-size:.8em;font-weight:600;color:var(--accent,#3b82f6);flex-shrink:0;min-width:38px}
+.ml-time{font-size:var(--sb-time-size,11px);font-weight:600;color:var(--text);flex-shrink:0;min-width:38px}
 .ml-match{display:flex;align-items:center;gap:3px;flex:1;flex-wrap:wrap}
 .mc-team{display:inline-flex;align-items:center;gap:3px}
 .mc-round{font-size:.82em;color:var(--muted,#888)}
@@ -359,6 +361,7 @@ export async function GET(
     hideViewToggle: sp.hideViewToggle === '1',
     noInlineToggle: sp.noInlineToggle === '1',
     highlightFontSize: (() => { const n = parseInt(sp.highlightFontSize ?? ''); return (!isNaN(n) && n >= 1 && n <= 500) ? sp.highlightFontSize : '18'; })(),
+    timeFontSize: (() => { const n = parseInt(sp.timeFontSize ?? ''); return (!isNaN(n) && n >= 1 && n <= 500) ? sp.timeFontSize : '11'; })(),
   embedId:       embedId,  // already extracted + sanitised above
     widgetId:      (sp._wid ?? '').replace(/[^\w-]/g, '').substring(0, 64) || '',
     appUrl:        '',  // will set below
