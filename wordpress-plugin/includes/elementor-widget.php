@@ -5,17 +5,17 @@ if ( ! class_exists( '\Elementor\Widget_Base' ) ) {
     return;
 }
 
-if (!class_exists('Scorebar_App_Elementor_Widget')) {
-class Scorebar_App_Elementor_Widget extends \Elementor\Widget_Base {
-    public function get_name() { return 'scorebar_schedule_widget'; }
+if (!class_exists('Schedule_Elementor_Widget')) {
+class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
+    public function get_name() { return 'schedule_widget'; }
     public function get_title() { return 'Scheduler'; }
     public function get_icon() { return 'eicon-calendar'; }
-    public function get_categories() { return ['scorebar-schedule-category']; }
+    public function get_categories() { return ['schedule-category']; }
     public function get_keywords() { return ['schedule', 'score', 'sports', 'events', 'iframe']; }
     
     protected function register_controls() {
         if (!function_exists('get_option')) return;
-        $api_key = get_option('scorebar_app_api_key', '');
+        $api_key = get_option('schedule_api_key', '');
         
         if (empty($api_key)) {
             $this->start_controls_section('error_section', ['label' => 'Content', 'tab' => \Elementor\Controls_Manager::TAB_CONTENT]);
@@ -58,7 +58,7 @@ class Scorebar_App_Elementor_Widget extends \Elementor\Widget_Base {
     protected function render() {
         if (!function_exists('get_option')) return;
         $settings = $this->get_settings_for_display();
-        $api_key = get_option('scorebar_app_api_key', '');
+        $api_key = get_option('schedule_api_key', '');
         
         if (empty($api_key)) { 
             echo '<p style="color:red; border:1px solid red; padding:10px;">Scheduler Error: API Key not configured in plugin settings.</p>'; 
@@ -66,7 +66,7 @@ class Scorebar_App_Elementor_Widget extends \Elementor\Widget_Base {
         }
         // Use the public embed token in the iframe URL — it is a one-way hash and
         // cannot be used to access the account. Fall back to raw key for legacy installs.
-        $embed_token = get_option('scorebar_embed_token', '');
+        $embed_token = get_option('schedule_embed_token', '');
         $iframe_key  = !empty($embed_token) ? $embed_token : $api_key;
         
         $accent_hex  = ltrim($settings['accent_color'] ?? '#3b82f6', '#');
@@ -110,22 +110,22 @@ class Scorebar_App_Elementor_Widget extends \Elementor\Widget_Base {
         if (!empty($text_hex)) {
             $query_args['textColor'] = sanitize_text_field($text_hex);
         }
-        $iframe_url = SCOREBAR_APP_VERCEL_DOMAIN . '/embed/' . sanitize_text_field($iframe_key) . '?' . http_build_query($query_args);
+        $iframe_url = SCHEDULE_APP_DOMAIN . '/embed/' . sanitize_text_field($iframe_key) . '?' . http_build_query($query_args);
         $height_val = ($settings['iframe_height']['size'] ?? 600) . ($settings['iframe_height']['unit'] ?? 'px');
         $uid = 'sb' . substr(md5($iframe_url . rand()), 0, 8);
         $height_css = $auto_height ? 'auto'    : esc_attr($height_val);
         $overflow   = $auto_height ? 'visible' : 'auto';
         ?>
         <style>
-        .elementor-widget-scorebar_schedule_widget,
-        .elementor-widget-scorebar_schedule_widget > .elementor-widget-container {
+        .elementor-widget-schedule_widget,
+        .elementor-widget-schedule_widget > .elementor-widget-container {
             background: transparent !important;
             background-color: transparent !important;
         }
         </style>
-        <div class="scorebar-schedule-wrapper" id="<?php echo esc_attr($uid); ?>" style="position:relative;width:100%!important;max-width:100%!important;height:<?php echo $height_css; ?>;overflow:<?php echo $overflow; ?>;border:none!important;background:transparent!important;">
+        <div class="schedule-wrapper" id="<?php echo esc_attr($uid); ?>" style="position:relative;width:100%!important;max-width:100%!important;height:<?php echo $height_css; ?>;overflow:<?php echo $overflow; ?>;border:none!important;background:transparent!important;">
             <!-- Narrow grab-handle at top: lets Elementor select the widget without blocking iframe content -->
-            <div class="scorebar-editor-overlay" style="display:none;position:absolute;top:0;left:0;right:0;height:20px;z-index:2;cursor:grab;" title="Drag to reposition"><span style="display:flex;align-items:center;justify-content:center;height:100%;font-size:13px;color:rgba(150,150,150,0.55);pointer-events:none;user-select:none;">&#8942;</span></div>
+            <div class="schedule-editor-overlay" style="display:none;position:absolute;top:0;left:0;right:0;height:20px;z-index:2;cursor:grab;" title="Drag to reposition"><span style="display:flex;align-items:center;justify-content:center;height:100%;font-size:13px;color:rgba(150,150,150,0.55);pointer-events:none;user-select:none;">&#8942;</span></div>
             <iframe id="<?php echo esc_attr($uid); ?>-frame"
                 src="<?php echo esc_url($iframe_url); ?>"
                 style="position:relative;z-index:1;width:100%!important;height:<?php echo ($auto_height ? '0' : esc_attr($height_val)); ?>;border:none!important;display:block!important;"
@@ -142,7 +142,7 @@ class Scorebar_App_Elementor_Widget extends \Elementor\Widget_Base {
                         (window.elementorFrontend && window.elementorFrontend.isEditMode && window.elementorFrontend.isEditMode()) ||
                         (window.parent && window.parent.elementor)
                     ) {
-                        var overlay = wrapper.querySelector('.scorebar-editor-overlay');
+                        var overlay = wrapper.querySelector('.schedule-editor-overlay');
                         if (overlay) overlay.style.display = 'block';
                     }
                 } catch(e) {}

@@ -1,14 +1,14 @@
 <?php
 if (!defined('ABSPATH')) exit;
 
-if (!function_exists('scorebar_app_shortcode_render')) {
-function scorebar_app_shortcode_render($atts) {
+if (!function_exists('schedule_shortcode_render')) {
+function schedule_shortcode_render($atts) {
     if (!function_exists('get_option')) return '';
-    $api_key = get_option('scorebar_app_api_key', '');
+    $api_key = get_option('schedule_api_key', '');
     if (empty($api_key)) { return '<p style="color:red; border:1px solid red; padding:10px;">Scheduler Error: API Key not configured in settings.</p>'; }
     // Use the public embed token in the iframe URL — it is a one-way hash and cannot
     // be used to access the account. Fall back to the raw key for legacy installs.
-    $embed_token = get_option('scorebar_embed_token', '');
+    $embed_token = get_option('schedule_embed_token', '');
     $iframe_key  = !empty($embed_token) ? $embed_token : $api_key;
 
     $atts = shortcode_atts([
@@ -36,7 +36,7 @@ function scorebar_app_shortcode_render($atts) {
         'layout'          => 'list',
         'embed_id'        => '',
         'cat_labels'      => '',
-    ], $atts, 'scorebar_schedule');
+    ], $atts, 'schedule');
 
     $query_args = [
         'showTime'      => $atts['show_time'],
@@ -86,15 +86,15 @@ function scorebar_app_shortcode_render($atts) {
     }
 
     $uid        = 'sb' . substr(md5(serialize($atts) . rand()), 0, 8);
-    $iframe_url = SCOREBAR_APP_VERCEL_DOMAIN . '/embed/' . sanitize_text_field($iframe_key) . '?' . http_build_query($query_args);
+    $iframe_url = SCHEDULE_APP_DOMAIN . '/embed/' . sanitize_text_field($iframe_key) . '?' . http_build_query($query_args);
     $auto       = ($atts['height'] === 'auto');
     $height_css = $auto ? 'auto' : esc_attr($atts['height']);
     $overflow   = $auto ? 'visible' : 'auto';
     ob_start();
     ?>
-    <div class="scorebar-schedule-wrapper" id="<?php echo esc_attr($uid); ?>" style="position:relative;width:100%!important;max-width:100%!important;height:<?php echo $height_css; ?>;overflow:<?php echo $overflow; ?>;border:none!important;background:transparent!important;">
+    <div class="schedule-wrapper" id="<?php echo esc_attr($uid); ?>" style="position:relative;width:100%!important;max-width:100%!important;height:<?php echo $height_css; ?>;overflow:<?php echo $overflow; ?>;border:none!important;background:transparent!important;">
         <!-- Narrow grab-handle at top: lets Elementor select the widget without blocking iframe content -->
-            <div class="scorebar-editor-overlay" style="display:none;position:absolute;top:0;left:0;right:0;height:20px;z-index:2;cursor:grab;" title="Drag to reposition"><span style="display:flex;align-items:center;justify-content:center;height:100%;font-size:13px;color:rgba(150,150,150,0.55);pointer-events:none;user-select:none;">&#8942;</span></div>
+            <div class="schedule-editor-overlay" style="display:none;position:absolute;top:0;left:0;right:0;height:20px;z-index:2;cursor:grab;" title="Drag to reposition"><span style="display:flex;align-items:center;justify-content:center;height:100%;font-size:13px;color:rgba(150,150,150,0.55);pointer-events:none;user-select:none;">&#8942;</span></div>
         <iframe id="<?php echo esc_attr($uid); ?>-frame"
             src="<?php echo esc_url($iframe_url); ?>"
             style="position:relative;z-index:1;width:100%!important;height:<?php echo ($auto ? '0' : $height_css); ?>;border:none!important;display:block!important;"
@@ -110,7 +110,7 @@ function scorebar_app_shortcode_render($atts) {
                     (window.elementorFrontend && window.elementorFrontend.isEditMode && window.elementorFrontend.isEditMode()) ||
                     (window.parent && window.parent.elementor)
                 ) {
-                    var overlay = wrapper.querySelector('.scorebar-editor-overlay');
+                    var overlay = wrapper.querySelector('.schedule-editor-overlay');
                     if (overlay) overlay.style.display = 'block';
                 }
             } catch(e) {}
@@ -139,6 +139,6 @@ function scorebar_app_shortcode_render($atts) {
     return ob_get_clean();
 }
 }
-add_shortcode('scorebar_schedule', 'scorebar_app_shortcode_render');
-add_shortcode('score_schedule',    'scorebar_app_shortcode_render');
-add_shortcode('sports_schedule',   'scorebar_app_shortcode_render');
+add_shortcode('schedule',          'schedule_shortcode_render');
+add_shortcode('scorebar_schedule', 'schedule_shortcode_render'); // backward compat alias
+add_shortcode('sports_schedule',   'schedule_shortcode_render');
