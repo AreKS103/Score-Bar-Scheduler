@@ -275,8 +275,13 @@ export async function syncLocalCustomEventsToSupabase(): Promise<{ synced: numbe
 // ─── Selection Persistence ────────────────────────────────────────────────────
 // Saves which events are selected/featured/tagged so page refreshes don't lose state.
 
-const SELECTIONS_KEY = 'sportglobe_selections_v1';
 const SELECTIONS_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+/** Return the localStorage key for a given embedTarget ('' = global/all-embeds slot). */
+function selectionsKey(embedTarget: string): string {
+  const safe = embedTarget.replace(/[^a-zA-Z0-9_#-]/g, '_');
+  return safe ? `sportglobe_selections_v2:${safe}` : 'sportglobe_selections_v2';
+}
 
 import type { ScreenTag } from '@/types';
 
@@ -290,22 +295,22 @@ export interface SavedSelectionState {
   savedAt: number;
 }
 
-export function saveSelectionState(state: SavedSelectionState): void {
+export function saveSelectionState(state: SavedSelectionState, embedTarget = ''): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(SELECTIONS_KEY, JSON.stringify(state));
+    localStorage.setItem(selectionsKey(embedTarget), JSON.stringify(state));
   } catch { /* quota exceeded — ignore */ }
 }
 
-export function loadSelectionState(): SavedSelectionState | null {
+export function loadSelectionState(embedTarget = ''): SavedSelectionState | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = localStorage.getItem(SELECTIONS_KEY);
+    const raw = localStorage.getItem(selectionsKey(embedTarget));
     if (!raw) return null;
     const data = JSON.parse(raw) as SavedSelectionState;
     // Expire after 7 days
     if (Date.now() - data.savedAt > SELECTIONS_MAX_AGE_MS) {
-      localStorage.removeItem(SELECTIONS_KEY);
+      localStorage.removeItem(selectionsKey(embedTarget));
       return null;
     }
     return data;
@@ -319,19 +324,21 @@ export function loadSelectionState(): SavedSelectionState | null {
 
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 
-let supabaseSaveTimer: ReturnType<typeof setTimeout> | null = null;
+const supabaseSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 /**
- * Save selection state to Supabase (debounced 2s).
+ * Save selection state to Supabase (debounced 2s), scoped to embedTarget.
  * Also writes to localStorage immediately via saveSelectionState.
  */
-export function saveSelectionToSupabase(state: SavedSelectionState): void {
+export function saveSelectionToSupabase(state: SavedSelectionState, embedTarget = ''): void {
   // Always save to localStorage first (instant)
-  saveSelectionState(state);
+  saveSelectionState(state, embedTarget);
 
   if (!isSupabaseConfigured()) return;
-  if (supabaseSaveTimer) clearTimeout(supabaseSaveTimer);
-  supabaseSaveTimer = setTimeout(async () => {
+  const existing = supabaseSaveTimers.get(embedTarget);
+  if (existing) clearTimeout(existing);
+  supabaseSaveTimers.set(embedTarget, setTimeout(async () => {
+    supabaseSaveTimers.delete(embedTarget);
     try {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
@@ -339,22 +346,23 @@ export function saveSelectionToSupabase(state: SavedSelectionState): void {
 
       await supabase.from('user_selections').upsert({
         user_id: user.id,
+        embed_target: embedTarget,
         selections: state.selections,
         league_order: state.leagueOrder,
         featured_leagues: state.featuredLeagues,
         updated_at: new Date().toISOString(),
-      });
+      }, { onConflict: 'user_id,embed_target' });
     } catch (e) {
       console.warn('[SelectionSync] Failed to save to Supabase:', e);
     }
-  }, 2000);
+  }, 2000));
 }
 
 /**
- * Load selection state from Supabase. Falls back to localStorage.
+ * Load selection state from Supabase, scoped to embedTarget. Falls back to localStorage.
  */
-export async function loadSelectionFromSupabase(): Promise<SavedSelectionState | null> {
-  const localState = loadSelectionState();
+export async function loadSelectionFromSupabase(embedTarget = ''): Promise<SavedSelectionState | null> {
+  const localState = loadSelectionState(embedTarget);
 
   // Try Supabase first
   if (isSupabaseConfigured()) {
@@ -366,7 +374,8 @@ export async function loadSelectionFromSupabase(): Promise<SavedSelectionState |
           .from('user_selections')
           .select('selections, league_order, featured_leagues, updated_at')
           .eq('user_id', user.id)
-          .single();
+          .eq('embed_target', embedTarget)
+          .maybeSingle();
 
         if (data) {
           const remoteState: SavedSelectionState = {
@@ -400,7 +409,7 @@ export async function loadSelectionFromSupabase(): Promise<SavedSelectionState |
           };
 
           // Sync merged view to localStorage
-          saveSelectionState(merged);
+          saveSelectionState(merged, embedTarget);
           return merged;
         }
       }

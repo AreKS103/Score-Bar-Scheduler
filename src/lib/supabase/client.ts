@@ -1,7 +1,7 @@
 import { createBrowserClient } from '@supabase/ssr';
 
-// 45 days — forces auth cookies to survive browser restarts
-const COOKIE_MAX_AGE = 45 * 24 * 60 * 60;
+// 14 days — balances convenience with session security
+const COOKIE_MAX_AGE = 14 * 24 * 60 * 60;
 
 export function isSupabaseConfigured(): boolean {
   return !!(

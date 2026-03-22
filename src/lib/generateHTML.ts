@@ -83,7 +83,7 @@ function generateHighlights(
   if (!featured.length && !featuredLeagues.size) return '';
 
   const parts: string[] = [
-    '<h2>This Week\'s Highlights at SCORE</h2>',
+    '<h2>This Week\'s Highlights</h2>',
     '',
   ];
 
@@ -116,8 +116,6 @@ function generateHighlights(
     parts.push('');
   }
 
-  parts.push('<hr/>');
-  parts.push('');
   return parts.join('\n');
 }
 
@@ -128,10 +126,9 @@ function generateMatchLine(event: MatchEvent): string {
   const matchName = event.away
     ? `${escapeHTML(event.home)} vs ${escapeHTML(event.away)}`
     : escapeHTML(event.home);
-  const abbrev = getLeagueAbbrev(event.sportId, event.leagueLabel);
-  const roundStr = event.round ? ` – ${escapeHTML(event.round)}` : '';
+  const roundStr = event.round ? ` \u2013 ${escapeHTML(event.round)}` : '';
   const tags = formatTags(event.tags);
-  return `${event.time} – ${abbrev} – ${matchName}${roundStr}${tags}`;
+  return `${event.time} \u2013 ${matchName}${roundStr}${tags}`;
 }
 
 /**

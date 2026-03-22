@@ -206,7 +206,146 @@ export default function SchedulePage() {
   );
 
   const [flashKey, setFlashKey] = useState(0);
+  const [embedInstances, setEmbedInstances] = useState<{ display_id: string; embed_id: string | null }[]>([]);
+  const [publishTarget, setPublishTarget] = useState<string>(''); // '' = all, or specific embed_id
+
+  // ─── Derived embed selection key ───────────────────────────────────────────
+  // When "All" is selected (publishTarget=''), we show the first embed's state.
+  // Each embed has its own independent set of selected matches / league order.
+  const effectiveTarget = useMemo(() => {
+    if (publishTarget) return publishTarget;
+    // "All" → resolve to first embed instance
+    if (embedInstances.length > 0) {
+      return embedInstances[0].embed_id ?? embedInstances[0].display_id;
+    }
+    return '';
+  }, [publishTarget, embedInstances]);
+  const effectiveTargetRef = useRef(effectiveTarget);
+  effectiveTargetRef.current = effectiveTarget;
+  const [publishedSnapshot, setPublishedSnapshot] = useState<{
+    events: MatchEvent[];
+    leagueOrder: string[];
+    featuredLeagues: Map<string, string>;
+    html: string;
+    label: string;
+  } | null>(null);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
   const router = useRouter();
+
+  // ─── Fetch embed instances for publish-target selector (polling every 30s) ───
+  useEffect(() => {
+    const load = () =>
+      fetch('/api/embed-instances')
+        .then((r) => r.json())
+        .then((d) => setEmbedInstances(d.instances ?? []))
+        .catch(() => {});
+    load();
+    const id = setInterval(load, 120_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // ─── Reload selections when switching embeds ──────────────────────────────
+  // Each embed has its own independent set of selected matches, league order,
+  // and featured leagues. Switching the active pill loads that embed's saved state
+  // and clears any selections from the previous embed.
+  const isInitialEmbedRef = useRef(true);
+  useEffect(() => {
+    // Skip on first mount — the auto-fetch effect handles the initial load.
+    if (isInitialEmbedRef.current) { isInitialEmbedRef.current = false; return; }
+
+    isSwitchingEmbedRef.current = true;
+    const target = effectiveTarget;
+
+    // Clear undo/redo stacks (they belong to the previous embed)
+    undoStackRef.current = [];
+    redoStackRef.current = [];
+    lastHistoryStateRef.current = null;
+    setHistoryVersion(0);
+
+    // Reset in-memory events to their unselected base, then overlay the new embed's state
+    const loadEmbedState = async () => {
+      const savedState = loadSelectionState(target);
+      const savedSel = savedState?.selections ?? {};
+
+      // Deselect everything first
+      const cleared = useScheduleStore.getState().events.map(e => ({
+        ...e,
+        isSelected: false,
+        isFeatured: false,
+        tags: [] as ScreenTag[],
+      }));
+
+      // Apply the new embed's saved selections
+      const merged = cleared.map(e => {
+        const sel = savedSel[e.id];
+        if (sel) return { ...e, ...sel };
+        return e;
+      });
+      setEvents(merged);
+
+      // Restore league order + featured leagues for this embed
+      if (savedState && savedState.leagueOrder.length > 0) {
+        setLeagueOrder(savedState.leagueOrder);
+      } else {
+        setLeagueOrder([]);
+      }
+      if (savedState && Object.keys(savedState.featuredLeagues).length > 0) {
+        setFeaturedLeagues(new Map(Object.entries(savedState.featuredLeagues)));
+      } else {
+        setFeaturedLeagues(new Map());
+      }
+
+      // Also check Supabase for a fresher copy (cross-device sync)
+      const supaState = await loadSelectionFromSupabase(target);
+      if (!supaState) return;
+      const currentEvents = useScheduleStore.getState().events;
+      if (currentEvents.length > 0 && Object.keys(supaState.selections).length > 0) {
+        const reMerged = currentEvents.map(e => {
+          const sel = supaState.selections[e.id];
+          if (sel) return { ...e, ...sel };
+          return e;
+        });
+        setEvents(reMerged);
+      }
+      if (supaState.leagueOrder.length > 0) setLeagueOrder(supaState.leagueOrder);
+      if (Object.keys(supaState.featuredLeagues).length > 0) {
+        setFeaturedLeagues(new Map(Object.entries(supaState.featuredLeagues)));
+      }
+    };
+
+    loadEmbedState();
+  }, [effectiveTarget, setEvents]);
+
+  // ─── Fetch last published snapshot when a target pill is selected ─────────
+  useEffect(() => {
+    if (!publishTarget) {
+      setPublishedSnapshot(null);
+      return;
+    }
+    const load = () => {
+      setSnapshotLoading(true);
+      fetch(`/api/schedule-history?target=${encodeURIComponent(publishTarget)}`)
+        .then((r) => r.json())
+        .then(({ schedule }: { schedule: { events_snapshot: MatchEvent[]; league_order: string[]; featured_leagues: Record<string, string>; week_label: string } | null }) => {
+          if (!schedule) { setPublishedSnapshot(null); return; }
+          const evts = (schedule.events_snapshot ?? []) as MatchEvent[];
+          const lo = (schedule.league_order ?? []) as string[];
+          const fl = new Map(Object.entries((schedule.featured_leagues ?? {}) as Record<string, string>));
+          setPublishedSnapshot({
+            events: evts,
+            leagueOrder: lo,
+            featuredLeagues: fl,
+            html: generateHTML(evts, lo, fl),
+            label: schedule.week_label || publishTarget,
+          });
+        })
+        .catch(() => setPublishedSnapshot(null))
+        .finally(() => setSnapshotLoading(false));
+    };
+    load();
+    const id = setInterval(load, 120_000);
+    return () => clearInterval(id);
+  }, [publishTarget]);
 
   // ─── Client-side auth guard ─────────────────────────────────────────────────
   // Redirect to /login if the Supabase session has expired or been revoked.
@@ -235,6 +374,7 @@ export default function SchedulePage() {
   const [headerHeight, setHeaderHeight] = useState(116);
   const hasFetchedRef = useRef(false);
   const prevPreviewContentCountRef = useRef(0);
+  const isSwitchingEmbedRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const widthRef = useRef(700);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -311,7 +451,7 @@ export default function SchedulePage() {
     // IMPORTANT: Capture saved selection state BEFORE any cache loading triggers
     // the debounced save effect (which would overwrite localStorage with empty data).
     // Use sync localStorage load first (instant), Supabase will override on mount.
-    const savedState = loadSelectionState();
+    const savedState = loadSelectionState(effectiveTargetRef.current);
     const savedSel = savedState?.selections ?? {};
 
     // Try to load from client cache first for instant display
@@ -409,7 +549,7 @@ export default function SchedulePage() {
     if (!hasFetchedRef.current) {
       hasFetchedRef.current = true;
       // Restore league order + featured leagues from localStorage first (instant)
-      const saved = loadSelectionState();
+      const saved = loadSelectionState(effectiveTargetRef.current);
       if (saved) {
         if (saved.leagueOrder.length > 0) setLeagueOrder(saved.leagueOrder);
         if (Object.keys(saved.featuredLeagues).length > 0) {
@@ -432,7 +572,7 @@ export default function SchedulePage() {
         })
         .catch(() => {});
       // After initial fetch, try to load from Supabase (may override localStorage)
-      loadSelectionFromSupabase().then(supaState => {
+      loadSelectionFromSupabase(effectiveTargetRef.current).then(supaState => {
         if (!supaState) return;
         // Apply event-level selections from Supabase (may be fresher than localStorage)
         const currentEvents = useScheduleStore.getState().events;
@@ -621,7 +761,7 @@ export default function SchedulePage() {
         leagueOrder,
         featuredLeagues: Object.fromEntries(featuredLeagues),
         savedAt: Date.now(),
-      });
+      }, effectiveTargetRef.current);
     }, 800);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [events, leagueOrder, featuredLeagues, isFetching]);
@@ -643,7 +783,7 @@ export default function SchedulePage() {
         leagueOrder,
         featuredLeagues: Object.fromEntries(featuredLeagues),
         savedAt: Date.now(),
-      });
+      }, effectiveTargetRef.current);
     };
     window.addEventListener('beforeunload', flush);
     return () => window.removeEventListener('beforeunload', flush);
@@ -654,11 +794,14 @@ export default function SchedulePage() {
     if (previewContentCount > prevPreviewContentCountRef.current) {
       setPreviewOpen(true);
     }
-    if (previewContentCount === 0) {
+    // Only auto-close when the user deliberately removed all items, not during
+    // an embed switch (which transiently drops the count to 0 while loading)
+    if (previewContentCount === 0 && !isSwitchingEmbedRef.current) {
       setPreviewOpen(false);
       setPreviewCheckedIds(new Set());
       setDeleteAllConfirm(false);
     }
+    isSwitchingEmbedRef.current = false;
     prevPreviewContentCountRef.current = previewContentCount;
   }, [previewContentCount]);
 
@@ -803,8 +946,16 @@ export default function SchedulePage() {
   }, [batchSetSelected]);
 
   const handleDeleteSchedule = useCallback(async () => {
-    await fetch('/api/delete-schedule', { method: 'POST' });
-  }, []);
+    // Pass the current embedTarget so the API deletes the correct schedule row.
+    // publishTarget === '' means the global (NULL) target.
+    await fetch('/api/delete-schedule', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ embedTarget: publishTarget || null }),
+    });
+    // Clear the local preview snapshot so the UI reflects the deletion immediately.
+    setPublishedSnapshot(null);
+  }, [publishTarget]);
 
   // ─── Measure header height for panel positioning ────────────────────────────
   useEffect(() => {
@@ -1038,18 +1189,6 @@ export default function SchedulePage() {
         appendCachedEvent(ev);
       }
 
-      // Best-effort push restored custom events back into Supabase table.
-      // This ensures schedule restore is durable across devices as well.
-      void Promise.allSettled(
-        restoredCustom.map((ev) =>
-          fetch('/api/custom-events', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(ev),
-          })
-        )
-      );
-
       // Move calendar to the restored schedule range only if changed.
       if (rangeStart !== dateRange.start || rangeEnd !== dateRange.end) {
         setDateRange(rangeStart, rangeEnd);
@@ -1101,7 +1240,7 @@ export default function SchedulePage() {
         leagueOrder: schedule.league_order || [],
         featuredLeagues: schedule.featured_leagues || {},
         savedAt: Date.now(),
-      });
+      }, effectiveTargetRef.current);
     } catch (e) {
       console.error('Failed to restore schedule:', e);
     } finally {
@@ -1129,21 +1268,6 @@ export default function SchedulePage() {
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
-        <div className="pt-2 pb-1">
-          {/* CSS-based logo swap — no JS re-render on theme toggle */}
-          <img
-            src="/Score WEB Black Transp.png"
-            alt="SCORE Sports Bar"
-            className="w-full h-37 object-contain object-center dark:hidden"
-          />
-          <img
-            src="/Score WEB White Transp.png"
-            alt="SCORE Sports Bar"
-            className="w-full h-37 object-contain object-center hidden dark:block"
-          />
-          <p className="text-[10px] text-muted-foreground text-center mt-0.5">Sports Bar &amp; Grill · Phnom Penh</p>
-        </div>
-
         <Separator className="mx-3" />
 
         <div className="px-2 pt-2">
@@ -1237,6 +1361,8 @@ export default function SchedulePage() {
                 getSnapshotData={getSnapshotData}
                 onRestoreSchedule={handleRestoreSchedule}
                 hasCurrentSelections={selectedCount > 0}
+                embedInstances={embedInstances}
+                publishTarget={publishTarget}
               />
             </div>
           </div>
@@ -1388,7 +1514,7 @@ export default function SchedulePage() {
       </main>
 
       {/* ── Preview panel (custom resizable, no overlay) ────────────────────── */}
-      {previewContentCount > 0 && (
+      {(previewContentCount > 0 || previewOpen) && (
         <button
           ref={toggleBtnRef}
           onClick={() => { setPreviewOpen((o) => !o); setDeleteAllConfirm(false); }}
@@ -1421,11 +1547,47 @@ export default function SchedulePage() {
           className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize z-10 hover:bg-primary/20 transition-colors"
         />
         {/* Panel header */}
-        <div className="shrink-0 flex items-center justify-between px-4 py-2 border-b border-border">
-          <h3 className="text-sm font-bold text-foreground">Schedule Preview</h3>
+        <div className="shrink-0 flex items-center justify-between gap-3 px-4 py-2 border-b border-border">
+          <h3 className="text-sm font-bold text-foreground shrink-0">Schedule Preview</h3>
+
+          {/* Publish-to instance pills */}
+          {embedInstances.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+              <span className="text-[11px] text-muted-foreground shrink-0">Publish to:</span>
+              <button
+                onClick={() => setPublishTarget('')}
+                className={cn(
+                  'text-[11px] px-2 py-0.5 rounded-full border transition-all',
+                  !publishTarget
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/30'
+                )}
+              >
+                All
+              </button>
+              {embedInstances.map((inst) => {
+                const value = inst.embed_id ?? inst.display_id;
+                return (
+                  <button
+                    key={inst.display_id}
+                    onClick={() => setPublishTarget(value)}
+                    className={cn(
+                      'text-[11px] px-2 py-0.5 rounded-full border transition-all',
+                      publishTarget === value
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/30'
+                    )}
+                  >
+                    {inst.display_id}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           <button
             onClick={() => setPreviewOpen(false)}
-            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
@@ -1635,7 +1797,7 @@ export default function SchedulePage() {
           <div ref={htmlPreviewRef} className="flex-1 overflow-y-auto" onPointerDown={() => setActiveSortLeague(null)}>
             <div className="p-3 sm:p-6">
               <PreviewPanel
-                html={html}
+                html={publishedSnapshot ? publishedSnapshot.html : html}
                 matchCount={selectedCount}
                 leagueCount={selectedLeagues}
                 onCopy={handleCopyHTML}
@@ -1739,7 +1901,7 @@ export default function SchedulePage() {
             leagueOrder,
             featuredLeagues: Object.fromEntries(featuredLeagues),
             savedAt: Date.now(),
-          });
+          }, effectiveTargetRef.current);
           // Persist to Supabase so it survives page refreshes (expires in 2 weeks)
           const res = await fetch('/api/custom-events', {
             method: 'POST',

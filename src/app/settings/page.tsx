@@ -1,10 +1,14 @@
-﻿'use client';
+﻿import { createClient } from '@/lib/supabase/server';
+import { redirect } from 'next/navigation';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+export default async function SettingsPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
 
-export default function SettingsPage() {
-  const router = useRouter();
-  useEffect(() => { router.replace('/schedule'); }, [router]);
-  return null;
+  if (!user) {
+    redirect('/login');
+  }
+
+  // Settings are managed via the modal on the schedule page
+  redirect('/schedule');
 }

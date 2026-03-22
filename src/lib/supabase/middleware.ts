@@ -58,6 +58,11 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
+  // Allow embed pages (served in iframes on external sites)
+  if (request.nextUrl.pathname.startsWith('/embed/')) {
+    return supabaseResponse;
+  }
+
   // Allow API routes for auth and public endpoints
   if (request.nextUrl.pathname.startsWith('/api/')) {
     return supabaseResponse;

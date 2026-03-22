@@ -4,6 +4,37 @@ import { createClient } from '@/lib/supabase/server';
 const BUCKET = 'custom-league-logos';
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 
+// Magic byte signatures for allowed image formats
+const IMAGE_SIGNATURES: Array<{ bytes: number[]; offset?: number }> = [
+  { bytes: [0x89, 0x50, 0x4E, 0x47] },       // PNG
+  { bytes: [0xFF, 0xD8, 0xFF] },               // JPEG
+  { bytes: [0x47, 0x49, 0x46, 0x38] },         // GIF (87a/89a)
+  { bytes: [0x52, 0x49, 0x46, 0x46], offset: 0 }, // WebP (RIFF header, checked with WEBP at offset 8)
+];
+
+async function isValidImageContent(file: File): Promise<boolean> {
+  try {
+    const buffer = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+    if (buffer.length < 3) return false;
+
+    // Reject SVG: starts with '<' (0x3C) — SVG can contain embedded scripts
+    if (buffer[0] === 0x3C) return false;
+
+    // Check RIFF/WEBP specifically
+    if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46) {
+      // Verify WEBP marker at offset 8
+      return buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50;
+    }
+
+    // Check other signatures
+    return IMAGE_SIGNATURES.some(sig =>
+      sig.bytes.every((byte, i) => buffer[(sig.offset ?? 0) + i] === byte)
+    );
+  } catch {
+    return false;
+  }
+}
+
 function sanitizeSegment(value: string): string {
   return value
     .toLowerCase()
@@ -32,8 +63,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid file type' }, { status: 400 });
     }
 
+    // Reject SVG explicitly — even with correct MIME it can contain embedded scripts
+    if (file.type === 'image/svg+xml' || file.type === 'image/svg') {
+      return NextResponse.json({ error: 'SVG files are not allowed' }, { status: 400 });
+    }
+
     if (file.size > MAX_FILE_SIZE_BYTES) {
       return NextResponse.json({ error: 'Image too large (max 5MB)' }, { status: 400 });
+    }
+
+    // Validate actual file content matches an allowed image format (magic bytes)
+    if (!(await isValidImageContent(file))) {
+      return NextResponse.json({ error: 'File content is not a valid image (PNG, JPEG, GIF, or WebP)' }, { status: 400 });
     }
 
     const safeLabel = sanitizeSegment(leagueLabel);

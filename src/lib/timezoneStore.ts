@@ -2,8 +2,10 @@
 
 import { create } from 'zustand';
 
-/** IANA identifier — must use underscore for date-fns-tz */
-const DEFAULT_TIMEZONE = 'Asia/Phnom_Penh';
+/** IANA identifier — auto-detect from browser, fallback to UTC */
+const DEFAULT_TIMEZONE = typeof window !== 'undefined'
+  ? (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')
+  : 'UTC';
 const STORAGE_KEY = 'score-timezone';
 
 export interface TimezoneState {
@@ -70,7 +72,7 @@ export function getActiveTimezone(): string {
 }
 
 /**
- * Format an IANA timezone ID for display (e.g. "Asia/Phnom_Penh" → "Phnom Penh").
+ * Format an IANA timezone ID for display (e.g. "America/New_York" → "New York").
  */
 export function formatTimezoneDisplay(tz: string): string {
   const city = tz.split('/').pop() ?? tz;

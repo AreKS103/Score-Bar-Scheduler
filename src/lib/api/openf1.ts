@@ -1,5 +1,5 @@
 import type { MatchEvent, OpenF1Meeting, OpenF1Session } from '@/types';
-import { utcToICT } from '@/lib/timezone';
+import { utcToLocal } from '@/lib/timezone';
 
 const OPENF1_BASE = 'https://api.openf1.org/v1';
 
@@ -68,7 +68,7 @@ function mapF1Sessions(
   const gpName = shortenGPName(meeting.meeting_name);
 
   return sessions.map((session) => {
-    const { date, time } = utcToICT(session.date_start);
+    const { date, time } = utcToLocal(session.date_start);
     const sessionLabel = formatSessionName(session.session_name);
 
     return {

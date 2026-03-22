@@ -38,9 +38,12 @@ interface PublishButtonProps {
   };
   onRestoreSchedule?: (scheduleId: string) => void;
   hasCurrentSelections?: boolean;
+  /** Embed instances + publish target — lifted from parent */
+  embedInstances?: { display_id: string; embed_id: string | null }[];
+  publishTarget?: string;
 }
 
-export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSchedule, getSnapshotData, onRestoreSchedule, hasCurrentSelections }: PublishButtonProps) {
+export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSchedule, getSnapshotData, onRestoreSchedule, hasCurrentSelections, embedInstances: externalEmbedInstances, publishTarget: externalPublishTarget }: PublishButtonProps) {
   const selectedTimezone = useTimezoneStore((state) => state.timezone);
   const [status, setStatus] = useState<'idle' | 'pushing' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
@@ -54,7 +57,7 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
   // 5-second publish countdown (null = not counting, 0 = fire, 1-5 = counting)
   const [countdown, setCountdown] = useState<number | null>(null);
   // Undo toast state
-  const [undoToast, setUndoToast] = useState<{ prevHTML: string } | null>(null);
+  const [undoToast, setUndoToast] = useState<{ prevSchedule: any } | null>(null);
   // Scheduled publish state
   const [scheduleMode, setScheduleMode] = useState(false);
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
@@ -64,11 +67,14 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
   // Pending scheduled publishes
   const [pendingSchedules, setPendingSchedules] = useState<PendingSchedule[]>([]);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  // Embed instances + publish target — driven by parent (PreviewPanel selector)
+  const embedInstances = externalEmbedInstances ?? [];
+  const publishTarget = externalPublishTarget ?? '';
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const historyRef = useRef<HTMLDivElement>(null);
-  // Stores previous live HTML fetched just before publish starts (for undo)
-  const prevHTMLRef = useRef('');
+  // Stores previous schedule object fetched just before publish starts (for undo)
+  const prevScheduleRef = useRef<any>(null);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const historyFetchedAtRef = useRef(0);
   const historyAbortRef = useRef<AbortController | null>(null);
@@ -185,10 +191,17 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
     setMessage('');
 
     try {
-      const res = await fetch('/api/publish', {
+      const snapshot = getSnapshotData?.();
+      if (!snapshot) throw new Error("Missing snapshot data");
+
+      const res = await fetch('/api/schedule-history', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ html }),
+        body: JSON.stringify({
+          ...snapshot,
+          htmlContent: html,
+          embedTarget: publishTarget || null,
+        }),
       });
 
       if (!res.ok) {
@@ -198,23 +211,22 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
 
       const result = await res.json();
       setStatus('success');
-      onSuccess?.(result.updated);
+      onSuccess?.(new Date().toISOString());
 
-      // Save snapshot to Supabase (fire-and-forget)
-      if (getSnapshotData) {
-        const snapshot = getSnapshotData();
-        fetch('/api/schedule-history', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...snapshot, htmlContent: html }),
-        }).catch(() => {});
-      }
+      // Notify all embed iframes to refresh immediately
+      try {
+        document.querySelectorAll('iframe').forEach(f => {
+          f.contentWindow?.postMessage({ sbRefresh: true }, '*');
+        });
+      } catch {}
 
-      // Show undo toast — captures prevHTML at moment of success
-      const capturedPrev = prevHTMLRef.current;
+      // Show undo toast — captures prevSchedule at moment of success
+      const capturedPrev = prevScheduleRef.current;
       if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
-      setUndoToast({ prevHTML: capturedPrev });
-      undoTimerRef.current = setTimeout(() => setUndoToast(null), 8000);
+      if (capturedPrev) {
+        setUndoToast({ prevSchedule: capturedPrev });
+        undoTimerRef.current = setTimeout(() => setUndoToast(null), 8000);
+      }
 
       // Return button to idle after animation
       setTimeout(() => { setStatus('idle'); }, 4000);
@@ -230,9 +242,9 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
   const handlePublishClick = () => {
     if (disabled || countdown !== null || status === 'pushing') return;
 
-    // Prefetch the previous schedule HTML concurrently with the countdown
+    // Prefetch the previous schedule concurrently with the countdown
     // so it's ready by the time publish succeeds (~6-8 seconds later).
-    prevHTMLRef.current = '';
+    prevScheduleRef.current = null;
     fetch('/api/schedule-history')
       .then(r => r.json())
       .then(async (data) => {
@@ -241,7 +253,7 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
           const r2 = await fetch(`/api/schedule-history/${latest.id}`);
           if (r2.ok) {
             const { schedule } = await r2.json();
-            prevHTMLRef.current = schedule?.html_content ?? '';
+            prevScheduleRef.current = schedule;
           }
         }
       })
@@ -254,17 +266,25 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
 
   /** Reverts WordPress to the schedule that was live before the last publish */
   const handleUndo = async () => {
-    const prevHTML = undoToast?.prevHTML;
-    if (!prevHTML) return;
+    const prevSchedule = undoToast?.prevSchedule;
+    if (!prevSchedule) return;
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
     setUndoToast(null);
     setStatus('pushing');
     setMessage('');
     try {
-      const res = await fetch('/api/publish', {
+      const res = await fetch('/api/schedule-history', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ html: prevHTML }),
+        body: JSON.stringify({
+          weekLabel: prevSchedule.week_label,
+          dateRangeStart: prevSchedule.date_range_start,
+          dateRangeEnd: prevSchedule.date_range_end,
+          htmlContent: prevSchedule.html_content,
+          eventsSnapshot: prevSchedule.events_snapshot,
+          leagueOrder: prevSchedule.league_order,
+          featuredLeagues: prevSchedule.featured_leagues,
+        }),
       });
       if (!res.ok) throw new Error('Revert failed');
       setStatus('success');
@@ -316,6 +336,11 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
           html,
           scheduledAt: scheduledAt.toISOString(),
           weekLabel: snapshot?.weekLabel ?? '',
+          dateRangeStart: snapshot?.dateRangeStart,
+          dateRangeEnd: snapshot?.dateRangeEnd,
+          eventsSnapshot: snapshot?.eventsSnapshot,
+          leagueOrder: snapshot?.leagueOrder,
+          featuredLeagues: snapshot?.featuredLeagues,
         }),
       });
       if (!res.ok) {
@@ -605,7 +630,7 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
         <div className="fixed bottom-5 right-5 z-400 flex items-center gap-3 bg-neutral-900 dark:bg-zinc-800 border border-white/10 text-white px-4 py-3 rounded-xl shadow-2xl animate-in slide-in-from-bottom-3 fade-in-0 duration-300">
           <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
           <span className="text-sm font-medium">Schedule published</span>
-          {undoToast.prevHTML ? (
+          {undoToast.prevSchedule ? (
             <button
               onClick={handleUndo}
               className="text-sm font-semibold text-orange-400 hover:text-orange-300 underline underline-offset-2 decoration-dotted transition-colors"

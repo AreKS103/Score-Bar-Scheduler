@@ -10,8 +10,8 @@ export interface MatchEvent {
   leagueLabel: string;     // e.g. 'EPL', 'Formula 1'
   leagueLogo: string;      // URL to logo image
   customLogoPath?: string; // Supabase Storage object path for custom league logos
-  date: string;            // YYYY-MM-DD in ICT
-  time: string;            // HH:mm in ICT (24hr)
+  date: string;            // YYYY-MM-DD in active timezone
+  time: string;            // HH:mm in active timezone (24hr)
   home: string;            // Home team or event name
   away: string;            // Away team (empty for F1/UFC)
   homeLogo?: string;       // URL to home team logo (ESPN)

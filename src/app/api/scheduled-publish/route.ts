@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { html, scheduledAt, weekLabel } = await req.json();
+    const { html, scheduledAt, weekLabel, dateRangeStart, dateRangeEnd, eventsSnapshot, leagueOrder, featuredLeagues } = await req.json();
 
     if (!html || typeof html !== 'string') {
       return NextResponse.json({ error: 'Missing HTML content' }, { status: 400 });
@@ -26,6 +26,11 @@ export async function POST(req: NextRequest) {
       html_content: html,
       scheduled_at: scheduledAt,
       week_label: weekLabel || '',
+      date_range_start: dateRangeStart,
+      date_range_end: dateRangeEnd,
+      events_snapshot: eventsSnapshot,
+      league_order: leagueOrder || [],
+      featured_leagues: featuredLeagues || {},
       status: 'pending',
     });
 
@@ -118,7 +123,7 @@ export async function PATCH() {
     // Find past-due pending publishes for this user only
     const { data: pending, error } = await db
       .from('scheduled_publishes')
-      .select('id, html_content, week_label')
+      .select('*')
       .eq('user_id', user.id)
       .eq('status', 'pending')
       .lte('scheduled_at', new Date().toISOString())
@@ -128,41 +133,31 @@ export async function PATCH() {
       return NextResponse.json({ executed: 0 });
     }
 
-    const siteUrl = process.env.WP_SITE_URL || 'https://scorekh.com';
-    const username = process.env.WP_USERNAME;
-    const appPassword = process.env.WP_APP_PASSWORD;
-
-    if (!username || !appPassword) {
-      return NextResponse.json({ error: 'WordPress credentials not configured' }, { status: 500 });
-    }
-
-    const credentials = Buffer.from(`${username}:${appPassword}`).toString('base64');
     let executed = 0;
 
     for (const item of pending) {
       try {
-        const wpRes = await fetch(`${siteUrl}/wp-json/score/v1/schedule`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Basic ${credentials}`,
-          },
-          body: JSON.stringify({ html: item.html_content }),
+        // Move to published_schedules
+        const { error: insertErr } = await db.from('published_schedules').insert({
+          user_id: item.user_id,
+          week_label: item.week_label || '',
+          date_range_start: item.date_range_start || '',
+          date_range_end: item.date_range_end || '',
+          html_content: item.html_content,
+          events_snapshot: item.events_snapshot || [],
+          league_order: item.league_order || [],
+          featured_leagues: item.featured_leagues || {},
+          published_at: new Date().toISOString(),
         });
 
-        if (wpRes.ok) {
-          await db
-            .from('scheduled_publishes')
-            .update({ status: 'published', published_at: new Date().toISOString() })
-            .eq('id', item.id);
-          executed++;
-        } else {
-          const errText = await wpRes.text().catch(() => 'Unknown WP error');
-          await db
-            .from('scheduled_publishes')
-            .update({ status: 'failed', error_message: errText.slice(0, 500) })
-            .eq('id', item.id);
-        }
+        if (insertErr) throw insertErr;
+
+        await db
+          .from('scheduled_publishes')
+          .update({ status: 'published', published_at: new Date().toISOString() })
+          .eq('id', item.id);
+        
+        executed++;
       } catch (err) {
         await db
           .from('scheduled_publishes')
@@ -176,7 +171,7 @@ export async function PATCH() {
 
     return NextResponse.json({ executed, total: pending.length });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error('[scheduled-publish] error:', err instanceof Error ? err.message : err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

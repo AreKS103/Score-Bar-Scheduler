@@ -1,12 +1,13 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Wifi, WifiOff, Loader2, ShieldCheck, Server, Navigation, Globe, Moon, Sun } from 'lucide-react';
+import { X, Wifi, WifiOff, Loader2, ShieldCheck, Server, Navigation, Globe, Moon, Sun, Copy, CheckCircle, RefreshCw, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { useTimezoneStore, formatTimezoneDisplay } from '@/lib/timezoneStore';
 import { useThemeStore } from '@/lib/themeStore';
+import { createClient } from '@/lib/supabase/client';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -14,21 +15,27 @@ interface SettingsModalProps {
 }
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{
-    ok: boolean;
-    message: string;
-    configured?: boolean;
-  } | null>(null);
-
   const { timezone, useLocal, setUseLocal } = useTimezoneStore();
   const { theme, toggleTheme } = useThemeStore();
   const isDark = theme === 'dark';
   const [detectedTz] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'Unknown');
 
-  // Close on Escape
+  // API Key & User logic
+  const [userId, setUserId] = useState<string | null>(null);
+  const [apiKey, setApiKey] = useState<string | null>(null); // Only storing the RAW key temp after generation
+  const [keyPreview, setKeyPreview] = useState<string | null>(null);
+  const [connectedSite, setConnectedSite] = useState<string | null>(null);
+  const [loadingKey, setLoadingKey] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const supabase = createClient();
+
+  // Handle modal close
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      setApiKey(null); // Hide API key when closed
+      return;
+    }
     function handleKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
     }
@@ -36,211 +43,247 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     return () => document.removeEventListener('keydown', handleKey);
   }, [isOpen, onClose]);
 
-  const handleTest = async () => {
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const res = await fetch('/api/test-connection');
-      const result = await res.json();
-      setTestResult(result);
-    } catch (err) {
-      setTestResult({
-        ok: false,
-        message: `Network error: ${err instanceof Error ? err.message : 'Unknown'}`,
-      });
+  // Fetch User ID
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id || null));
+  }, [supabase.auth]);
+
+  // Load Key preview from DB
+  useEffect(() => {
+    if (!userId) return;
+    async function loadKey() {
+      const { data } = await supabase
+        .from('user_api_keys')
+        .select('key_preview, connected_site')
+        .eq('user_id', userId)
+        .single();
+      if (data) {
+        setKeyPreview(data.key_preview);
+        setConnectedSite(data.connected_site);
+      }
+      setLoadingKey(false);
     }
-    setTesting(false);
+    loadKey();
+  }, [userId, supabase]);
+
+  const generateKey = async () => {
+    if (!userId) return;
+    
+    // Confirm since it overwrites
+    if (keyPreview && !confirm("Generating a new API Key will disconnect your existing WordPress widgets until you update them. Continue?")) {
+      return;
+    }
+
+    setGenerating(true);
+    
+    try {
+      const response = await fetch('/api/keys/generate', { method: 'POST' });
+      if (!response.ok) throw new Error("Failed to generate key");
+      
+      const data = await response.json();
+      
+      if (data.apiKey) {
+        setApiKey(data.apiKey);
+        setKeyPreview(data.preview);
+        // Persist in sessionStorage for live preview
+        try { sessionStorage.setItem('sb-api-key', data.apiKey); } catch {}
+        // Generation clears existing connected site since the key changes
+        setConnectedSite(null);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error generating API key");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const copyToClipboard = () => {
+    if (!apiKey) return;
+    navigator.clipboard.writeText(apiKey);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   if (!isOpen) return null;
 
   return (
     <div
-      className="fixed inset-0 z-500 flex items-center justify-center p-4"
+      className="fixed inset-0 z-[500] flex items-center justify-center p-4"
       aria-modal="true"
       role="dialog"
       aria-label="Settings"
     >
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
-      />
-
-      {/* Modal */}
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <div className="relative z-10 w-full max-w-lg max-h-[85vh] flex flex-col rounded-2xl border border-border bg-background shadow-2xl shadow-black/30 animate-in fade-in-0 zoom-in-95">
-        {/* Sticky Header */}
+        
         <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-border bg-background rounded-t-2xl shrink-0">
           <h2 className="text-lg font-bold text-foreground">Settings</h2>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-          >
+          <button onClick={onClose} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
-          {/* Appearance card */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
                 {isDark ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
                 Appearance
               </CardTitle>
-              <CardDescription>
-                Switch between light and dark modes.
-              </CardDescription>
+              <CardDescription>Switch between light and dark modes.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-sm font-medium text-foreground">Dark Mode</div>
-                  <div className="text-xs text-muted-foreground">
-                    {isDark ? 'Dark theme is active' : 'Light theme is active'}
-                  </div>
+                  <div className="text-xs text-muted-foreground">{isDark ? 'Dark theme is active' : 'Light theme is active'}</div>
                 </div>
                 <button
                   onClick={toggleTheme}
-                  className={cn(
-                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                    isDark ? 'bg-primary' : 'bg-secondary border border-border'
-                  )}
-                  role="switch"
-                  aria-checked={isDark}
-                  aria-label="Toggle dark mode"
+                  className={cn('relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-grab active:cursor-grabbing', isDark ? 'bg-primary' : 'bg-secondary border border-border')}
+                  role="switch" aria-checked={isDark} aria-label="Toggle dark mode"
                 >
-                  <span
-                    className={cn(
-                      'inline-block h-4 w-4 rounded-full bg-white shadow transition-transform',
-                      isDark ? 'translate-x-6' : 'translate-x-1'
-                    )}
-                  />
+                  <span className={cn('inline-block h-4 w-4 rounded-full bg-white shadow transition-transform', isDark ? 'translate-x-6' : 'translate-x-1')} />
                 </button>
               </div>
             </CardContent>
           </Card>
 
-          {/* Timezone card */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
-                <Globe className="w-4 h-4" />
-                Timezone
+                <Globe className="w-4 h-4" /> Timezone
               </CardTitle>
-              <CardDescription>
-                All match times default to Phnom Penh (ICT, UTC+7). Toggle to use your local timezone instead.
-              </CardDescription>
+              <CardDescription>Events display in your detected timezone by default. Toggle to confirm.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Active timezone */}
               <div>
                 <label className="text-sm font-medium text-muted-foreground">Active Timezone</label>
                 <div className="mt-1 px-3 py-2 rounded-md bg-secondary/50 border border-border text-sm text-foreground flex items-center justify-between">
                   <span>{formatTimezoneDisplay(timezone)}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {useLocal ? 'Your location' : 'Default (Phnom Penh)'}
-                  </span>
+                  <span className="text-xs text-muted-foreground">{useLocal ? 'Your location' : 'Default'}</span>
                 </div>
               </div>
-
-              {/* Detected location */}
               <div className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/15">
-                <Navigation
-                  className="w-4 h-4 text-primary shrink-0"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
+                <Navigation className="w-4 h-4 text-primary shrink-0" strokeLinecap="round" strokeLinejoin="round" />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-foreground">Detected Location</div>
                   <div className="text-xs text-muted-foreground truncate">{detectedTz ? formatTimezoneDisplay(detectedTz) : '—'}</div>
                 </div>
               </div>
-
-              {/* Toggle */}
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-sm font-medium text-foreground">Use my local time</div>
-                  <div className="text-xs text-muted-foreground">
-                    Switch all dates &amp; times to your browser timezone
-                  </div>
+                  <div className="text-xs text-muted-foreground">Switch all dates &amp; times to your browser timezone</div>
                 </div>
                 <button
                   onClick={() => setUseLocal(!useLocal)}
-                  className={cn(
-                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                    useLocal ? 'bg-primary' : 'bg-secondary border border-border'
-                  )}
-                  role="switch"
-                  aria-checked={useLocal}
+                  className={cn('relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-grab active:cursor-grabbing', useLocal ? 'bg-primary' : 'bg-secondary border border-border')}
+                  role="switch" aria-checked={useLocal}
                 >
-                  <span
-                    className={cn(
-                      'inline-block h-4 w-4 rounded-full bg-white shadow transition-transform',
-                      useLocal ? 'translate-x-6' : 'translate-x-1'
-                    )}
-                  />
+                  <span className={cn('inline-block h-4 w-4 rounded-full bg-white shadow transition-transform', useLocal ? 'translate-x-6' : 'translate-x-1')} />
                 </button>
               </div>
             </CardContent>
           </Card>
 
-          {/* WordPress connection card */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
-                <Server className="w-4 h-4" />
-                WordPress Connection
+                <Server className="w-4 h-4" /> WordPress Integration
               </CardTitle>
               <CardDescription>
-                Credentials are configured via server-side environment variables for security.
-                They are never sent to or stored in the browser.
+                Connect your account to your WordPress site via our white-label plugin.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
-              {/* Security badge */}
-              <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-sm">
-                <ShieldCheck className="w-4 h-4 shrink-0" />
-                Credentials are stored server-side only — never exposed to the browser.
-              </div>
-
-              {/* Site URL */}
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">Target Site</label>
-                <div className="mt-1 px-3 py-2 rounded-md bg-secondary/50 border border-border text-sm text-foreground">
-                  {process.env.NEXT_PUBLIC_WP_SITE_URL || 'https://scorekh.com'}
-                </div>
-              </div>
-
-              {/* Test button */}
-              <div className="flex items-center gap-3 pt-1">
-                <Button variant="secondary" onClick={handleTest} disabled={testing}>
-                  {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wifi className="w-4 h-4" />}
-                  {testing ? 'Testing...' : 'Test Connection'}
+              {!keyPreview ? (
+                <Button onClick={generateKey} disabled={generating} className="w-full sm:w-auto">
+                  {generating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                  Generate API Key
                 </Button>
-              </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium text-foreground mb-2 block">Your API Key</label>
+                    <div className="flex flex-col gap-2">
+                       {/* If apiKey is null we show the preview stored in DB (raw key not available) */}
+                       {apiKey ? (
+                         <>
+                          <code className="w-full bg-secondary px-3 py-2 rounded-md font-mono text-xs border border-border select-all break-all text-foreground font-semibold">
+                            {apiKey}
+                          </code>
+                          <div className="flex gap-2">
+                            <Button variant="outline" size="sm" onClick={copyToClipboard} className="flex-1">
+                              {copied ? <CheckCircle className="w-4 h-4 mr-2 text-emerald-500" /> : <Copy className="w-4 h-4 mr-2" />}
+                              {copied ? 'Copied' : 'Copy'}
+                            </Button>
+                            <Button variant="outline" size="sm" className="shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={generateKey} disabled={generating}>
+                              <RefreshCw className={`w-4 h-4 mr-2 ${generating ? 'animate-spin' : ''}`} />
+                              Revoke
+                            </Button>
+                          </div>
+                         </>
+                       ) : (
+                         <>
+                          <div className="w-full flex items-center justify-between bg-secondary px-3 py-2 rounded-md font-mono text-xs border border-border text-muted-foreground min-w-0">
+                            <span className="truncate mr-3">{keyPreview}</span>
+                            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider bg-background/50 px-2 py-0.5 rounded shrink-0">
+                              <EyeOff className="w-3 h-3" /> Hidden
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button variant="outline" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={generateKey} disabled={generating}>
+                              <RefreshCw className={`w-4 h-4 mr-2 ${generating ? 'animate-spin' : ''}`} />
+                              Revoke &amp; Regenerate
+                            </Button>
+                          </div>
+                         </>
+                       )}
+                    </div>
+                    {apiKey ? (
+                      <p className="text-xs text-destructive font-medium mt-2">
+                        Make sure to copy your API key now. You won't be able to see it again!
+                      </p>
+                    ) : (
+                       <p className="text-xs text-muted-foreground mt-2">
+                        For your security, we only show your API key once. If you lost it, generate a new one.
+                      </p>
+                    )}
+                  </div>
 
-              {/* Result */}
-              {testResult && (
-                <div
-                  className={cn(
-                    'flex items-center gap-2 p-3 rounded-lg text-sm',
-                    testResult.ok
-                      ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
-                      : 'bg-destructive/10 border border-destructive/30 text-red-700 dark:text-red-300'
-                  )}
-                >
-                  {testResult.ok ? (
-                    <Wifi className="w-4 h-4 shrink-0" />
-                  ) : (
-                    <WifiOff className="w-4 h-4 shrink-0" />
-                  )}
-                  {testResult.message}
+                  <div className="bg-secondary/30 rounded-lg p-3 border border-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div>
+                      <h3 className="font-medium text-sm">Connection Status</h3>
+                      <p className="text-xs text-muted-foreground mt-1 max-w-[250px] truncate">
+                        {connectedSite ? (
+                          <>Connected to: <a href={connectedSite} target="_blank" rel="noreferrer" className="text-primary hover:underline">{connectedSite}</a></>
+                        ) : (
+                          'Not connected yet. Paste your key in your WordPress plugin to establish a connection.'
+                        )}
+                      </p>
+                    </div>
+                    <div>
+                      {connectedSite ? (
+                        <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-full border border-emerald-500/20">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 block animate-pulse"></span>
+                          Connected
+                        </span>
+                      ) : (
+                        <span className="text-xs font-medium text-muted-foreground bg-secondary px-2 py-1 rounded-full border border-border block">
+                          Pending
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
+
+
             </CardContent>
           </Card>
+
         </div>
       </div>
     </div>

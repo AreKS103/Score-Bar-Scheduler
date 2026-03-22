@@ -3,7 +3,9 @@ import { addDays, parseISO, startOfDay } from 'date-fns';
 import { getActiveTimezone } from './timezoneStore';
 
 /** IANA identifier — must use underscore for date-fns-tz */
-const DEFAULT_TZ = 'Asia/Phnom_Penh';
+const DEFAULT_TZ = typeof globalThis.Intl !== 'undefined'
+  ? Intl.DateTimeFormat().resolvedOptions().timeZone
+  : 'UTC';
 
 /** Get the currently active timezone (from store or fallback) */
 function tz(): string {
@@ -17,7 +19,7 @@ function tz(): string {
 /**
  * Convert a UTC ISO string to date string (YYYY-MM-DD) in active timezone
  */
-export function utcToICTDate(utcISO: string): string {
+export function utcToLocalDate(utcISO: string): string {
   const zone = tz();
   const zonedDate = toZonedTime(parseISO(utcISO), zone);
   return format(zonedDate, 'yyyy-MM-dd', { timeZone: zone });
@@ -26,7 +28,7 @@ export function utcToICTDate(utcISO: string): string {
 /**
  * Convert a UTC ISO string to time string (HH:mm) in active timezone
  */
-export function utcToICTTime(utcISO: string): string {
+export function utcToLocalTime(utcISO: string): string {
   const zone = tz();
   const zonedDate = toZonedTime(parseISO(utcISO), zone);
   return format(zonedDate, 'HH:mm', { timeZone: zone });
@@ -35,10 +37,10 @@ export function utcToICTTime(utcISO: string): string {
 /**
  * Convert a UTC ISO string to both date and time in active timezone
  */
-export function utcToICT(utcISO: string): { date: string; time: string } {
+export function utcToLocal(utcISO: string): { date: string; time: string } {
   return {
-    date: utcToICTDate(utcISO),
-    time: utcToICTTime(utcISO),
+    date: utcToLocalDate(utcISO),
+    time: utcToLocalTime(utcISO),
   };
 }
 
@@ -53,7 +55,7 @@ export function formatDisplayDate(dateStr: string): string {
 /**
  * Get today's date in active timezone as YYYY-MM-DD
  */
-export function todayICT(): string {
+export function today(): string {
   const zone = tz();
   const now = toZonedTime(new Date(), zone);
   return format(now, 'yyyy-MM-dd', { timeZone: zone });
@@ -62,7 +64,7 @@ export function todayICT(): string {
 /**
  * Get a date N days from today in active timezone as YYYY-MM-DD
  */
-export function daysFromTodayICT(days: number): string {
+export function daysFromToday(days: number): string {
   const zone = tz();
   const now = toZonedTime(new Date(), zone);
   const future = addDays(startOfDay(now), days);
@@ -87,7 +89,7 @@ export function espnDateRange(startDate: string, endDate: string): string {
  * Convert a TheSportsDB date+time (already in UTC) to active timezone
  * dateEvent: "2025-03-06", strTime: "19:00:00"
  */
-export function sportsDBToICT(dateEvent: string, strTime: string): { date: string; time: string } {
+export function sportsDBToLocal(dateEvent: string, strTime: string): { date: string; time: string } {
   const utcISO = `${dateEvent}T${strTime || '00:00:00'}Z`;
-  return utcToICT(utcISO);
+  return utcToLocal(utcISO);
 }

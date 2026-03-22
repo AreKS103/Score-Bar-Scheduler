@@ -37,3 +37,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# supabase local CLI temp files (contain DB connection strings)
+supabase/.temp/
+
+# backup files
+*.bak

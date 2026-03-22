@@ -131,34 +131,34 @@ export default function PreviewPanel({
     <div className="space-y-5">
       {/* Summary bar */}
       <div className="flex items-center justify-between bg-secondary/50 border border-border rounded-lg px-4 py-3">
-        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-          <span>
-            <strong className="text-foreground">{matchCount}</strong> matches selected
-          </span>
-          <span className="text-border">|</span>
-          <span>
-            across <strong className="text-foreground">{leagueCount}</strong> leagues
-          </span>
-        </div>
-        <div className="flex items-center gap-3">
-          {lastPushed && (
-            <span className="text-xs text-muted-foreground">Last pushed: {lastPushed}</span>
-          )}
-          {onCopy && (
-            <button
-              onClick={onCopy}
-              className={cn(
-                'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border transition-all font-medium',
-                copied
-                  ? 'text-emerald-400 border-emerald-400/30 bg-emerald-400/10'
-                  : 'text-muted-foreground border-border hover:text-foreground hover:bg-secondary'
-              )}
-            >
-              {copied ? <CheckCircle className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-              {copied ? 'Copied!' : 'Copy HTML'}
-            </button>
-          )}
-        </div>
+          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            <span>
+              <strong className="text-foreground">{matchCount}</strong> matches selected
+            </span>
+            <span className="text-border">|</span>
+            <span>
+              across <strong className="text-foreground">{leagueCount}</strong> leagues
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            {lastPushed && (
+              <span className="text-xs text-muted-foreground">Last pushed: {lastPushed}</span>
+            )}
+            {onCopy && (
+              <button
+                onClick={onCopy}
+                className={cn(
+                  'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border transition-all font-medium',
+                  copied
+                    ? 'text-emerald-400 border-emerald-400/30 bg-emerald-400/10'
+                    : 'text-muted-foreground border-border hover:text-foreground hover:bg-secondary'
+                )}
+              >
+                {copied ? <CheckCircle className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copied ? 'Copied!' : 'Copy HTML'}
+              </button>
+            )}
+          </div>
       </div>
 
       {/* HTML preview — adapts to current theme */}
@@ -166,7 +166,7 @@ export default function PreviewPanel({
         ref={previewRef}
         className="bg-card border border-border rounded-lg p-8 overflow-y-auto prose prose-sm max-w-none
           dark:prose-invert
-          [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mt-0 [&_h2]:mb-0
+          [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mt-6 [&_h2]:mb-2
           [&_h2]:text-zinc-800 dark:[&_h2]:text-white
           [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-0 [&_h3]:mb-0
           [&_h3]:text-zinc-700 dark:[&_h3]:text-zinc-200

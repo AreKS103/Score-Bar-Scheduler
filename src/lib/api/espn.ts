@@ -1,6 +1,6 @@
 import type { MatchEvent, ESPNScoreboardResponse, ESPNCompetitor } from '@/types';
 import { SPORTS_CONFIG } from '@/lib/config';
-import { utcToICT, espnDateRange } from '@/lib/timezone';
+import { utcToLocal, espnDateRange } from '@/lib/timezone';
 
 const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports';
 
@@ -88,7 +88,7 @@ function mapTeamEvents(
       ?? competitors.find((c) => c.order === 2)
       ?? competitors[1];
 
-    const { date, time } = utcToICT(event.date);
+    const { date, time } = utcToLocal(event.date);
 
     // Determine round info from event name if available
     let round = '';
@@ -138,7 +138,7 @@ function mapMMAEvents(
     // Full event name includes the main event, e.g. "UFC 326: Max Holloway vs. Charles Oliveira 2"
     // Fall back to shortName ("UFC 326") if name is not available
     const cardName = event.name || event.shortName || sportConfig.label;
-    const { date, time } = utcToICT(event.date);
+    const { date, time } = utcToLocal(event.date);
 
     const competitions = event.competitions ?? [];
     if (competitions.length === 0) continue;
@@ -154,7 +154,7 @@ function mapMMAEvents(
       if (!f1Name) continue;
 
       // Use individual competition date/time if available, else event date
-      const fightTime = comp.date ? utcToICT(comp.date) : { date, time };
+      const fightTime = comp.date ? utcToLocal(comp.date) : { date, time };
 
       // Weight class from competition type abbreviation
       const weightClass = comp.type?.abbreviation ?? '';
@@ -192,7 +192,7 @@ function mapGolfEvents(
   if (!data.events) return [];
 
   return data.events.map((event) => {
-    const { date, time } = utcToICT(event.date);
+    const { date, time } = utcToLocal(event.date);
 
     // Clean tournament name (remove sponsor tags if too long)
     let tournamentName = event.name || event.shortName || 'TBD';
@@ -248,7 +248,7 @@ function mapMotorsportEvents(
         sessionType === 'Race' ? 'Main Race' :
         sessionType || `Session ${i + 1}`;
 
-      const sessionTime = comp.date ? utcToICT(comp.date) : utcToICT(event.date);
+      const sessionTime = comp.date ? utcToLocal(comp.date) : utcToLocal(event.date);
 
       results.push({
         id: `espn-${sportConfig.id}-${event.id}-${sessionType || i}`,

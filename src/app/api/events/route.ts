@@ -161,14 +161,14 @@ function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-/** Convert UTC ISO string to ICT date/time */
-function utcToICT(utcDateString: string): { date: string; time: string } {
+/** Convert UTC ISO string to date/time in the configured timezone offset */
+function utcToLocal(utcDateString: string): { date: string; time: string } {
   try {
     const utc = new Date(utcDateString);
-    const ictMs = utc.getTime() + 7 * 60 * 60 * 1000;
-    const ict = new Date(ictMs);
-    const date = ict.toISOString().split('T')[0];
-    const time = ict.toISOString().split('T')[1].slice(0, 5);
+    const localMs = utc.getTime() + 7 * 60 * 60 * 1000; // TODO: make offset configurable per-user
+    const local = new Date(localMs);
+    const date = local.toISOString().split('T')[0];
+    const time = local.toISOString().split('T')[1].slice(0, 5);
     return { date, time };
   } catch {
     return { date: '', time: '' };
@@ -264,7 +264,7 @@ function mapMMAFights(
   for (const event of events) {
     // Use the full event name so each card has a unique label (e.g. "UFC Fight Night: Emmett vs. Vallejos")
     const cardName = event.name || event.shortName || meta.label;
-    const { date, time } = utcToICT(event.date);
+    const { date, time } = utcToLocal(event.date);
     const competitions = event.competitions ?? [];
     if (competitions.length === 0) continue;
 
@@ -300,7 +300,7 @@ function mapMMAFights(
       if (!f1Name) continue;
 
       const compTime = comp.date || event.date;
-      const fightTime = comp.date ? utcToICT(comp.date) : { date, time };
+      const fightTime = comp.date ? utcToLocal(comp.date) : { date, time };
       const weightClass = comp.type?.abbreviation ?? '';
 
       fights.push({
@@ -361,7 +361,7 @@ function mapMotorsportSessions(
         sessionType === 'Race'  ? 'Race'         :
         sessionType || `Session ${i + 1}`;
 
-      const sessionTime = comp.date ? utcToICT(comp.date) : utcToICT(event.date);
+      const sessionTime = comp.date ? utcToLocal(comp.date) : utcToLocal(event.date);
 
       results.push({
         id: `espn-${league.id}-${event.id}-${sessionType || i}`,
@@ -411,7 +411,7 @@ function mapTennisMatches(
         const p2Name = p2 ? getCompName(p2) : '';
         if (!p1Name || !p2Name) continue;
 
-        const matchTime = comp.date ? utcToICT(comp.date) : utcToICT(event.date);
+        const matchTime = comp.date ? utcToLocal(comp.date) : utcToLocal(event.date);
         const roundName = comp.round?.displayName || '';
         const drawLabel = group.grouping.displayName || '';
         const round = roundName ? `${drawLabel} – ${roundName}` : drawLabel;
@@ -454,7 +454,7 @@ function mapTeamSportEvents(
     const competitors = comp?.competitors ?? [];
     const home = competitors.find(c => c.homeAway === 'home') ?? competitors[0];
     const away = competitors.find(c => c.homeAway === 'away') ?? competitors[1];
-    const { date, time } = utcToICT(event.date);
+    const { date, time } = utcToLocal(event.date);
 
     let homeName = home ? getCompName(home) : '';
     let awayName = away ? getCompName(away) : '';
@@ -636,16 +636,16 @@ async function sdbFetch(endpoint: string, responseKey: 'events' | 'results' = 'e
   }
 }
 
-function sportsDBToICT(dateStr: string, timeStr: string): { date: string; time: string } {
+function sportsDBToLocal(dateStr: string, timeStr: string): { date: string; time: string } {
   try {
     const [y, m, d] = dateStr.split('-').map(Number);
     const [h, min] = (timeStr || '00:00:00').split(':').map(Number);
     const utc = Date.UTC(y, m - 1, d, h, min);
-    const ictMs = utc + 7 * 60 * 60 * 1000;
-    const ict = new Date(ictMs);
+    const localMs = utc + 7 * 60 * 60 * 1000; // TODO: make offset configurable per-user
+    const local = new Date(localMs);
     return {
-      date: ict.toISOString().split('T')[0],
-      time: ict.toISOString().split('T')[1].slice(0, 5),
+      date: local.toISOString().split('T')[0],
+      time: local.toISOString().split('T')[1].slice(0, 5),
     };
   } catch {
     return { date: dateStr, time: '00:00' };
@@ -653,7 +653,7 @@ function sportsDBToICT(dateStr: string, timeStr: string): { date: string; time: 
 }
 
 function mapSDBEvent(event: SportsDBEvent, league: typeof SPORTSDB_ONLY_LEAGUES[0]): MatchEvent {
-  const { date, time } = sportsDBToICT(event.dateEvent, event.strTime || '00:00:00');
+  const { date, time } = sportsDBToLocal(event.dateEvent, event.strTime || '00:00:00');
   return {
     id: `sportsdb-${event.idEvent}`,
     source: 'sportsdb',
@@ -737,7 +737,7 @@ function mapSDBCombatEvent(
   event: SportsDBEvent,
   league: typeof SPORTSDB_ONLY_LEAGUES[0]
 ): MatchEvent {
-  const { date, time } = sportsDBToICT(event.dateEvent, event.strTime || '00:00:00');
+  const { date, time } = sportsDBToLocal(event.dateEvent, event.strTime || '00:00:00');
   const { cardName, home, away } = parseSDBFightEvent(event.strEvent, league.sportsdbId);
 
   // Build leagueLabel used by generateHTML's getLeagueAbbrev:

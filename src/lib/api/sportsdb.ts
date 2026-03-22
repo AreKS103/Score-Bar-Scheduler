@@ -1,6 +1,6 @@
 import type { MatchEvent, SportsDBEvent } from '@/types';
 import { SPORTS_CONFIG } from '@/lib/config';
-import { sportsDBToICT } from '@/lib/timezone';
+import { sportsDBToLocal } from '@/lib/timezone';
 
 /**
  * Build a URL that routes through our server-side proxy to avoid CORS.
@@ -114,7 +114,7 @@ function mapSportsDBEvent(
   event: SportsDBEvent,
   sportConfig: { id: string; label: string; category: string; logo: string }
 ): MatchEvent {
-  const { date, time } = sportsDBToICT(
+  const { date, time } = sportsDBToLocal(
     event.dateEvent,
     event.strTime || '00:00:00'
   );

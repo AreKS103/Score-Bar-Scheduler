@@ -1,13 +1,13 @@
 import { create } from 'zustand';
 import type { MatchEvent, ScreenTag, ScheduleStore, FetchStatus } from '@/types';
-import { todayICT, daysFromTodayICT } from '@/lib/timezone';
+import { today, daysFromToday } from '@/lib/timezone';
 
 export const useScheduleStore = create<ScheduleStore>((set, get) => ({
   events: [],
   fetchStatuses: {},
   dateRange: {
-    start: todayICT(),
-    end: daysFromTodayICT(7),
+    start: today(),
+    end: daysFromToday(7),
   },
   activeSportFilter: 'All',
 
