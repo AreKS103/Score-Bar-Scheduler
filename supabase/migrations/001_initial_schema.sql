@@ -1,4 +1,4 @@
--- ScoreBarSchedule — Supabase Schema
+-- Scheduler — Supabase Schema
 -- Run in Supabase Dashboard → SQL Editor → New Query
 -- ─────────────────────────────────────────────────
 

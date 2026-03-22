@@ -42,6 +42,8 @@ export default function EditMatchModal({ event, onClose, onSave }: EditMatchModa
   const [round, setRound] = useState('');
   const [tags, setTags] = useState<ScreenTag[]>([]);
   const [isFeatured, setIsFeatured] = useState(false);
+  const [homeCountry, setHomeCountry] = useState('');
+  const [awayCountry, setAwayCountry] = useState('');
   const [customLeagueLogo, setCustomLeagueLogo] = useState('');
   const [customLogoPath, setCustomLogoPath] = useState('');
   const [uploadError, setUploadError] = useState('');
@@ -149,6 +151,8 @@ export default function EditMatchModal({ event, onClose, onSave }: EditMatchModa
     setRound(event.round);
     setTags([...event.tags]);
     setIsFeatured(event.isFeatured);
+    setHomeCountry(event.homeCountry ?? '');
+    setAwayCountry(event.awayCountry ?? '');
     setUploadError('');
   }, [event]);
 
@@ -197,6 +201,8 @@ export default function EditMatchModal({ event, onClose, onSave }: EditMatchModa
       round,
       tags,
       isFeatured,
+      homeCountry: homeCountry.trim().toUpperCase() || undefined,
+      awayCountry: awayCountry.trim().toUpperCase() || undefined,
     });
     onClose();
   };
@@ -417,6 +423,33 @@ export default function EditMatchModal({ event, onClose, onSave }: EditMatchModa
               className="mt-1.5"
             />
           </div>
+
+          {(['boxing', 'ufc', 'bellator'].includes(sportId)) && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Home Fighter Country <span className="text-muted-foreground">(optional)</span></Label>
+                <Input
+                  type="text"
+                  value={homeCountry}
+                  onChange={(e) => setHomeCountry(e.target.value.toUpperCase())}
+                  placeholder="e.g. GB, US, MX"
+                  maxLength={3}
+                  className="mt-1.5 uppercase"
+                />
+              </div>
+              <div>
+                <Label>Away Fighter Country <span className="text-muted-foreground">(optional)</span></Label>
+                <Input
+                  type="text"
+                  value={awayCountry}
+                  onChange={(e) => setAwayCountry(e.target.value.toUpperCase())}
+                  placeholder="e.g. GB, US, MX"
+                  maxLength={3}
+                  className="mt-1.5 uppercase"
+                />
+              </div>
+            </div>
+          )}
 
           <div>
             <Label>Round / Subtitle <span className="text-muted-foreground">(optional)</span></Label>

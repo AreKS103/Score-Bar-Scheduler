@@ -32,6 +32,9 @@ interface EmbedOpts {
   widgetId: string;
   appUrl: string;
   apiKey: string;
+  hideViewToggle: boolean;
+  noInlineToggle: boolean;
+  highlightFontSize: string;
 }
 
 function buildEmbedPage(
@@ -44,11 +47,13 @@ function buildEmbedPage(
   const isAuto = opts.theme === 'auto';
   const accent = opts.accentColor || '#3b82f6';
 
-  const baseFontSize = ({ sm: '13px', md: '15px', lg: '17px' } as Record<string, string>)[opts.fontSize] ?? '15px';
-  const logoHeight   = ({ sm: '22px', md: '32px', lg: '46px' } as Record<string, string>)[opts.logoSize]   ?? '32px';
-  const h3Size       = ({ sm: '0.9em', md: '1.05em', lg: '1.2em' } as Record<string, string>)[opts.headerSize] ?? '1.05em';
-  const matchSize    = ({ sm: '0.82em', md: '0.92em', lg: '1.05em' } as Record<string, string>)[opts.matchFontSize] ?? '0.92em';
-  const dateSize     = ({ sm: '0.65em', md: '0.75em', lg: '0.85em' } as Record<string, string>)[opts.dateFontSize] ?? '0.75em';
+  // Resolve size: supports legacy sm/md/lg tokens OR direct numeric px values
+  const rp = (v: string, sm: string, md: string, lg: string) => { if (v==='sm') return sm; if (v==='lg') return lg; const n=parseInt(v??''); return (!isNaN(n)&&n>=1&&n<=500)?`${n}px`:md; };
+  const logoHeight  = rp(opts.logoSize,             '22px', '32px',  '46px');
+  const h3Size      = rp(opts.headerSize,            '14px', '16px',  '19px');
+  const matchSize   = rp(opts.matchFontSize,         '12px', '14px',  '16px');
+  const dateSize    = rp(opts.dateFontSize,          '10px', '11px',  '13px');
+  const hlFontSize  = rp(opts.highlightFontSize||'18','14px','18px',  '22px');
   const fontStack    = ({
     system: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     serif:  "Georgia, 'Times New Roman', Times, serif",
@@ -83,10 +88,10 @@ function buildEmbedPage(
   const darkVars  = `--bg:${bgOverride || '#0f1117'};--text:${textOverride || '#e8eaf0'};--muted:#8b92a8;--heading:${textOverride || '#f0f2f8'};--border:#2d3142;--tab-bg:#1e2130;--tab-text:#8b92a8;--tab-active:${accent};--tab-active-text:#fff;--accent:${accent};--card-bg:#181c28;`;
 
   const css = `
-:root{${isAuto ? lightVars : isDark ? darkVars : lightVars}}
+:root{${isAuto ? lightVars : isDark ? darkVars : lightVars};--sb-match-size:${matchSize};--sb-date-size:${dateSize};--sb-h3-size:${h3Size};--sb-logo-height:${logoHeight};--sb-hl-size:${hlFontSize}}
 ${isAuto ? `@media(prefers-color-scheme:dark){:root{${darkVars}}}` : ''}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body{background:var(--bg);color:var(--text);font-family:${fontStack};font-size:${baseFontSize};line-height:${lineH};-webkit-font-smoothing:antialiased;width:100%}
+html,body{background:var(--bg);color:var(--text);font-family:${fontStack};font-size:15px;line-height:${lineH};-webkit-font-smoothing:antialiased;width:100%}
 body{padding:${bodyPad}}
 #sport-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
 .tab{background:var(--tab-bg);border:1px solid var(--border);color:var(--tab-text);padding:4px 14px;${tabBorder};cursor:pointer;font-size:12px;font-family:inherit;font-weight:500;white-space:nowrap;transition:background .15s,color .15s,border-color .15s}
@@ -96,12 +101,14 @@ body{padding:${bodyPad}}
 .schedule-content h2{font-size:0.78em;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);padding:6px 0 5px;margin:8px 0 13px;border-bottom:1px solid var(--border)}
 .schedule-content h2:first-child{margin-top:8px}
 #schedule-root,.schedule-content{width:100%}
-.schedule-content h3{font-size:${h3Size};font-weight:700;color:var(--heading);margin:${leagueGap} 0 3px;display:flex;align-items:center;gap:8px}
-.schedule-content img[data-preview-league]{height:${logoHeight}!important;width:auto!important;display:block;margin-top:${leagueGap}}
+.schedule-content h3{font-size:var(--sb-h3-size)!important;font-weight:700;color:var(--heading);margin:${leagueGap} 0 3px;display:flex;align-items:center;gap:8px}
+.schedule-content img[data-preview-league]{height:var(--sb-logo-height)!important;width:auto!important;display:block;margin-top:${leagueGap}}
 .schedule-content img[data-preview-league]+h3{margin-top:4px}
-.schedule-content p>strong{display:block;font-size:${dateSize};font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:${dateMargin}}
+.schedule-content p>strong{display:block;font-size:var(--sb-date-size)!important;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:${dateMargin}}
 .schedule-content p{margin:0;padding:0;line-height:${lineH}}
-.schedule-content span[data-preview-match]{display:block;color:var(--text);font-size:${matchSize}}
+.match-group{margin:2px 0 ${Math.round(lineH * 8)}px}
+.schedule-content span[data-preview-match]{display:flex;align-items:center;gap:6px;padding:5px 0;color:var(--text);font-size:var(--sb-match-size)!important;border-bottom:1px solid var(--border,#e5e7eb)}
+.schedule-content span[data-preview-match]:last-child{border-bottom:none}
 .schedule-content>br,.sport-section>br{display:none}
 .schedule-content ul{list-style:none;padding:0;margin:0 0 10px}
 .schedule-content ul li{padding:4px 0;border-bottom:1px solid var(--border);font-size:.9em}
@@ -109,6 +116,30 @@ body{padding:${bodyPad}}
 .schedule-content ul li strong{color:var(--accent)}
 ${isCard ? `.league-block{background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px}\n.league-block:last-child{margin-bottom:0}\n.league-block img[data-preview-league]{margin-top:0!important}\n.league-block h3{margin-top:6px}` : ''}
 .schedule-content p:empty{display:none}
+.team-logo{height:16px;width:auto;flex-shrink:0}
+.vs-sep{font-style:italic;font-size:.82em;color:var(--muted,#888);margin:0 3px}
+.ml-time{font-size:.8em;font-weight:600;color:var(--accent,#3b82f6);flex-shrink:0;min-width:38px}
+.ml-match{display:flex;align-items:center;gap:3px;flex:1;flex-wrap:wrap}
+.mc-team{display:inline-flex;align-items:center;gap:3px}
+.mc-round{font-size:.82em;color:var(--muted,#888)}
+.hl-section{margin-bottom:22px}
+.hl-title{font-size:1.1em;font-weight:800;color:var(--heading,var(--text));margin:0 0 12px}
+.hl-date-group{margin-bottom:10px}
+.hl-date-header{font-size:.72em;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted,#888);padding:6px 0;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:8px}
+.hl-event{padding:7px 0}
+.hl-event-meta{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.hl-time{font-size:.8em;font-weight:600;color:var(--accent,#3b82f6)}
+.hl-league-name{font-size:.8em;font-weight:700;color:var(--muted,#888)}
+.hl-teams{display:flex;align-items:center;flex-wrap:wrap;gap:4px;font-size:var(--sb-hl-size)!important;font-weight:600;color:var(--heading,#111827)}
+.hl-team{display:inline-flex;align-items:center;gap:4px;font-weight:600}
+.hl-team-logo{height:24px;width:auto;flex-shrink:0}
+.hl-vs{font-style:italic;font-size:.82em;color:var(--muted,#888);margin:0 4px}
+.hl-round{font-size:.72em;color:var(--muted,#888);margin-top:2px;font-style:italic}
+.hl-league-spotlight{padding:6px 0;font-weight:700;font-size:var(--sb-hl-size)!important;color:var(--heading,var(--text));display:flex;align-items:center;gap:8px}
+.vt-bar{display:flex;justify-content:flex-end;gap:4px;margin-bottom:10px}
+.vt-btn{padding:4px 12px;border-radius:999px;border:1px solid var(--border,#e5e7eb);background:var(--tab-bg,#f3f4f6);color:var(--tab-text,#6b7280);cursor:pointer;font-size:12px;font-family:inherit;font-weight:500;white-space:nowrap;transition:all .15s}
+.vt-btn:hover{color:var(--text);border-color:var(--accent,#3b82f6)}
+.vt-active{background:var(--accent,#3b82f6)!important;color:#fff!important;border-color:var(--accent,#3b82f6)!important}
 `;
 
   const tabJS = opts.showSportTabs ? `\n<script>\n(function(){\n  document.addEventListener('click',function(e){\n    var t=e.target&&e.target.closest&&e.target.closest('#sport-tabs .tab');if(!t)return;\n    var c=t.getAttribute('data-cat');\n    document.querySelectorAll('#sport-tabs .tab').forEach(function(x){x.classList.remove('active');x.setAttribute('aria-selected','false');});\n    t.classList.add('active');t.setAttribute('aria-selected','true');\n    document.querySelectorAll('.sport-section[data-cat]').forEach(function(s){s.style.display=(c==='all'||s.getAttribute('data-cat')===c)?'':'none';});\n  });\n})();\n</script>` : '';
@@ -116,6 +147,7 @@ ${isCard ? `.league-block{background:var(--card-bg);border:1px solid var(--borde
   const cardJS = isCard ? `<script>\nwindow._sbWrapCards=function(c){\n    var f=document.createDocumentFragment(),b=null;\n    while(c.firstChild){\n      var n=c.firstChild;c.removeChild(n);\n      var isImg=n.nodeType===1&&n.tagName==='IMG'&&n.getAttribute&&n.getAttribute('data-preview-league');\n      if(isImg){if(b)f.appendChild(b);b=document.createElement('div');b.className='league-block';b.appendChild(n);}\n      else if(b){b.appendChild(n);}\n      else{f.appendChild(n);}\n    }\n    if(b)f.appendChild(b);c.appendChild(f);\n  };\n(function(){\n  var s=document.querySelectorAll('.sport-section,.sport-always');\n  if(s.length>0){s.forEach(window._sbWrapCards);}else{var sc=document.querySelector('.schedule-content');if(sc)window._sbWrapCards(sc);}\n  try{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}catch(e){}\n})();\n</script>` : '';
 
   const resizeJS = `\n<script>\n(function(){\n  function send(){ try{ window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*'); }catch(e){} }\n  if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded',send); } else { send(); }\n  if(typeof ResizeObserver!=='undefined'){ new ResizeObserver(send).observe(document.body); }\n})();\n</script>`;
+  const styleJS = `\n<script>\n(function(){\n  window.addEventListener('message',function(e){\n    if(!e.data||!e.data.sbStyle)return;\n    var r=document.documentElement;var s=e.data.sbStyle;\n    if(s.matchFontSize)r.style.setProperty('--sb-match-size',s.matchFontSize);\n    if(s.dateFontSize)r.style.setProperty('--sb-date-size',s.dateFontSize);\n    if(s.headerSize)r.style.setProperty('--sb-h3-size',s.headerSize);\n    if(s.logoHeight)r.style.setProperty('--sb-logo-height',s.logoHeight);\n    if(s.hlFontSize)r.style.setProperty('--sb-hl-size',s.hlFontSize);\n  });\n})();\n</script>`;
 
   const safeEmbedId  = (opts.embedId  || '').replace(/[^\w#\- ]/g, '').substring(0, 64);
   const safeWidgetId = (opts.widgetId || '').replace(/[^\w-]/g,    '').substring(0, 64);
@@ -125,7 +157,10 @@ ${isCard ? `.league-block{background:var(--card-bg);border:1px solid var(--borde
   const _ic = isCard ? 'true' : 'false';
   const pollJS = `\n<script>\n(function(){\n  var INTERVAL=15000;\n  var root=document.getElementById('schedule-root');\n  if(!root)return;\n  var serial=root.getAttribute('data-serial')||'';\n  var base=location.href.split('#')[0];\n  var sep=base.indexOf('?')>=0?'&':'?';\n  var pollUrl=base+sep+'_poll=1';\n  var isCard=${_ic};\n  function applyContent(d){\n    if(d.empty){\n      var sc=root.querySelector('.schedule-content');\n      if(sc)sc.innerHTML='<div style="padding:16px;color:#9ca3af;font-size:13px">No schedule published yet.</div>';\n      var ot=document.getElementById('sport-tabs');if(ot)ot.remove();\n      root.setAttribute('data-serial','none');serial='none';\n      try{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}catch(e){}\n      return;\n    }\n    var oldT=document.getElementById('sport-tabs');\n    if(d.tabsHtml){\n      var tmp=document.createElement('div');tmp.innerHTML=d.tabsHtml;\n      var newT=tmp.firstElementChild;\n      if(oldT){oldT.replaceWith(newT);}else{root.insertBefore(newT,root.firstChild);}\n    }else if(oldT){oldT.remove();}\n    var sc=root.querySelector('.schedule-content');\n    if(sc){\n      sc.innerHTML=d.html;\n      if(isCard&&window._sbWrapCards){\n        var s=sc.querySelectorAll('.sport-section,.sport-always');\n        if(s.length>0){s.forEach(window._sbWrapCards);}else{window._sbWrapCards(sc);}\n      }\n    }\n    root.setAttribute('data-serial',d.serial);serial=d.serial;\n    try{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}catch(e){}\n  }\n  function poll(){\n    fetch(pollUrl,{cache:'no-store'})\n      .then(function(r){return r.ok?r.json():null;})\n      .then(function(d){if(d&&d.serial!==serial)applyContent(d);})\n      .catch(function(){});\n  }\n  setInterval(poll,INTERVAL);\n  window.addEventListener('message',function(ev){\n    if(ev.data&&ev.data.sbRefresh)poll();\n  });\n})();\n</script>`;
 
-  return `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width,initial-scale=1.0"/>\n<title>Schedule</title>\n<style>${css}</style>\n</head>\n<body>\n<div id="schedule-root" data-serial="${serial}">\n${tabsHTML}\n<div class="schedule-content">${scheduleContent}</div>\n</div>\n${tabJS}\n${cardJS}\n${resizeJS}\n${beaconJS}\n${pollJS}\n</body>\n</html>`;
+  const toggleBar = !opts.hideViewToggle && !opts.noInlineToggle ? `<div class="vt-bar" style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:10px"><button class="vt-btn vt-active" data-layout="list" style="padding:4px 14px;border-radius:999px;border:1px solid var(--accent,#3b82f6);background:var(--accent,#3b82f6);color:#fff;cursor:pointer;font-size:12px;font-family:inherit;font-weight:600">List</button><button class="vt-btn" data-layout="calendar" style="padding:4px 14px;border-radius:999px;border:1px solid var(--border,#e5e7eb);background:var(--tab-bg,#f3f4f6);color:var(--tab-text,#6b7280);cursor:pointer;font-size:12px;font-family:inherit;font-weight:500">Calendar</button></div>` : '';
+  const toggleJS = !opts.hideViewToggle ? `\n<script>\n(function(){document.querySelectorAll('.vt-btn').forEach(function(b){b.addEventListener('click',function(){var u=new URL(location.href);u.searchParams.set('layout',b.getAttribute('data-layout'));location.replace(u.toString());});});})();\n</script>` : '';
+
+  return `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width,initial-scale=1.0"/>\n<title>Schedule</title>\n<style>${css}</style>\n</head>\n<body>\n${toggleBar}\n<div id="schedule-root" data-serial="${serial}">\n${tabsHTML}\n<div class="schedule-content">${scheduleContent}</div>\n</div>\n${tabJS}\n${cardJS}\n${toggleJS}\n${resizeJS}\n${styleJS}\n${beaconJS}\n${pollJS}\n</body>\n</html>`;
 }
 
 function buildCalendarPage(
@@ -138,6 +173,8 @@ function buildCalendarPage(
   const accent = opts.accentColor || '#3b82f6';
 
   const baseFontSize = ({ sm: '13px', md: '15px', lg: '17px' } as Record<string, string>)[opts.fontSize] ?? '15px';
+  const rpc = (v: string, sm: string, md: string, lg: string) => { if (v==='sm') return sm; if (v==='lg') return lg; const n=parseInt(v??''); return (!isNaN(n)&&n>=1&&n<=500)?`${n}px`:md; };
+  const hlFontSizeCal = rpc(opts.highlightFontSize||'18','14px','18px','22px');
   const fontStack = ({
     system: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     serif:  "Georgia, 'Times New Roman', Times, serif",
@@ -151,12 +188,18 @@ function buildCalendarPage(
   const darkVars  = `--bg:${bgOverride || '#0f1117'};--text:${textOverride || '#e8eaf0'};--muted:#8b92a8;--heading:${textOverride || '#f0f2f8'};--border:#2d3142;--tab-bg:#1e2130;--surface:#1a1d27;--accent:${accent};--card-bg:#181c28;`;
 
   const baseCss = `
-:root{${isAuto ? lightVars : isDark ? darkVars : lightVars}}
+:root{${isAuto ? lightVars : isDark ? darkVars : lightVars};--sb-hl-size:${hlFontSizeCal}}
 ${isAuto ? `@media(prefers-color-scheme:dark){:root{${darkVars}}}` : ''}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{background:var(--bg);color:var(--text);font-family:${fontStack};font-size:${baseFontSize};line-height:1.5;-webkit-font-smoothing:antialiased;width:100%}
 body{padding:${paddingVal}px}
 #schedule-root{width:100%}
+.vt-bar{display:flex;justify-content:flex-end;gap:4px;margin-bottom:10px}
+.vt-btn{padding:4px 12px;border-radius:999px;border:1px solid var(--border,#e5e7eb);background:var(--tab-bg,#f3f4f6);color:var(--tab-text,#6b7280);cursor:pointer;font-size:12px;font-family:inherit;font-weight:500;white-space:nowrap;transition:all .15s}
+.vt-btn:hover{color:var(--text);border-color:var(--accent,#3b82f6)}
+.vt-active{background:var(--accent,#3b82f6)!important;color:#fff!important;border-color:var(--accent,#3b82f6)!important}
+.hl-teams{font-size:var(--sb-hl-size)!important}
+.hl-league-spotlight{font-size:var(--sb-hl-size)!important;display:flex;align-items:center;gap:8px}
 `;
 
   const calendarCss = getCalendarCSS(accent);
@@ -170,9 +213,14 @@ body{padding:${paddingVal}px}
 
   const pollJS = `\n<script>\n(function(){\n  var INTERVAL=15000;\n  var root=document.getElementById('schedule-root');\n  if(!root)return;\n  var serial=root.getAttribute('data-serial')||'';\n  var base=location.href.split('#')[0];\n  var sep=base.indexOf('?')>=0?'&':'?';\n  var pollUrl=base+sep+'_poll=1';\n  function applyContent(d){\n    if(d.empty){\n      root.innerHTML='<div style="padding:16px;color:#9ca3af;font-size:13px">No schedule published yet.</div>';\n      root.setAttribute('data-serial','none');serial='none';\n      try{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}catch(e){}\n      return;\n    }\n    root.innerHTML=d.html;\n    root.setAttribute('data-serial',d.serial);serial=d.serial;\n    try{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}catch(e){}\n  }\n  function poll(){\n    fetch(pollUrl,{cache:'no-store'})\n      .then(function(r){return r.ok?r.json():null;})\n      .then(function(d){if(d&&d.serial!==serial)applyContent(d);})\n      .catch(function(){});\n  }\n  setInterval(poll,INTERVAL);\n  window.addEventListener('message',function(ev){\n    if(ev.data&&ev.data.sbRefresh)poll();\n  });\n})();\n</script>`;
 
+  const styleJSCal = `\n<script>\n(function(){\n  window.addEventListener('message',function(e){\n    if(!e.data||!e.data.sbStyle)return;\n    var r=document.documentElement;var s=e.data.sbStyle;\n    if(s.hlFontSize)r.style.setProperty('--sb-hl-size',s.hlFontSize);\n  });\n})();\n</script>`;
+
   const calNavJS = `\n<script>${getCalendarNavJS()}</script>`;
 
-  return `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width,initial-scale=1.0"/>\n<title>Schedule</title>\n<style>${baseCss}${calendarCss}</style>\n</head>\n<body>\n<div id="schedule-root" data-serial="${serial}">${calendarHTML}</div>\n${calNavJS}\n${resizeJS}\n${beaconJS}\n${pollJS}\n</body>\n</html>`;
+  const calToggleBar = !opts.hideViewToggle && !opts.noInlineToggle ? `<div class="vt-bar" style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:10px"><button class="vt-btn" data-layout="list" style="padding:4px 14px;border-radius:999px;border:1px solid var(--border,#e5e7eb);background:var(--tab-bg,#f3f4f6);color:var(--tab-text,#6b7280);cursor:pointer;font-size:12px;font-family:inherit;font-weight:500">List</button><button class="vt-btn vt-active" data-layout="calendar" style="padding:4px 14px;border-radius:999px;border:1px solid var(--accent,#3b82f6);background:var(--accent,#3b82f6);color:#fff;cursor:pointer;font-size:12px;font-family:inherit;font-weight:600">Calendar</button></div>` : '';
+  const calToggleJS = !opts.hideViewToggle ? `\n<script>\n(function(){document.querySelectorAll('.vt-btn').forEach(function(b){b.addEventListener('click',function(){var u=new URL(location.href);u.searchParams.set('layout',b.getAttribute('data-layout'));location.replace(u.toString());});});})();\n</script>` : '';
+
+  return `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width,initial-scale=1.0"/>\n<title>Schedule</title>\n<style>${baseCss}${calendarCss}</style>\n</head>\n<body>\n${calToggleBar}\n<div id="schedule-root" data-serial="${serial}">${calendarHTML}</div>\n${calNavJS}\n${calToggleJS}\n${resizeJS}\n${styleJSCal}\n${beaconJS}\n${pollJS}\n</body>\n</html>`;
 }
 
 export async function GET(
@@ -279,6 +327,8 @@ export async function GET(
     });
   }
 
+  // Accept legacy sm/md/lg tokens OR direct numeric pixel values
+  const sizeVal = (v: string | undefined) => { if (!v) return 'md'; if (v==='sm'||v==='md'||v==='lg') return v; const n=parseInt(v); return (!isNaN(n)&&n>=1&&n<=500)?v:'md'; };
   const opts: EmbedOpts = {
     showHeader:    sp.showHeader !== '0',
     showDate:      sp.showDate   !== '0',
@@ -286,10 +336,10 @@ export async function GET(
     theme:         ['dark', 'light', 'auto'].includes(sp.theme) ? sp.theme : 'light',
     accentColor:   sp.accent ? `#${sp.accent.replace(/^#/, '')}` : '#4b5563',
     fontSize:      ['sm', 'md', 'lg'].includes(sp.fontSize)      ? sp.fontSize      : 'md',
-    logoSize:      ['sm', 'md', 'lg'].includes(sp.logoSize)      ? sp.logoSize      : 'md',
-    headerSize:    ['sm', 'md', 'lg'].includes(sp.headerSize)    ? sp.headerSize    : 'md',
-    matchFontSize: ['sm', 'md', 'lg'].includes(sp.matchFontSize) ? sp.matchFontSize : 'md',
-    dateFontSize:  ['sm', 'md', 'lg'].includes(sp.dateFontSize)  ? sp.dateFontSize  : 'md',
+    logoSize:      sizeVal(sp.logoSize),
+    headerSize:    sizeVal(sp.headerSize),
+    matchFontSize: sizeVal(sp.matchFontSize),
+    dateFontSize:  sizeVal(sp.dateFontSize),
     lineHeight:    (() => { const n = parseFloat(sp.lineHeight); return (!isNaN(n) && n >= 0.8 && n <= 4) ? sp.lineHeight : '1.6'; })(),
     showSportTabs: sp.tabs !== '0',
     fontFamily:    ['system', 'serif', 'mono'].includes(sp.font) ? sp.font : 'system',
@@ -300,7 +350,10 @@ export async function GET(
     tabStyle:      ['pill', 'underline', 'square'].includes(sp.tabStyle) ? sp.tabStyle  : 'pill',
     listStyle:     ['default', 'card'].includes(sp.listStyle)            ? sp.listStyle : 'default',
     catLabels:     sp.catLabels ? (() => { try { return JSON.parse(Buffer.from(sp.catLabels, 'base64').toString()) as Record<string,string>; } catch { return {}; } })() : {},
-    embedId:       embedId,  // already extracted + sanitised above
+    hideViewToggle: sp.hideViewToggle === '1',
+    noInlineToggle: sp.noInlineToggle === '1',
+    highlightFontSize: (() => { const n = parseInt(sp.highlightFontSize ?? ''); return (!isNaN(n) && n >= 1 && n <= 500) ? sp.highlightFontSize : '18'; })(),
+  embedId:       embedId,  // already extracted + sanitised above
     widgetId:      (sp._wid ?? '').replace(/[^\w-]/g, '').substring(0, 64) || '',
     appUrl:        '',  // will set below
     apiKey:        apiKey,

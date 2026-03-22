@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     if (username && appPassword) {
       const credentials = Buffer.from(`${username}:${appPassword}`).toString('base64');
       try {
-        await fetch(`${siteUrl}/wp-json/score/v1/schedule`, {
+        await fetch(`${siteUrl}/wp-json/scheduler/v1/schedule`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

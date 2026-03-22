@@ -18,11 +18,12 @@ function schedule_shortcode_render($atts) {
         'height'          => 'auto',
         'theme'           => 'light',
         'font'            => 'system',
-        'font_size'       => 'md',
         'logo_size'       => 'md',
-        'header_size'     => 'md',
-        'match_font_size' => 'md',
-        'date_font_size'  => 'md',
+        'header_size'     => '16',
+        'match_font_size' => '14',
+        'date_font_size'  => '11',
+        'highlight_font_size' => '14',
+        'show_view_toggle'    => '1',
         'line_height'     => '1.6',
         'compact'         => '0',
         'tabs'            => '1',
@@ -44,11 +45,12 @@ function schedule_shortcode_render($atts) {
         'showHeader'    => $atts['show_header'],
         'theme'         => sanitize_text_field($atts['theme']),
         'font'          => sanitize_text_field($atts['font']),
-        'fontSize'      => sanitize_text_field($atts['font_size']),
         'logoSize'      => sanitize_text_field($atts['logo_size']),
         'headerSize'    => sanitize_text_field($atts['header_size']),
         'matchFontSize' => sanitize_text_field($atts['match_font_size']),
         'dateFontSize'  => sanitize_text_field($atts['date_font_size']),
+        'highlightFontSize' => sanitize_text_field($atts['highlight_font_size']),
+        'hideViewToggle'    => $atts['show_view_toggle'] !== '1' ? '1' : '0',
         'lineHeight'    => sanitize_text_field($atts['line_height']),
         'compact'       => $atts['compact'],
         'tabs'          => $atts['tabs'],
@@ -58,6 +60,7 @@ function schedule_shortcode_render($atts) {
         'tabStyle'      => sanitize_text_field($atts['tab_style']),
         'listStyle'     => sanitize_text_field($atts['list_style']),
         'layout'        => sanitize_text_field($atts['layout']),
+        'noInlineToggle' => $atts['show_view_toggle'] === '1' ? '1' : '0',
     ];
 
     if (!empty($atts['embed_id'])) {
@@ -90,8 +93,39 @@ function schedule_shortcode_render($atts) {
     $auto       = ($atts['height'] === 'auto');
     $height_css = $auto ? 'auto' : esc_attr($atts['height']);
     $overflow   = $auto ? 'visible' : 'auto';
+    $accent_hex = ltrim(sanitize_hex_color('#' . ltrim($atts['accent'], '#')), '#');
+    $is_cal     = ($atts['layout'] === 'calendar');
     ob_start();
+    if ($atts['show_view_toggle'] === '1') :
+        $btn_base = 'cursor:pointer;padding:5px 14px;border-radius:999px;border:1px solid;font-size:13px;font-family:inherit;font-weight:500;transition:all .15s;background:transparent';
+        $btn_active   = 'background:#' . esc_attr($accent_hex) . '!important;color:#fff!important;border-color:#' . esc_attr($accent_hex) . '!important;font-weight:600!important';
+        $btn_inactive = 'background:rgba(128,128,128,0.08);color:#555;border-color:#d1d5db';
     ?>
+    <div id="<?php echo esc_attr($uid); ?>-toggle" style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:8px">
+        <button id="<?php echo esc_attr($uid); ?>-btn-list" onclick="sbToggle_<?php echo esc_js($uid); ?>(this,'list')" style="<?php echo $btn_base; ?>;<?php echo $is_cal ? $btn_inactive : $btn_active; ?>">List</button>
+        <button id="<?php echo esc_attr($uid); ?>-btn-cal" onclick="sbToggle_<?php echo esc_js($uid); ?>(this,'calendar')" style="<?php echo $btn_base; ?>;<?php echo $is_cal ? $btn_active : $btn_inactive; ?>">Calendar</button>
+    </div>
+    <script>
+    function sbToggle_<?php echo esc_js($uid); ?>(btn, layout) {
+        var frame = document.getElementById('<?php echo esc_js($uid); ?>-frame');
+        if (!frame) return;
+        try {
+            var u = new URL(frame.src);
+            u.searchParams.set('layout', layout);
+            if (layout === 'list') { u.searchParams.set('listStyle', '<?php echo esc_js($atts['list_style'] !== 'calendar' ? $atts['list_style'] : 'default'); ?>'); }
+            u.searchParams.set('noInlineToggle', '1');
+            frame.src = u.toString();
+        } catch(e) {}
+        var ac = '#<?php echo esc_js($accent_hex); ?>';
+        btn.parentNode.querySelectorAll('button').forEach(function(b) {
+            var a = b === btn;
+            b.style.cssText = '<?php echo esc_js($btn_base); ?>;' + (a
+                ? 'background:' + ac + '!important;color:#fff!important;border-color:' + ac + '!important;font-weight:600!important'
+                : 'background:rgba(128,128,128,0.08);color:#555;border-color:#d1d5db');
+        });
+    }
+    </script>
+    <?php endif; ?>
     <div class="schedule-wrapper" id="<?php echo esc_attr($uid); ?>" style="position:relative;width:100%!important;max-width:100%!important;height:<?php echo $height_css; ?>;overflow:<?php echo $overflow; ?>;border:none!important;background:transparent!important;">
         <!-- Narrow grab-handle at top: lets Elementor select the widget without blocking iframe content -->
             <div class="schedule-editor-overlay" style="display:none;position:absolute;top:0;left:0;right:0;height:20px;z-index:2;cursor:grab;" title="Drag to reposition"><span style="display:flex;align-items:center;justify-content:center;height:100%;font-size:13px;color:rgba(150,150,150,0.55);pointer-events:none;user-select:none;">&#8942;</span></div>

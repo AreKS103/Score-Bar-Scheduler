@@ -24,6 +24,8 @@ export interface MatchEvent {
   isMainCard?: boolean;    // true = main event, false = undercard
   cardName?: string;       // e.g. "UFC 326" — groups fights under one card
   fightOrder?: number;     // 0 = main event, 1+ = undercard order
+  homeCountry?: string;    // 2-letter ISO country code for home fighter (e.g. "GB", "US")
+  awayCountry?: string;    // 2-letter ISO country code for away fighter
 }
 
 // ─── Sports Configuration ────────────────────────────────────────────────────

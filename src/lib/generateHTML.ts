@@ -76,56 +76,105 @@ function groupByLeague(events: MatchEvent[]): Map<string, Map<string, MatchEvent
  * Generate the highlights section HTML.
  * Handles both individual starred matches and league-level spotlights.
  */
+
 function generateHighlights(
   featured: MatchEvent[],
   featuredLeagues: Map<string, string>,
 ): string {
   if (!featured.length && !featuredLeagues.size) return '';
 
+  const s = {
+    section: 'margin-bottom:20px',
+    title: 'font-size:1.1em;font-weight:800;margin:0 0 12px',
+    dateHeader: 'font-size:0.72em;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;opacity:0.65;padding:6px 0;border-bottom:1px solid rgba(128,128,128,0.25);margin-bottom:8px',
+    event: 'padding:7px 0',
+    meta: 'display:flex;align-items:center;gap:6px;margin-bottom:4px',
+    time: 'font-size:0.8em;font-weight:700',
+    league: 'font-size:0.8em;font-weight:600;opacity:0.65',
+    teams: 'display:flex;align-items:center;flex-wrap:wrap;gap:4px;font-size:1em;font-weight:600',
+    teamLogo: 'height:20px;width:auto;vertical-align:middle;flex-shrink:0',
+    vs: 'font-style:italic;font-size:0.82em;opacity:0.4;margin:0 3px',
+    round: 'font-size:0.72em;opacity:0.5;margin-top:2px;font-style:italic',
+    spotlight: 'padding:6px 0;font-weight:700;font-size:1em;display:flex;align-items:center;gap:8px',
+  };
+
   const parts: string[] = [
-    '<h2>This Week\'s Highlights</h2>',
-    '',
+    `<div style="${s.section}">`,
+    `<h2 style="${s.title}">This Week's Highlights</h2>`,
   ];
 
-  // All highlights in a single <ul> — match stars and league stars share the same bullet style
-  const listItems: string[] = [];
-
-  // Individual starred match highlights — no date or time
-  featured
+  // Group starred matches by date
+  const byDate = new Map<string, MatchEvent[]>();
+  [...featured]
     .sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time))
     .forEach((e) => {
-      const name = e.away
-        ? `${escapeHTML(e.home)} vs ${escapeHTML(e.away)}`
-        : escapeHTML(e.home);
-      const roundStr = e.round ? ` \u2013 ${escapeHTML(e.round)}` : '';
-      listItems.push(`  <li><strong>${escapeHTML(e.leagueLabel)}</strong> \u2013 ${name}${roundStr}</li>`);
+      if (!byDate.has(e.date)) byDate.set(e.date, []);
+      byDate.get(e.date)!.push(e);
     });
 
-  // League-level spotlights — same bullet, league title only
+  for (const [date, events] of byDate) {
+    const displayDate = formatDisplayDate(date);
+    parts.push(`<div>`);
+    parts.push(`<div style="${s.dateHeader}">${escapeHTML(displayDate)}</div>`);
+    for (const e of events) {
+      const isCombat = ['boxing', 'ufc', 'bellator'].includes(e.sportId);
+      const vs = 'font-style:italic;font-size:0.82em;opacity:0.4;margin:0 3px';
+      const homeFlag = isCombat && e.homeCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(e.homeCountry)}</span>` : '';
+      const awayFlag = isCombat && e.awayCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(e.awayCountry)}</span>` : '';
+      const homeImg = e.homeLogo ? `<img src="${escapeHTML(e.homeLogo)}" alt="" loading="lazy" style="${s.teamLogo}" />` : '';
+      const awayImg = e.awayLogo && e.away ? `<img src="${escapeHTML(e.awayLogo)}" alt="" loading="lazy" style="${s.teamLogo}" />` : '';
+      const leagueFallback = !e.away && !homeImg ? (() => {
+        const cfg = SPORTS_CONFIG.find(sc => sc.id === e.sportId);
+        return cfg ? resolvePublishLogoUrl(cfg.logo || e.leagueLogo || '', cfg.publishLogo) : '';
+      })() : '';
+      const leagueFallbackImg = leagueFallback ? `<img src="${escapeHTML(leagueFallback)}" alt="" loading="lazy" style="${s.teamLogo}" />` : '';
+      const teamsHtml = e.away
+        ? `${homeImg}${homeFlag}<span>${escapeHTML(e.home)}</span><span style="${s.vs}">vs</span>${awayImg}${awayFlag}<span>${escapeHTML(e.away)}</span>`
+        : `${leagueFallbackImg}${homeImg}<span>${escapeHTML(e.home)}</span>`;
+      const roundStr = e.round ? `<div style="${s.round}">${escapeHTML(e.round)}</div>` : '';
+      parts.push(`<div style="${s.event}"><div style="${s.meta}">${e.time ? `<span style="${s.time}">${escapeHTML(e.time)}</span>` : ''}<span style="${s.league}">${escapeHTML(e.leagueLabel)}</span></div><div style="${s.teams}">${teamsHtml}</div>${roundStr}</div>`);
+    }
+    parts.push('</div>');
+  }
+
+  // League-level spotlights
   for (const [sportId, customLabel] of featuredLeagues) {
-    const config = SPORTS_CONFIG.find((s) => s.id === sportId);
-    const defaultLabel = config?.label || sportId;
-    const label = customLabel.trim() || defaultLabel;
-    listItems.push(`  <li><strong>${escapeHTML(label)}</strong></li>`);
+    const config = SPORTS_CONFIG.find((sc) => sc.id === sportId);
+    const label = (customLabel || '').trim() || config?.label || sportId;
+    const logoSrc = config ? resolvePublishLogoUrl(config.logo || '', config.publishLogo) : '';
+    const logoImg = logoSrc ? `<img src="${escapeHTML(logoSrc)}" alt="" loading="lazy" style="${s.teamLogo}" />` : '';
+    parts.push(`<div style="${s.spotlight}">${logoImg}${escapeHTML(label)}</div>`);
   }
 
-  if (listItems.length) {
-    parts.push('<ul>');
-    parts.push(...listItems);
-    parts.push('</ul>');
-    parts.push('');
-  }
-
+  parts.push('</div>');
   return parts.join('\n');
 }
 
 /**
  * Generate match line HTML
  */
+function countryFlag(code: string): string {
+  const c = (code || '').trim().toUpperCase().substring(0, 2);
+  if (!/^[A-Z]{2}$/.test(c)) return '';
+  return Array.from(c).map(ch => String.fromCodePoint(0x1F1E6 + ch.charCodeAt(0) - 65)).join('');
+}
+
 function generateMatchLine(event: MatchEvent): string {
+  const logoStyle = 'height:18px;width:auto;vertical-align:middle;margin-right:3px;flex-shrink:0';
+  const isCombat = ['boxing', 'ufc', 'bellator'].includes(event.sportId);
+  const homeFlag = isCombat && event.homeCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(event.homeCountry)}</span>` : '';
+  const awayFlag = isCombat && event.awayCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(event.awayCountry)}</span>` : '';
+  const homeImg = event.homeLogo ? `<img src="${escapeHTML(event.homeLogo)}" alt="" loading="lazy" style="${logoStyle}" />` : '';
+  const awayImg = event.awayLogo && event.away ? `<img src="${escapeHTML(event.awayLogo)}" alt="" loading="lazy" style="${logoStyle}" />` : '';
+  const leagueSrc = !event.away && !homeImg ? (() => {
+    const cfg = SPORTS_CONFIG.find(sc => sc.id === event.sportId);
+    return cfg ? resolvePublishLogoUrl(cfg.logo || event.leagueLogo || '', cfg.publishLogo) : '';
+  })() : '';
+  const leagueImg = leagueSrc ? `<img src="${escapeHTML(leagueSrc)}" alt="" loading="lazy" style="${logoStyle}" />` : '';
+  const vsStyle = 'font-style:italic;font-size:.85em;opacity:0.5';
   const matchName = event.away
-    ? `${escapeHTML(event.home)} vs ${escapeHTML(event.away)}`
-    : escapeHTML(event.home);
+    ? `${homeImg}${homeFlag}${escapeHTML(event.home)} <span style="${vsStyle}">vs</span> ${awayImg}${awayFlag}${escapeHTML(event.away)}`
+    : `${leagueImg}${escapeHTML(event.home)}`;
   const roundStr = event.round ? ` \u2013 ${escapeHTML(event.round)}` : '';
   const tags = formatTags(event.tags);
   return `${event.time} \u2013 ${matchName}${roundStr}${tags}`;
@@ -177,6 +226,7 @@ function getLeagueAbbrev(sportId: string, label: string): string {
     'basketball-nba': 'NBA',
     'basketball-wnba': 'WNBA',
     'basketball-ncaam': 'NCAAM',
+    'basketball-ncaaw': 'NCAAW',
     'basketball-nbl': 'NBL',
     'football-nfl': 'NFL',
     'football-ncaaf': 'NCAAF',

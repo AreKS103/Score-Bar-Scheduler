@@ -70,6 +70,7 @@ const ESPN_SECONDARY_LEAGUES = [
   // Other US sports
   { id: 'basketball-wnba', slug: 'basketball/wnba' },
   { id: 'basketball-ncaam', slug: 'basketball/mens-college-basketball' },
+  { id: 'basketball-ncaaw', slug: 'basketball/womens-college-basketball' },
   { id: 'basketball-nbl', slug: 'basketball/nbl' },
   { id: 'football-ncaaf', slug: 'football/college-football' },
   { id: 'baseball-mlb', slug: 'baseball/mlb' },
@@ -125,6 +126,7 @@ const LEAGUE_METADATA: Record<string, { label: string; category: string; logo: s
   'basketball-nba': { label: 'NBA', category: 'Basketball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/nba.png' },
   'basketball-wnba': { label: 'WNBA', category: 'Basketball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/wnba.png' },
   'basketball-ncaam': { label: "NCAA Men's Basketball", category: 'Basketball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/ncaa.png' },
+  'basketball-ncaaw': { label: "NCAA Women's Basketball", category: 'Basketball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/ncaa.png' },
   'basketball-nbl': { label: 'NBL Australia', category: 'Basketball', logo: 'https://r2.thesportsdb.com/images/media/league/badge/gvz6vb1726086476.png' },
   'football-nfl': { label: 'NFL', category: 'American Football', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png' },
   'football-ncaaf': { label: 'NCAA Football', category: 'American Football', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/ncaa.png' },
@@ -508,7 +510,18 @@ async function fetchESPNLeague(
     const dateParam = espnDateRange(startDate, endDate);
     const url = `${ESPN_BASE}/${league.slug}/scoreboard?dates=${dateParam}&limit=1000`;
 
-    const data = await espnFetchWithRetry<{ events?: ESPNEvent[] }>(url, 3_500);
+    let data = await espnFetchWithRetry<{ events?: ESPNEvent[] }>(url, 3_500);
+
+    // Fallback: if date-range fetch returned null (404 — common for NCAA tournament which uses a
+    // whitelist calendar and returns 404 for ranges spanning non-game days), retry without dates.
+    if (data === null) {
+      const fallbackUrl = `${ESPN_BASE}/${league.slug}/scoreboard?limit=1000`;
+      const fallbackData = await espnFetchWithRetry<{ events?: ESPNEvent[] }>(fallbackUrl, 3_500);
+      if (fallbackData?.events?.length) {
+        data = fallbackData;
+        console.log(`[ESPN] ${league.id}: 404 with date range → fallback without dates returned ${fallbackData.events.length} events`);
+      }
+    }
 
     // Diagnostic logging for combat sports (UFC/Bellator)
     if (isMMA) {

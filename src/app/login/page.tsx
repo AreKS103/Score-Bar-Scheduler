@@ -48,10 +48,10 @@ export default function LoginPage() {
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-[22px] font-extrabold text-foreground tracking-tight m-0">
-            SCORE Admin
+            Scheduler
           </h1>
           <p className="text-[13px] text-muted-foreground mt-1.5">
-            Sign in to manage schedules
+            Sign in to manage your schedules
           </p>
         </div>
 

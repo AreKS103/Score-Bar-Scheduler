@@ -85,6 +85,7 @@ export const SPORTS_CONFIG: SportConfig[] = [
   { id: 'basketball-nba',        label: 'NBA',                                category: 'Basketball',  espnSlug: 'basketball/nba',            logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/nba.png' },
   { id: 'basketball-wnba',       label: 'WNBA',                               category: 'Basketball',  espnSlug: 'basketball/wnba',           logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/wnba.png' },
   { id: 'basketball-ncaam',      label: 'NCAA Men\'s Basketball',             category: 'Basketball',  espnSlug: 'basketball/mens-college-basketball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/ncaa.png' },
+  { id: 'basketball-ncaaw',      label: 'NCAA Women\'s Basketball',           category: 'Basketball',  espnSlug: 'basketball/womens-college-basketball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/ncaa.png' },
   { id: 'basketball-nbl',        label: 'NBL Australia',                       category: 'Basketball',  espnSlug: 'basketball/nbl',            logo: 'https://r2.thesportsdb.com/images/media/league/badge/gvz6vb1726086476.png' },
 
   // ── American Football ──────────────────────────────────────────────────────

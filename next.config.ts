@@ -1,19 +1,24 @@
 import type { NextConfig } from 'next';
 import path from 'path';
 
-// On local Windows/OneDrive dev: put build output in AppData to avoid EBUSY file-lock errors.
-// On Vercel/CI: LOCALAPPDATA is not set and the fallback Windows path would resolve OUTSIDE
-// the project root, which Turbopack refuses (Invalid distDirRoot). So skip custom distDir
-// on CI/Vercel and use the default '.next'.
+// On local Windows/OneDrive dev: put build output in AppData to avoid EBUSY/EPERM
+// file-lock errors caused by OneDrive syncing .next files while Next.js writes them.
+// On Vercel/CI: LOCALAPPDATA is not set, so fall back to the default '.next'.
+// NOTE: Next.js resolves distDir relative to the project root, so we must provide
+// a relative path — but it CAN safely start with '..' to escape the project folder.
+// IMPORTANT: Only apply custom distDir during `next dev` (phase-development-server).
+// Production builds must use default '.next' — compiled files can't resolve next/*
+// modules when the output directory is outside the project tree on Windows.
 function resolveDistDir(): string | undefined {
   if (process.env.VERCEL || process.env.CI || !process.env.LOCALAPPDATA) {
     return undefined; // use default '.next'
   }
-  const distAbsolute = path.join(process.env.LOCALAPPDATA, 'scorebarschedule-next');
-  const rel = path.relative(process.cwd(), distAbsolute);
-  // Safety check: never navigate outside the project (e.g. if someone runs locally on Linux)
-  if (rel.startsWith('..')) return undefined;
-  return rel;
+  // Only use AppData distDir during dev server, not builds
+  if (process.env.NEXT_PHASE !== 'phase-development-server') {
+    return undefined;
+  }
+  const target = path.join(process.env.LOCALAPPDATA, 'scorebarschedule-next');
+  return path.relative(process.cwd(), target);
 }
 
 const distDir = resolveDistDir();

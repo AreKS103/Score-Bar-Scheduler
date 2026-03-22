@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
     // Use rate-limited fetch
     const data = await rateLimitedFetch('sportsdb', async () => {
       const res = await fetch(upstream, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ScoreAdmin/1.0)' },
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Scheduler/1.0)' },
         cache: 'no-store',
       });
 

@@ -4,7 +4,7 @@ const phpMain = `<?php
 /**
  * Plugin Name: Scheduler
  * Plugin URI: https://score-bar-scheduler.vercel.app/
- * Description: A white-label sports schedule widget for your website.
+ * Description: A sports schedule widget for your website.
  * Version: 1.0.5
  * Author: Scorebar
  */

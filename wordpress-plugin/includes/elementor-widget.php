@@ -33,6 +33,7 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
         $this->add_control('show_date',       ['label' => 'Date Rows',            'type' => \Elementor\Controls_Manager::SWITCHER, 'label_on' => 'Show', 'label_off' => 'Hide', 'return_value' => '1', 'default' => '1']);
         $this->add_control('show_time',       ['label' => 'Match Time',           'type' => \Elementor\Controls_Manager::SWITCHER, 'label_on' => 'Show', 'label_off' => 'Hide', 'return_value' => '1', 'default' => '1']);
         $this->add_control('auto_height', ['label' => 'Auto Height (fit content)', 'type' => \Elementor\Controls_Manager::SWITCHER, 'label_on' => 'On', 'label_off' => 'Off', 'return_value' => '1', 'default' => '1', 'description' => 'Expands to show all matches with no scrollbar']);
+        $this->add_control('show_view_toggle', ['label' => 'View Toggle Button', 'type' => \Elementor\Controls_Manager::SWITCHER, 'label_on' => 'Show', 'label_off' => 'Hide', 'return_value' => '1', 'default' => '1', 'description' => 'Show/hide the List ↔ Calendar toggle button.']);
         $this->add_responsive_control('iframe_height', ['label' => 'Fixed Height (Auto off only)', 'type' => \Elementor\Controls_Manager::SLIDER, 'size_units' => ['px', 'vh'], 'range' => ['px' => ['min' => 200, 'max' => 3000], 'vh' => ['min' => 10, 'max' => 100]], 'default' => ['unit' => 'px', 'size' => 600]]);
         $this->end_controls_section();
 
@@ -43,14 +44,14 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
         $this->add_control('bg_color',    ['label' => 'Background Color',  'type' => \Elementor\Controls_Manager::COLOR,   'default' => '', 'description' => 'Leave empty for theme default']);
         $this->add_control('text_color',  ['label' => 'Text Color',        'type' => \Elementor\Controls_Manager::COLOR,   'default' => '', 'description' => 'Leave empty for theme default']);
         $this->add_control('font',        ['label' => 'Font Style',       'type' => \Elementor\Controls_Manager::SELECT,  'default' => 'system', 'options' => ['system' => 'System', 'serif' => 'Serif', 'mono' => 'Monospace']]);
-        $this->add_control('font_size',   ['label' => 'Text Size',        'type' => \Elementor\Controls_Manager::SELECT,  'default' => 'md',     'options' => ['sm' => 'Small', 'md' => 'Medium', 'lg' => 'Large']]);
-        $this->add_control('match_font_size', ['label' => 'Match Text Size', 'type' => \Elementor\Controls_Manager::SELECT, 'default' => 'md', 'options' => ['sm' => 'Small', 'md' => 'Medium', 'lg' => 'Large']]);
-        $this->add_control('date_font_size',  ['label' => 'Date Label Size', 'type' => \Elementor\Controls_Manager::SELECT, 'default' => 'md', 'options' => ['sm' => 'Small', 'md' => 'Medium', 'lg' => 'Large']]);
-        $this->add_control('logo_size',   ['label' => 'Logo Size',        'type' => \Elementor\Controls_Manager::SELECT,  'default' => 'md',     'options' => ['sm' => 'Small', 'md' => 'Medium', 'lg' => 'Large']]);
-        $this->add_control('header_size', ['label' => 'League Name Size', 'type' => \Elementor\Controls_Manager::SELECT,  'default' => 'md',     'options' => ['sm' => 'Small', 'md' => 'Medium', 'lg' => 'Large']]);
-        $this->add_control('line_height', ['label' => 'Line Spacing', 'type' => \Elementor\Controls_Manager::NUMBER, 'default' => '1.6', 'min' => 0.8, 'max' => 4, 'step' => 0.1, 'description' => 'Line height multiplier (e.g. 1.6 = normal, 1.2 = tight, 2.0 = double)']);
+        $this->add_control('match_font_size', ['label' => 'Match Text Size (px)', 'type' => \Elementor\Controls_Manager::NUMBER, 'default' => 14, 'min' => 6, 'max' => 120, 'step' => 1, 'render_type' => 'template', 'description' => 'Font size for match lines in pixels']);
+        $this->add_control('date_font_size',  ['label' => 'Date Label Size (px)',  'type' => \Elementor\Controls_Manager::NUMBER, 'default' => 11, 'min' => 6, 'max' => 120, 'step' => 1, 'render_type' => 'template']);
+        $this->add_control('header_size', ['label' => 'League Name Size (px)', 'type' => \Elementor\Controls_Manager::NUMBER, 'default' => 16, 'min' => 6, 'max' => 120, 'step' => 1, 'render_type' => 'template']);
+        $this->add_control('highlight_font_size', ['label' => 'Highlight Text Size (px)', 'type' => \Elementor\Controls_Manager::NUMBER, 'default' => 18, 'min' => 6, 'max' => 120, 'step' => 1, 'render_type' => 'template', 'description' => 'Font size for team names in the highlights section']);
+        $this->add_control('logo_size',   ['label' => 'League Logo Size', 'type' => \Elementor\Controls_Manager::SELECT, 'default' => 'md', 'options' => ['sm' => 'Small', 'md' => 'Medium', 'lg' => 'Large']]);
+        $this->add_control('line_height', ['label' => 'Line Spacing', 'type' => \Elementor\Controls_Manager::NUMBER, 'default' => '1.6', 'min' => 0.8, 'max' => 4, 'step' => 0.1, 'render_type' => 'template', 'description' => 'Line height multiplier (e.g. 1.6 = normal, 1.2 = tight, 2.0 = double)']);
         $this->add_control('hide_logos',  ['label' => 'Hide Logos',       'type' => \Elementor\Controls_Manager::SWITCHER,'label_on' => 'Yes', 'label_off' => 'No', 'return_value' => '1', 'default' => '']);
-        $this->add_control('padding',     ['label' => 'Content Padding (px)', 'type' => \Elementor\Controls_Manager::NUMBER, 'default' => 12, 'min' => 0, 'max' => 80, 'step' => 1, 'description' => 'Inner padding in pixels']);
+        $this->add_control('padding',     ['label' => 'Content Padding (px)', 'type' => \Elementor\Controls_Manager::NUMBER, 'default' => 12, 'min' => 0, 'max' => 80, 'step' => 1, 'render_type' => 'template', 'description' => 'Inner padding in pixels']);
         $this->add_control('tab_style',   ['label' => 'Tab Style',        'type' => \Elementor\Controls_Manager::SELECT,  'default' => 'pill', 'options' => ['pill' => 'Pill', 'underline' => 'Underline', 'square' => 'Square']]);
         $this->end_controls_section();
     }
@@ -82,15 +83,17 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
             'theme'         => sanitize_text_field($settings['theme']           ?? 'light'),
             'accent'        => sanitize_text_field($accent_hex),
             'font'          => sanitize_text_field($settings['font']            ?? 'system'),
-            'fontSize'      => sanitize_text_field($settings['font_size']       ?? 'md'),
-            'matchFontSize' => sanitize_text_field($settings['match_font_size'] ?? 'md'),
-            'dateFontSize'  => sanitize_text_field($settings['date_font_size']  ?? 'md'),
+            'matchFontSize' => sanitize_text_field((string)($settings['match_font_size'] ?? '14')),
+            'dateFontSize'  => sanitize_text_field((string)($settings['date_font_size']  ?? '11')),
             'logoSize'      => sanitize_text_field($settings['logo_size']       ?? 'md'),
-            'headerSize'    => sanitize_text_field($settings['header_size']     ?? 'md'),
+            'headerSize'    => sanitize_text_field((string)($settings['header_size']     ?? '16')),
+            'highlightFontSize' => sanitize_text_field((string)($settings['highlight_font_size'] ?? '14')),
             'lineHeight'    => sanitize_text_field($settings['line_height'] ?? '1.6'),
             'hideLogos'     => !empty($settings['hide_logos']) ? '1' : '0',
+            'hideViewToggle' => empty($settings['show_view_toggle']) ? '1' : '0',
             'padding'       => sanitize_text_field((string)($settings['padding']   ?? '12')),
             'tabStyle'      => sanitize_text_field($settings['tab_style'] ?? 'pill'),
+            'noInlineToggle' => !empty($settings['show_view_toggle']) ? '1' : '0',
             '_wid'          => sanitize_text_field($widget_id),
         ];
         // Map the unified Schedule View setting to the correct URL params
@@ -123,6 +126,39 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
             background-color: transparent !important;
         }
         </style>
+        <?php if (!empty($settings['show_view_toggle'])) :
+            $is_cal = ($view_mode === 'calendar');
+            $btn_base = 'cursor:pointer;padding:5px 14px;border-radius:999px;border:1px solid;font-size:13px;font-family:inherit;font-weight:500;transition:all .15s;background:transparent';
+            $btn_active = 'background:#' . esc_attr($accent_hex) . '!important;color:#fff!important;border-color:#' . esc_attr($accent_hex) . '!important;font-weight:600!important';
+            $btn_inactive = 'background:rgba(128,128,128,0.08);color:#555;border-color:#d1d5db';
+        ?>
+        <div id="<?php echo esc_attr($uid); ?>-toggle" style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:8px">
+            <button id="<?php echo esc_attr($uid); ?>-btn-list" onclick="sbToggle_<?php echo esc_js($uid); ?>(this,'list')" style="<?php echo $btn_base; ?>;<?php echo $is_cal ? $btn_inactive : $btn_active; ?>">List</button>
+            <button id="<?php echo esc_attr($uid); ?>-btn-cal" onclick="sbToggle_<?php echo esc_js($uid); ?>(this,'calendar')" style="<?php echo $btn_base; ?>;<?php echo $is_cal ? $btn_active : $btn_inactive; ?>">Calendar</button>
+        </div>
+        <script>
+        function sbToggle_<?php echo esc_js($uid); ?>(btn, layout) {
+            var frame = document.getElementById('<?php echo esc_js($uid); ?>-frame');
+            if (!frame) return;
+            try {
+                var u = new URL(frame.src);
+                u.searchParams.set('layout', layout);
+                if (layout === 'list') {
+                    u.searchParams.set('listStyle', '<?php echo esc_js($view_mode === 'calendar' ? 'default' : $view_mode); ?>');
+                }
+                u.searchParams.set('noInlineToggle', '1');
+                frame.src = u.toString();
+            } catch(e) {}
+            var ac = '#<?php echo esc_js($accent_hex); ?>';
+            btn.parentNode.querySelectorAll('button').forEach(function(b) {
+                var a = b === btn;
+                b.style.cssText = '<?php echo esc_js($btn_base); ?>;' + (a
+                    ? 'background:' + ac + '!important;color:#fff!important;border-color:' + ac + '!important;font-weight:600!important'
+                    : 'background:rgba(128,128,128,0.08);color:#555;border-color:#d1d5db');
+            });
+        }
+        </script>
+        <?php endif; ?>
         <div class="schedule-wrapper" id="<?php echo esc_attr($uid); ?>" style="position:relative;width:100%!important;max-width:100%!important;height:<?php echo $height_css; ?>;overflow:<?php echo $overflow; ?>;border:none!important;background:transparent!important;">
             <!-- Narrow grab-handle at top: lets Elementor select the widget without blocking iframe content -->
             <div class="schedule-editor-overlay" style="display:none;position:absolute;top:0;left:0;right:0;height:20px;z-index:2;cursor:grab;" title="Drag to reposition"><span style="display:flex;align-items:center;justify-content:center;height:100%;font-size:13px;color:rgba(150,150,150,0.55);pointer-events:none;user-select:none;">&#8942;</span></div>
