@@ -17,7 +17,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Menu,
-  LogOut,
   Pencil,
   Undo2,
   Redo2,
@@ -39,6 +38,7 @@ import DateRangeCalendar from '@/components/DateRangeCalendar';
 import SearchField from '@/components/SearchField';
 import PreviewPanel from '@/components/PreviewPanel';
 import SettingsModal from '@/components/SettingsModal';
+import UserProfileMenu from '@/components/UserProfileMenu';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -175,6 +175,7 @@ export default function SchedulePage() {
   const [panelWidth, setPanelWidth] = useState(700);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [featuredLeagues, setFeaturedLeagues] = useState<Map<string, string>>(new Map());
   const [highlightMenu, setHighlightMenu] = useState<
     | {
@@ -493,13 +494,15 @@ export default function SchedulePage() {
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
     const supabase = createClient();
-    // Check on mount
-    supabase.auth.getUser().then(({ error }) => {
+    // Check on mount and load user email
+    supabase.auth.getUser().then(({ data, error }) => {
       if (error) router.push('/login');
+      else setUserEmail(data.user?.email ?? null);
     });
     // Listen for sign-out / token-refresh failures
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') router.push('/login');
+      if (session?.user?.email) setUserEmail(session.user.email);
     });
     return () => subscription.unsubscribe();
   }, [router]);
@@ -1408,39 +1411,41 @@ export default function SchedulePage() {
       <aside
         className={cn(
           // Desktop: static sidebar
-          'w-64 shrink-0 border-r border-border bg-sidebar overflow-y-auto overflow-x-hidden',
+          'w-64 shrink-0 border-r border-border bg-sidebar overflow-x-hidden',
+          'flex flex-col',
           // Mobile: slide-out drawer
           'fixed inset-y-0 left-0 z-160 transition-transform duration-200 ease-in-out md:static md:translate-x-0',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
-        <Separator className="mx-3" />
+        {/* Scrollable content area */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+          <Separator className="mx-3" />
 
-        <div className="px-2 pt-2">
-          <SportFilter
-            activeFilter={activeSportFilter}
-            onFilterChange={(f) => { setActiveSportFilter(f); setFlashKey(k => k + 1); setSidebarOpen(false); }}
-            events={events}
-          />
+          <div className="px-2 pt-2">
+            <SportFilter
+              activeFilter={activeSportFilter}
+              onFilterChange={(f) => { setActiveSportFilter(f); setFlashKey(k => k + 1); setSidebarOpen(false); }}
+              events={events}
+            />
+          </div>
+
+          <Separator className="mx-3 mt-3" />
+
+          <div className="p-3">
+            <button
+              onClick={() => { setSettingsOpen(true); setSidebarOpen(false); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-all text-muted-foreground hover:text-foreground hover:bg-accent"
+            >
+              <Settings className="w-4 h-4" />
+              Settings
+            </button>
+          </div>
         </div>
 
-        <Separator className="mx-3 mt-3" />
-
-        <div className="p-3 space-y-0.5">
-          <button
-            onClick={() => { setSettingsOpen(true); setSidebarOpen(false); }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-all text-muted-foreground hover:text-foreground hover:bg-accent"
-          >
-            <Settings className="w-4 h-4" />
-            Settings
-          </button>
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-all text-muted-foreground hover:text-destructive hover:bg-accent"
-          >
-            <LogOut className="w-4 h-4" />
-            Sign Out
-          </button>
+        {/* Pinned user profile at bottom */}
+        <div className="shrink-0 border-t border-border px-2 py-1.5">
+          <UserProfileMenu email={userEmail} onLogout={handleLogout} />
         </div>
       </aside>
 

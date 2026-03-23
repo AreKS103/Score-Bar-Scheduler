@@ -1,12 +1,11 @@
 ﻿'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Wifi, WifiOff, Loader2, ShieldCheck, Server, Navigation, Globe, Moon, Sun, Copy, CheckCircle, RefreshCw, EyeOff } from 'lucide-react';
+import { X, Wifi, WifiOff, Loader2, ShieldCheck, Server, Navigation, Globe, Copy, CheckCircle, RefreshCw, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { useTimezoneStore, formatTimezoneDisplay } from '@/lib/timezoneStore';
-import { useThemeStore } from '@/lib/themeStore';
 import { createClient } from '@/lib/supabase/client';
 
 interface SettingsModalProps {
@@ -16,8 +15,6 @@ interface SettingsModalProps {
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { timezone, useLocal, setUseLocal } = useTimezoneStore();
-  const { theme, toggleTheme } = useThemeStore();
-  const isDark = theme === 'dark';
   const [detectedTz] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'Unknown');
 
   // API Key & User logic
@@ -125,31 +122,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base">
-                {isDark ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-                Appearance
-              </CardTitle>
-              <CardDescription>Switch between light and dark modes.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-medium text-foreground">Dark Mode</div>
-                  <div className="text-xs text-muted-foreground">{isDark ? 'Dark theme is active' : 'Light theme is active'}</div>
-                </div>
-                <button
-                  onClick={toggleTheme}
-                  className={cn('relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-grab active:cursor-grabbing', isDark ? 'bg-primary' : 'bg-secondary border border-border')}
-                  role="switch" aria-checked={isDark} aria-label="Toggle dark mode"
-                >
-                  <span className={cn('inline-block h-4 w-4 rounded-full bg-white shadow transition-transform', isDark ? 'translate-x-6' : 'translate-x-1')} />
-                </button>
-              </div>
-            </CardContent>
-          </Card>
-
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
