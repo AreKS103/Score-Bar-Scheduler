@@ -70,6 +70,16 @@
   }
 
   function apiRegister(widgetId, embedId) {
+    // FIX 2: Cancel any pending delete for this widget before registering.
+    // This handles the re-render cycle: MutationObserver fires DELETE when
+    // Elementor temporarily removes the widget node, then the widget re-appears
+    // and calls apiRegister — the pending delete must be cancelled.
+    if (widgetId && deleteTimers[widgetId]) {
+      clearTimeout(deleteTimers[widgetId]);
+      delete deleteTimers[widgetId];
+      console.log('[SB] cancelled pending delete on re-register:', widgetId);
+    }
+
     var dedupKey = widgetId || embedId || '__unknown__';
     if (registeredWidgets.has(dedupKey)) {
       // Allow re-registration if the embed name changed in Elementor settings
@@ -240,17 +250,28 @@
             if (deleteTimers[widgetId]) clearTimeout(deleteTimers[widgetId]);
             deleteTimers[widgetId] = setTimeout(function () {
               delete deleteTimers[widgetId];
+              // FIX 1: Verify the widget is truly gone — not just temporarily
+              // removed by an Elementor iframe re-render.
               try {
-                var stillExists = doc.querySelector('[data-id="' + widgetId + '"]');
-                if (stillExists) return;
+                var currentIframe = document.getElementById('elementor-preview-iframe');
+                if (currentIframe && currentIframe.contentDocument) {
+                  var stillExists = currentIframe.contentDocument.querySelector(
+                    '[data-id="' + widgetId + '"][data-widget_type^="schedule_widget"]'
+                  );
+                  if (stillExists) {
+                    console.log('[SB] widget still in DOM, cancelling delete:', widgetId);
+                    return; // Widget came back — do NOT delete
+                  }
+                }
               } catch (e) {}
               var embedId = null;
               try {
                 var fr = w.querySelector('iframe[src]');
                 if (fr) embedId = new URL(fr.src).searchParams.get('embedId') || null;
               } catch (e) {}
+              console.log('[SB] confirmed gone after 8s, deleting:', widgetId);
               apiDeleteOnce(widgetId, embedId);
-            }, 2000);
+            }, 8000); // FIX 1: 8s — long enough to survive Elementor iframe re-renders
           });
         });
 
@@ -321,7 +342,12 @@
           if (!currentIframe) return;
           var currentDoc = currentIframe.contentDocument || currentIframe.contentWindow.document;
           if (currentDoc && currentDoc !== lastDoc && currentDoc.body) {
+            console.log('[SB] iframe doc changed, clearing registration cache');
             lastDoc = currentDoc;
+            // FIX 4: Clear the registration Set so widgets re-register with fresh
+            // last_seen timestamps after an iframe reload. Without this, widgets
+            // that already registered won't re-register even after the doc swaps.
+            registeredWidgets.clear();
             attachDocObserver(currentDoc);
           }
         } catch (e) {}
@@ -374,6 +400,14 @@
         widgets.forEach(function (w) {
           var widgetId = w.dataset && w.dataset.id;
           if (!widgetId) return;
+
+          // FIX 3: Cancel any pending delete — widget is clearly still alive
+          // (it just sent a resize message to the editor window)
+          if (deleteTimers[widgetId]) {
+            clearTimeout(deleteTimers[widgetId]);
+            delete deleteTimers[widgetId];
+            console.log('[SB] sbHeight cancelled pending delete:', widgetId);
+          }
 
           // Extract embedId first so we can detect renames even for registered widgets
           var embedId = null;
