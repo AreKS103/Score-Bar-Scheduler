@@ -3,7 +3,7 @@
  * Plugin Name: Scheduler
  * Plugin URI:
  * Description: A sports schedule widget for your website.
- * Version: 1.2.0
+ * Version: 1.2.1
  * Text Domain: scorebar-scheduler
  * Requires at least: 6.0
  * Tested up to: 6.7
@@ -12,7 +12,7 @@
 if (!defined('ABSPATH')) exit;
 
 // Plugin version — must match the "Version:" header above.
-define('SCHEDULE_PLUGIN_VERSION', '1.2.0');
+define('SCHEDULE_PLUGIN_VERSION', '1.2.1');
 
 // ── PHP version gate ────────────────────────────────────────────────────────
 if (version_compare(PHP_VERSION, '7.4', '<')) {
@@ -200,8 +200,9 @@ if (!function_exists('schedule_check_for_plugin_update')) {
     function schedule_check_for_plugin_update($transient) {
         if (empty($transient->checked)) return $transient;
 
-        $plugin_file = plugin_basename(__FILE__);
-        $cached      = get_transient('scorebar_update_check');
+        $plugin_file       = 'scorebar-scheduler/scorebar-scheduler.php';
+        $installed_version = $transient->checked[$plugin_file] ?? '0.0.0';
+        $cached            = get_transient('scorebar_update_check');
 
         if (false === $cached) {
             $result = wp_remote_get(
@@ -214,17 +215,23 @@ if (!function_exists('schedule_check_for_plugin_update')) {
             }
         }
 
+        $remote_version = $cached['version']      ?? '';
+        $download_url   = $cached['download_url'] ?? '';
+
         if (
-            !empty($cached['version']) &&
-            version_compare($cached['version'], SCHEDULE_PLUGIN_VERSION, '>')
+            !empty($remote_version) &&
+            version_compare($remote_version, $installed_version, '>')
         ) {
             $transient->response[$plugin_file] = (object) [
                 'id'           => 'scorebar-scheduler/scorebar-scheduler.php',
                 'slug'         => 'scorebar-scheduler',
-                'plugin'       => $plugin_file,
-                'new_version'  => $cached['version'],
-                'url'          => $cached['url'] ?? '',
-                'package'      => $cached['download_url'] ?? '',
+                'plugin'       => 'scorebar-scheduler/scorebar-scheduler.php',
+                'new_version'  => $remote_version,
+                'url'          => 'https://github.com/AreKS103/Score-Bar-Scheduler',
+                'package'      => $download_url,
+                'icons'        => [],
+                'banners'      => [],
+                'banners_rtl'  => [],
                 'requires'     => '6.0',
                 'tested'       => '6.7',
                 'requires_php' => '7.4',
