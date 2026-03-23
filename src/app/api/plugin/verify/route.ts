@@ -73,23 +73,47 @@ export async function POST(req: NextRequest) {
     // Resolve the key to its DB hash using the same logic as embed-instances
     const hash = resolveKeyHash(apiKey);
 
-    // Verify key exists
-    const { data: keyData, error: findError } = await supabase
+    // ── Step 1: Try to find user by the resolved hash ─────────────────────
+    const { data: keyData } = await supabase
       .from('user_api_keys')
-      .select('user_id, connected_site')
+      .select('user_id')
       .eq('key_hash', hash)
-      .single();
+      .maybeSingle();
 
-    if (findError || !keyData) {
+    let userId: string | null = keyData?.user_id ?? null;
+
+    // ── Step 2: Key not found by hash — try by siteUrl (handles key
+    //    regeneration where WordPress still holds the old token but the
+    //    user has pasted a new key; DB row exists but hash is stale) ───────
+    if (!userId && siteUrl) {
+      const { data: siteData } = await supabase
+        .from('user_api_keys')
+        .select('user_id')
+        .eq('connected_site', siteUrl)
+        .maybeSingle();
+      userId = siteData?.user_id ?? null;
+    }
+
+    if (!userId) {
       return NextResponse.json({ error: 'Invalid API Key' }, { status: 401, headers: corsHeaders });
     }
 
-    // Update the connected_site to the WordPress site URL
-    if (siteUrl) {
-      await supabase
-        .from('user_api_keys')
-        .update({ connected_site: siteUrl, updated_at: new Date().toISOString() })
-        .eq('user_id', keyData.user_id);
+    // ── Step 3: Always write the canonical hash + site back to the DB so
+    //    WordPress and Supabase are always in sync after every verify call ──
+    const updatePayload: Record<string, string> = {
+      key_hash:   hash,
+      updated_at: new Date().toISOString(),
+    };
+    if (siteUrl) updatePayload.connected_site = siteUrl;
+
+    const { error: updateErr } = await supabase
+      .from('user_api_keys')
+      .update(updatePayload)
+      .eq('user_id', userId);
+
+    if (updateErr) {
+      console.error('[verify] Failed to update key_hash:', updateErr);
+      // Non-fatal: still return success so WordPress can save the token.
     }
 
     // Return the key_hash as embedToken — this is safe to expose in iframe URLs
