@@ -60,12 +60,21 @@
         pageUrl:    window.location.href,
         pageTitle:  document.title,
       });
-      navigator.sendBeacon(
-        appUrl + '/api/embed-instances',
-        new Blob([body], { type: 'application/json' })
-      );
+      fetch(appUrl + '/api/embed-instances', {
+        method:    'POST',
+        headers:   { 'Content-Type': 'application/json' },
+        body:      body,
+        keepalive: true,
+      })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        console.log('[SB] register response:', JSON.stringify(d));
+      })
+      .catch(function (e) {
+        console.warn('[SB] register failed:', e.message);
+      });
     } catch (e) {
-      console.warn('[SB] register beacon failed', e);
+      console.warn('[SB] register error:', e);
     }
   }
 
