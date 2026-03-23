@@ -207,16 +207,16 @@ export default function SchedulePage() {
 
   const [flashKey, setFlashKey] = useState(0);
   const [embedInstances, setEmbedInstances] = useState<{ display_id: string; embed_id: string | null }[]>([]);
-  const [publishTarget, setPublishTarget] = useState<string>(''); // '' = all, or specific embed_id
+  const [publishTarget, setPublishTarget] = useState<string>('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [noPluginBanner, setNoPluginBanner] = useState(false);
+  const noPluginTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ─── Derived embed selection key ───────────────────────────────────────────
-  // When "All" is selected (publishTarget=''), we show the first embed's state.
-  // Each embed has its own independent set of selected matches / league order.
+  // ─── Derived embed selection key ─────────────────────────────────────────
+  // Always resolve to the first embed if publishTarget is empty.
   const effectiveTarget = useMemo(() => {
     if (publishTarget) return publishTarget;
-    // "All" → resolve to first embed instance
     if (embedInstances.length > 0) {
       return embedInstances[0].embed_id ?? embedInstances[0].display_id;
     }
@@ -234,12 +234,21 @@ export default function SchedulePage() {
   const [snapshotLoading, setSnapshotLoading] = useState(false);
   const router = useRouter();
 
-  // ─── Fetch embed instances for publish-target selector (polling every 30s) ───
+  // ─── Fetch embed instances — auto-select first on initial load ──────────
+  const didAutoSelectEmbed = useRef(false);
   useEffect(() => {
     const load = () =>
       fetch('/api/embed-instances')
         .then((r) => r.json())
-        .then((d) => setEmbedInstances(d.instances ?? []))
+        .then((d) => {
+          const instances: { display_id: string; embed_id: string | null }[] = d.instances ?? [];
+          setEmbedInstances(instances);
+          // Auto-select first embed on first load (no "All" option).
+          if (!didAutoSelectEmbed.current && instances.length > 0) {
+            didAutoSelectEmbed.current = true;
+            setPublishTarget(instances[0].embed_id ?? instances[0].display_id);
+          }
+        })
         .catch(() => {});
     load();
     const id = setInterval(load, 120_000);
@@ -953,6 +962,16 @@ export default function SchedulePage() {
     [leagueOrder, selectedByLeague]
   );
 
+  // All events the user has starred — shown in the highlights section at the
+  // top of the left preview panel (mirrors the "This Week's Highlights" block
+  // in the published HTML output).
+  const featuredMatches = useMemo(
+    () => events
+      .filter((e) => e.isFeatured)
+      .sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time)),
+    [events]
+  );
+
   // NOTE: main schedule list uses natural groupedByLeague order (unchanged by panel reordering)
 
   const moveLeague = useCallback((league: string, dir: -1 | 1) => {
@@ -1478,6 +1497,19 @@ export default function SchedulePage() {
                 hasCurrentSelections={selectedCount > 0}
                 embedInstances={embedInstances}
                 publishTarget={publishTarget}
+                onSuccess={(ts) => {
+                  // After publishing, check if any plugin embed is registered.
+                  // Delay 1 s so Supabase registration from WordPress has time to land.
+                  if (noPluginTimerRef.current) clearTimeout(noPluginTimerRef.current);
+                  noPluginTimerRef.current = setTimeout(() => {
+                    fetch('/api/embed-instances')
+                      .then(r => r.json())
+                      .then(d => {
+                        if ((d.instances ?? []).length === 0) setNoPluginBanner(true);
+                      })
+                      .catch(() => {});
+                  }, 1500);
+                }}
               />
             </div>
           </div>
@@ -1669,17 +1701,6 @@ export default function SchedulePage() {
           {embedInstances.length > 0 && (
             <div className="flex items-center gap-1.5 flex-wrap min-w-0">
               <span className="text-[11px] text-muted-foreground shrink-0">Publish to:</span>
-              <button
-                onClick={() => setPublishTarget('')}
-                className={cn(
-                  'text-[11px] px-2 py-0.5 rounded-full border transition-all',
-                  !publishTarget
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/30'
-                )}
-              >
-                All
-              </button>
               {embedInstances.map((inst) => {
                 const value = inst.embed_id ?? inst.display_id;
                 const isRenaming = renamingId === value;
@@ -1767,10 +1788,46 @@ export default function SchedulePage() {
             </div>
 
             <div ref={sidebarScrollRef} className="flex-1 overflow-y-auto p-2 space-y-3">
-              {selectedCount === 0 && featuredOnlyLeagues.length === 0 ? (
+              {selectedCount === 0 && featuredOnlyLeagues.length === 0 && featuredMatches.length === 0 ? (
                 <p className="text-[10px] text-muted-foreground text-center pt-8">No matches selected</p>
               ) : (
                 <>
+                {/* ─── Highlighted / starred matches ───────────────────── */}
+                {featuredMatches.length > 0 && (
+                  <div className="border border-yellow-500/40 bg-yellow-500/5 rounded-lg p-2">
+                    <p className="text-[10px] font-semibold text-yellow-400 uppercase tracking-wide mb-1.5">
+                      ⭐ Highlighted Matches
+                    </p>
+                    <div className="space-y-1">
+                      {featuredMatches.map((m) => (
+                        <div
+                          key={m.id}
+                          className="text-[10px] rounded-md px-1.5 py-1 bg-yellow-500/10 border border-yellow-500/20 cursor-pointer"
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            openHighlightMenu({
+                              type: 'match',
+                              eventId: m.id,
+                              sportId: m.sportId,
+                              leagueLabel: m.leagueLabel ?? m.sportId,
+                              x: event.clientX,
+                              y: event.clientY,
+                            });
+                          }}
+                        >
+                          <div className="font-medium text-foreground truncate">
+                            {m.home}{m.away ? ' vs ' : ''}{m.away}
+                          </div>
+                          <div className="text-muted-foreground mt-0.5">
+                            {formatDisplayDate(m.date)} · {m.time}
+                            <span className="ml-1 text-muted-foreground/60">{m.leagueLabel ?? m.sportId}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {featuredOnlyLeagues.map((league) => (
                   <div
                     key={`featured-only-${league.sportId}`}
@@ -1930,7 +1987,7 @@ export default function SchedulePage() {
           <div ref={htmlPreviewRef} className="flex-1 overflow-y-auto" onPointerDown={() => setActiveSortLeague(null)}>
             <div className="p-3 sm:p-6">
               <PreviewPanel
-                html={publishedSnapshot ? publishedSnapshot.html : html}
+                html={html}
                 matchCount={selectedCount}
                 leagueCount={selectedLeagues}
                 onCopy={handleCopyHTML}
@@ -2073,6 +2130,34 @@ export default function SchedulePage() {
           });
         }}
       />
+
+      {/* ── No-plugin detection banner ──────────────────────────────────────── */}
+      {noPluginBanner && (
+        <div className="fixed bottom-4 right-4 z-9999 flex items-start gap-3 max-w-sm w-full rounded-xl border border-amber-500/40 bg-amber-950/95 px-4 py-3 shadow-2xl backdrop-blur-sm animate-in slide-in-from-bottom-2">
+          <span className="text-lg leading-none mt-0.5 shrink-0">⚠️</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-amber-200 leading-snug">No WordPress plugin detected</p>
+            <p className="text-xs text-amber-300/80 mt-1 leading-relaxed">
+              Your schedule was published but no plugin embed was found on your site.{' '}
+              <a
+                href="/api/plugin/download"
+                className="underline text-amber-200 hover:text-white transition-colors"
+                download
+              >
+                Download the plugin here
+              </a>{' '}
+              and add it in WordPress → Plugins → Add New → Upload Plugin.
+            </p>
+          </div>
+          <button
+            onClick={() => setNoPluginBanner(false)}
+            className="shrink-0 mt-0.5 text-amber-400 hover:text-white transition-colors"
+            aria-label="Dismiss"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
