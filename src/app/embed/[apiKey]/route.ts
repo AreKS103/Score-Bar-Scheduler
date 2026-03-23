@@ -65,7 +65,7 @@ function buildEmbedPage(
 
   const isCard = opts.listStyle === 'card';
   const lineH = Math.max(0.8, Math.min(4, parseFloat(opts.lineHeight) || 1.6));
-  const leagueGap = `${Math.round(lineH * 15)}px`;
+  const leagueGap = `${Math.round(lineH * 10)}px`;
   const dateMarginTop = Math.round(lineH * 5);
   const dateMarginBottom = Math.max(4, Math.round(lineH * 4));
   const dateMargin = `${dateMarginTop}px 0 ${dateMarginBottom}px`;
