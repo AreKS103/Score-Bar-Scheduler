@@ -10,6 +10,7 @@ interface UserProfileMenuProps {
   onLogout: () => void;
   onBusinessInfo: () => void;
   onSettings: () => void;
+  businessLogoUrl?: string | null;
 }
 
 function getInitials(email: string | null): string {
@@ -19,7 +20,7 @@ function getInitials(email: string | null): string {
   return email.slice(0, 2).toUpperCase();
 }
 
-export default function UserProfileMenu({ email, onLogout, onBusinessInfo, onSettings }: UserProfileMenuProps) {
+export default function UserProfileMenu({ email, onLogout, onBusinessInfo, onSettings, businessLogoUrl }: UserProfileMenuProps) {
   const [open, setOpen] = useState(false);
   const { theme, toggleTheme } = useThemeStore();
   const isDark = theme === 'dark';
@@ -58,8 +59,11 @@ export default function UserProfileMenu({ email, onLogout, onBusinessInfo, onSet
             onClick={() => { setOpen(false); onSettings(); }}
             className="w-full flex items-center gap-3 px-3 py-3 border-b border-border hover:bg-accent transition-colors text-left"
           >
-            <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold shrink-0 select-none">
-              {initials}
+            <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold shrink-0 select-none overflow-hidden">
+              {businessLogoUrl
+                ? <img src={businessLogoUrl} alt="" className="w-full h-full object-cover" />
+                : initials
+              }
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold text-foreground truncate leading-tight">
@@ -143,8 +147,11 @@ export default function UserProfileMenu({ email, onLogout, onBusinessInfo, onSet
         )}
       >
         {/* Avatar */}
-        <div className="w-7 h-7 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[11px] font-bold shrink-0 select-none">
-          {initials}
+        <div className="w-7 h-7 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[11px] font-bold shrink-0 select-none overflow-hidden">
+          {businessLogoUrl
+            ? <img src={businessLogoUrl} alt="" className="w-full h-full object-cover" />
+            : initials
+          }
         </div>
 
         {/* Email */}

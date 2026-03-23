@@ -1466,7 +1466,7 @@ export default function SchedulePage() {
 
         {/* Pinned user profile at bottom */}
         <div className="shrink-0 border-t border-border px-2 py-1.5">
-          <UserProfileMenu email={userEmail} onLogout={handleLogout} onBusinessInfo={() => setBusinessInfoOpen(true)} onSettings={() => setSettingsOpen(true)} />
+          <UserProfileMenu email={userEmail} onLogout={handleLogout} onBusinessInfo={() => setBusinessInfoOpen(true)} onSettings={() => setSettingsOpen(true)} businessLogoUrl={businessLogoUrl} />
         </div>
       </aside>
 

@@ -204,18 +204,32 @@ export default function SportFilter({
 
   return (
     <div ref={containerRef} className="relative">
-      {/* ── Business header ──────────────────────────────────────────────────── */}
+      {/* ── Business banner ───────────────────────────────────────────────── */}
       {(businessLogoUrl || businessName) && (
-        <div className="flex items-center gap-2.5 px-2 pb-3 mb-1 border-b border-border/50">
-          {businessLogoUrl && (
-            <div className="w-8 h-8 rounded-lg border border-border bg-secondary/30 overflow-hidden shrink-0 flex items-center justify-center">
-              <img src={businessLogoUrl} alt="" className="w-full h-full object-contain" />
+        <div className="-mx-2 mb-3">
+          {businessLogoUrl ? (
+            <div className="relative overflow-hidden">
+              <img
+                src={businessLogoUrl}
+                alt={businessName ?? 'Business logo'}
+                className="w-full h-28 object-cover"
+              />
+              {/* gradient overlay + name */}
+              {businessName && (
+                <div className="absolute bottom-0 left-0 right-0 px-3 py-2 bg-gradient-to-t from-black/65 to-transparent">
+                  <span className="text-sm font-semibold text-white leading-tight block truncate">
+                    {businessName}
+                  </span>
+                </div>
+              )}
             </div>
-          )}
-          {businessName && (
-            <span className="text-xs font-semibold text-foreground/80 truncate leading-tight">
-              {businessName}
-            </span>
+          ) : (
+            // Name-only fallback (no logo)
+            <div className="px-2 pb-2 mb-1 border-b border-border/50">
+              <span className="text-xs font-semibold text-foreground/80 truncate leading-tight block">
+                {businessName}
+              </span>
+            </div>
           )}
         </div>
       )}
