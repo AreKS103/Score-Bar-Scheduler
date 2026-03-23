@@ -3,7 +3,7 @@
  * Plugin Name: Scheduler
  * Plugin URI:
  * Description: A sports schedule widget for your website.
- * Version: 1.1.7
+ * Version: 1.1.8
  * Text Domain: scorebar-scheduler
  * Requires at least: 6.0
  * Tested up to: 6.7
@@ -12,7 +12,7 @@
 if (!defined('ABSPATH')) exit;
 
 // Plugin version — must match the "Version:" header above.
-define('SCHEDULE_PLUGIN_VERSION', '1.1.7');
+define('SCHEDULE_PLUGIN_VERSION', '1.1.8');
 
 // ── PHP version gate ────────────────────────────────────────────────────────
 if (version_compare(PHP_VERSION, '7.4', '<')) {
@@ -90,6 +90,10 @@ if (!function_exists('schedule_purge_ghost_entries')) {
 
 // Run on activation (handles the install-time cleanup)
 register_activation_hook(__FILE__, 'schedule_purge_ghost_entries');
+// Clear cached update check so the next admin page load fetches fresh version data
+register_activation_hook(__FILE__, function() {
+    delete_transient('scorebar_update_check');
+});
 
 // Run on every plugins_loaded — fires before admin notices are rendered, so the
 // "Plugin file does not exist" notice never appears even on the first load after a
@@ -189,7 +193,7 @@ if (!function_exists('schedule_enqueue_frontend_config')) {
 add_action('wp_enqueue_scripts', 'schedule_enqueue_frontend_config');
 
 // ── Auto-update checker ───────────────────────────────────────────────────────
-// Checks the Vercel endpoint every 6 hours. When a newer version is available,
+// Checks the Vercel endpoint every hour. When a newer version is available,
 // WordPress admin shows the standard "Update Available" notice with one-click install.
 add_filter('pre_set_site_transient_update_plugins', 'schedule_check_for_plugin_update');
 if (!function_exists('schedule_check_for_plugin_update')) {
@@ -206,7 +210,7 @@ if (!function_exists('schedule_check_for_plugin_update')) {
             );
             if (!is_wp_error($result) && 200 === wp_remote_retrieve_response_code($result)) {
                 $cached = json_decode(wp_remote_retrieve_body($result), true);
-                set_transient('scorebar_update_check', $cached, 6 * HOUR_IN_SECONDS);
+                set_transient('scorebar_update_check', $cached, 1 * HOUR_IN_SECONDS);
             }
         }
 
