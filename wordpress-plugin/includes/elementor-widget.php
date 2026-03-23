@@ -236,14 +236,28 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
                             if (node.nodeType !== 1) continue;
                             if (node === wid || (node.contains && node.contains(wid))) {
                                 deleted = true;
-                                // Debounce: wait 2s to avoid false positives from Elementor re-renders
+                                // Debounce: wait 10s to survive Elementor iframe re-renders (confirmed ~2-3s)
                                 setTimeout(function() {
-                                    if (stableId && document.querySelector('[data-id="' + stableId + '"]')) { deleted = false; return; }
+                                    var stillExists = false;
+                                    if (stableId) {
+                                        if (document.querySelector('[data-id="' + stableId + '"]')) {
+                                            stillExists = true;
+                                        }
+                                        try {
+                                            var pf = window.parent && window.parent.document &&
+                                                window.parent.document.getElementById('elementor-preview-iframe');
+                                            if (pf && pf.contentDocument &&
+                                                pf.contentDocument.querySelector('[data-id="' + stableId + '"]')) {
+                                                stillExists = true;
+                                            }
+                                        } catch(e) {}
+                                    }
+                                    if (stillExists) { deleted = false; return; }
                                     obs.disconnect();
                                     var delParams = {};
                                     <?php if (!empty($widget_id)): ?>delParams.widgetId = '<?php echo esc_js($widget_id); ?>';<?php elseif (!empty($settings['embed_id'])): ?>delParams.embedId = '<?php echo esc_js($settings['embed_id']); ?>';<?php else: ?>delParams.embedId = '__null__';<?php endif; ?>
                                     if (typeof sbFireDelete === 'function') sbFireDelete(delParams);
-                                }, 2000);
+                                }, 10000);
                                 return;
                             }
                         }

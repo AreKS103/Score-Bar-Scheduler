@@ -293,16 +293,17 @@ export async function GET(
   const widgetId = (sp._wid    ?? '').replace(/[^\w-]/g, '').substring(0, 64);
 
   // Resolve the schedule target:
-  //  • widgetId present → DB lookup is authoritative (catches stale/wrong Elementor Element IDs)
-  //  • Named embed only → use embedId directly  (e.g. "home", "main")
-  //  • No id at all   → empty string → match against null embed_target (global publish)
-  //  • Widget present but not yet in DB (just added) AND no embedId → show empty
+  //  • embedId present in URL → use it directly (PHP bakes it in from Elementor settings)
+  //  • widgetId present + DB row found → DB name overrides URL param (handles renames)
+  //  • widgetId present but no DB row AND no embedId → truly unknown, show empty
+  //  • No ids at all → empty string → show empty
+  //
+  // Key insight: embedId is ALWAYS present in the iframe URL because PHP bakes it in
+  // from Elementor settings. So scheduleTarget = embedId resolves correctly even when
+  // the embed_instances row is missing — no global fallback needed.
   let scheduleTarget = embedId;
   let widgetNotRegistered = false;
-  if (widgetId) {
-    // When a widget ID is present the DB is the authoritative source for the embed name.
-    // This prevents cases where both Elementor widgets share the same "Element ID" field
-    // value, or where the user renamed the embed in the web app without updating Elementor.
+  if (!embedId && widgetId) {
     const { data: inst } = await supabase
       .from('embed_instances')
       .select('embed_id')
@@ -310,59 +311,38 @@ export async function GET(
       .eq('widget_id', widgetId)
       .maybeSingle();
     if (inst?.embed_id) {
-      scheduleTarget = inst.embed_id; // DB name overrides URL param — always correct
-    } else if (!embedId) {
-      // embed_instances row missing but widget exists on page.
-      // Do NOT block — fall through to schedule lookup.
-      // Try resolving by embed name first, then fall back to
-      // global NULL schedule. This ensures the schedule ALWAYS
-      // shows as long as something is published, regardless of
-      // whether the registration row exists.
-      widgetNotRegistered = false;
-      scheduleTarget = embedId || '';
+      scheduleTarget = inst.embed_id;
+    } else {
+      // embed_instances row missing.
+      // embedId is empty AND no DB row found.
+      // Truly unknown — show empty, not global schedule.
+      widgetNotRegistered = true;
     }
-    // If widget not in DB but embedId IS set, fall through with the URL's embedId
-    // (backwards compat for embeds that haven't beaconed yet).
   }
 
-  // Schedule resolution: match on embed_target, with global fallback.
-  // Fallback chain:
-  //   1. Try exact embed_target match → found? show it
-  //   2. Not found? Try global schedule (NULL embed_target) → show it
-  //   3. Nothing published at all? Show empty state
-  // This ensures the schedule ALWAYS shows as long as something is published.
+  // Strict schedule resolution: ONLY query by exact embed_target match.
+  // Never fall back to NULL embed_target — that would risk showing the wrong
+  // embed's schedule (e.g. Homepage showing Schedule Page content or vice versa).
+  // scheduleTarget = 'Schedule Page' → WHERE embed_target = 'Schedule Page'
+  // scheduleTarget = 'Homepage'      → WHERE embed_target = 'Homepage'
+  // scheduleTarget = ''              → show empty
   let schedule: { events_snapshot: unknown; league_order: unknown; featured_leagues: unknown; published_at?: string } | null = null;
   let scheduleAt = '';
 
-  const baseQuery = supabase
-    .from('published_schedules')
-    .select('events_snapshot, league_order, featured_leagues, published_at')
-    .eq('user_id', keyData.user_id)
-    .order('published_at', { ascending: false })
-    .limit(1);
-
-  const { data } = scheduleTarget
-    ? await baseQuery.eq('embed_target', scheduleTarget).maybeSingle()
-    : await baseQuery.is('embed_target', null).maybeSingle();
-
-  schedule = data;
-  if (data) scheduleAt = data.published_at ?? '';
-
-  // Global fallback: if a targeted query found nothing, try the global schedule
-  // (embed_target IS NULL). This ensures the schedule never shows empty when
-  // the user has published any schedule, regardless of embed_instances state.
-  if (!schedule && scheduleTarget) {
-    const { data: globalData } = await supabase
-      .from('published_schedules')
-      .select('events_snapshot, league_order, featured_leagues, published_at')
-      .eq('user_id', keyData.user_id)
-      .is('embed_target', null)
-      .order('published_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (globalData) {
-      schedule = globalData;
-      scheduleAt = globalData.published_at ?? '';
+  if (!widgetNotRegistered) {
+    if (!scheduleTarget) {
+      schedule = null; // No target = show empty
+    } else {
+      const { data } = await supabase
+        .from('published_schedules')
+        .select('events_snapshot, league_order, featured_leagues, published_at')
+        .eq('user_id', keyData.user_id)
+        .eq('embed_target', scheduleTarget)
+        .order('published_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      schedule = data;
+      if (data) scheduleAt = data.published_at ?? '';
     }
   }
 
