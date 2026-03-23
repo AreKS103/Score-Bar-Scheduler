@@ -34,6 +34,7 @@ interface EmbedOpts {
   apiKey: string;
   hideViewToggle: boolean;
   noInlineToggle: boolean;
+  noCopy: boolean;
   highlightFontSize: string;
   timeFontSize: string;
 }
@@ -99,7 +100,7 @@ body{padding:${bodyPad}}
 .tab{background:var(--tab-bg);border:1px solid var(--border);color:var(--tab-text);padding:4px 14px;${tabBorder};cursor:pointer;font-size:12px;font-family:inherit;font-weight:500;white-space:nowrap;transition:background .15s,color .15s,border-color .15s}
 .tab:hover{color:var(--text);border-color:var(--accent)}
 .tab.active{${tabActiveBorder}}
-.cat-gap{height:${(lineH * 2.8).toFixed(2)}em;display:block}
+.cat-gap{height:${(lineH * 1.2).toFixed(2)}em;display:block}
 .schedule-content h2{font-size:0.78em;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);padding:6px 0 5px;margin:8px 0 13px;border-bottom:1px solid var(--border)}
 .schedule-content h2:first-child{margin-top:8px}
 #schedule-root,.schedule-content{width:100%}
@@ -150,6 +151,8 @@ ${isCard ? `.league-block{background:var(--card-bg);border:1px solid var(--borde
   const resizeJS = `\n<script>\n(function(){\n  function send(){ try{ window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*'); }catch(e){} }\n  if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded',send); } else { send(); }\n  if(typeof ResizeObserver!=='undefined'){ new ResizeObserver(send).observe(document.body); }\n})();\n</script>`;
   const styleJS = `\n<script>\n(function(){\n  window.addEventListener('message',function(e){\n    if(!e.data||!e.data.sbStyle)return;\n    var r=document.documentElement;var s=e.data.sbStyle;\n    if(s.matchFontSize)r.style.setProperty('--sb-match-size',s.matchFontSize);\n    if(s.dateFontSize)r.style.setProperty('--sb-date-size',s.dateFontSize);\n    if(s.headerSize)r.style.setProperty('--sb-h3-size',s.headerSize);\n    if(s.logoHeight)r.style.setProperty('--sb-logo-height',s.logoHeight);\n    if(s.hlFontSize)r.style.setProperty('--sb-hl-size',s.hlFontSize);\n  });\n})();\n</script>`;
 
+  const noCopyJS = opts.noCopy ? `\n<script>\n(function(){\n  var s=document.createElement('style');s.textContent='*{-webkit-user-select:none!important;user-select:none!important;-moz-user-select:none!important}';\n  document.head.appendChild(s);\n  function b(e){e.preventDefault();return false;}\n  document.addEventListener('contextmenu',b,false);\n  document.addEventListener('selectstart',b,false);\n  document.addEventListener('copy',b,false);\n  document.addEventListener('cut',b,false);\n  document.addEventListener('keydown',function(e){\n    if((e.ctrlKey||e.metaKey)&&['a','c','u','s','p'].indexOf(e.key.toLowerCase())>=0)b(e);\n  });\n  document.addEventListener('dragstart',b,false);\n})();\n</script>` : '';
+
   const safeEmbedId  = (opts.embedId  || '').replace(/[^\w#\- ]/g, '').substring(0, 64);
   const safeWidgetId = (opts.widgetId || '').replace(/[^\w-]/g,    '').substring(0, 64);
   const safeApiKey   = (opts.apiKey   || '').replace(/[^\w-]/g,    '').substring(0, 128);
@@ -162,7 +165,7 @@ ${isCard ? `.league-block{background:var(--card-bg);border:1px solid var(--borde
   const toggleBar = !opts.hideViewToggle && !opts.noInlineToggle ? `<div class="vt-bar" style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:10px"><button class="vt-btn vt-active" data-layout="list" style="padding:4px 14px;border-radius:999px;border:1px solid var(--accent,#3b82f6);background:var(--accent,#3b82f6);color:#fff;cursor:pointer;font-size:12px;font-family:inherit;font-weight:600">List</button><button class="vt-btn" data-layout="calendar" style="padding:4px 14px;border-radius:999px;border:1px solid var(--border,#e5e7eb);background:var(--tab-bg,#f3f4f6);color:var(--tab-text,#6b7280);cursor:pointer;font-size:12px;font-family:inherit;font-weight:500">Calendar</button></div>` : '';
   const toggleJS = !opts.hideViewToggle ? `\n<script>\n(function(){document.querySelectorAll('.vt-btn').forEach(function(b){b.addEventListener('click',function(){var u=new URL(location.href);u.searchParams.set('layout',b.getAttribute('data-layout'));location.replace(u.toString());});});})();\n</script>` : '';
 
-  return `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width,initial-scale=1.0"/>\n<title>Schedule</title>\n<style>${css}</style>\n</head>\n<body>\n${toggleBar}\n<div id="schedule-root" data-serial="${serial}">\n${tabsHTML}\n<div class="schedule-content">${scheduleContent}</div>\n</div>\n${tabJS}\n${cardJS}\n${toggleJS}\n${resizeJS}\n${styleJS}\n${beaconJS}\n${pollJS}\n</body>\n</html>`;
+  return `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width,initial-scale=1.0"/>\n<title>Schedule</title>\n<style>${css}</style>\n</head>\n<body>\n${toggleBar}\n<div id="schedule-root" data-serial="${serial}">\n${tabsHTML}\n<div class="schedule-content">${scheduleContent}</div>\n</div>\n${tabJS}\n${cardJS}\n${toggleJS}\n${resizeJS}\n${styleJS}\n${noCopyJS}\n${beaconJS}\n${pollJS}\n</body>\n</html>`;
 }
 
 function buildCalendarPage(
@@ -225,12 +228,14 @@ body{padding:${paddingVal}px}
 
   const styleJSCal = `\n<script>\n(function(){\n  window.addEventListener('message',function(e){\n    if(!e.data||!e.data.sbStyle)return;\n    var r=document.documentElement;var s=e.data.sbStyle;\n    if(s.hlFontSize)r.style.setProperty('--sb-hl-size',s.hlFontSize);\n    if(s.headerSize)r.style.setProperty('--sb-h3-size',s.headerSize);\n    if(s.dateFontSize)r.style.setProperty('--sb-date-size',s.dateFontSize);\n  });\n})();\n</script>`;
 
+  const noCopyJSCal = opts.noCopy ? `\n<script>\n(function(){\n  var s=document.createElement('style');s.textContent='*{-webkit-user-select:none!important;user-select:none!important;-moz-user-select:none!important}';\n  document.head.appendChild(s);\n  function b(e){e.preventDefault();return false;}\n  document.addEventListener('contextmenu',b,false);\n  document.addEventListener('selectstart',b,false);\n  document.addEventListener('copy',b,false);\n  document.addEventListener('cut',b,false);\n  document.addEventListener('keydown',function(e){\n    if((e.ctrlKey||e.metaKey)&&['a','c','u','s','p'].indexOf(e.key.toLowerCase())>=0)b(e);\n  });\n  document.addEventListener('dragstart',b,false);\n})();\n</script>` : '';
+
   const calNavJS = `\n<script>${getCalendarNavJS()}</script>`;
 
   const calToggleBar = !opts.hideViewToggle && !opts.noInlineToggle ? `<div class="vt-bar" style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:10px"><button class="vt-btn" data-layout="list" style="padding:4px 14px;border-radius:999px;border:1px solid var(--border,#e5e7eb);background:var(--tab-bg,#f3f4f6);color:var(--tab-text,#6b7280);cursor:pointer;font-size:12px;font-family:inherit;font-weight:500">List</button><button class="vt-btn vt-active" data-layout="calendar" style="padding:4px 14px;border-radius:999px;border:1px solid var(--accent,#3b82f6);background:var(--accent,#3b82f6);color:#fff;cursor:pointer;font-size:12px;font-family:inherit;font-weight:600">Calendar</button></div>` : '';
   const calToggleJS = !opts.hideViewToggle ? `\n<script>\n(function(){document.querySelectorAll('.vt-btn').forEach(function(b){b.addEventListener('click',function(){var u=new URL(location.href);u.searchParams.set('layout',b.getAttribute('data-layout'));location.replace(u.toString());});});})();\n</script>` : '';
 
-  return `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width,initial-scale=1.0"/>\n<title>Schedule</title>\n<style>${baseCss}${calendarCss}</style>\n</head>\n<body>\n${calToggleBar}\n<div id="schedule-root" data-serial="${serial}">${calendarHTML}</div>\n${calNavJS}\n${calToggleJS}\n${resizeJS}\n${styleJSCal}\n${beaconJS}\n${pollJS}\n</body>\n</html>`;
+  return `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width,initial-scale=1.0"/>\n<title>Schedule</title>\n<style>${baseCss}${calendarCss}</style>\n</head>\n<body>\n${calToggleBar}\n<div id="schedule-root" data-serial="${serial}">${calendarHTML}</div>\n${calNavJS}\n${calToggleJS}\n${resizeJS}\n${styleJSCal}\n${noCopyJSCal}\n${beaconJS}\n${pollJS}\n</body>\n</html>`;
 }
 
 export async function GET(
@@ -372,6 +377,7 @@ export async function GET(
     catLabels:     sp.catLabels ? (() => { try { return JSON.parse(Buffer.from(sp.catLabels, 'base64').toString()) as Record<string,string>; } catch { return {}; } })() : {},
     hideViewToggle: sp.hideViewToggle === '1',
     noInlineToggle: sp.noInlineToggle === '1',
+    noCopy:         sp.noCopy === '1',
     highlightFontSize: (() => { const n = parseInt(sp.highlightFontSize ?? ''); return (!isNaN(n) && n >= 1 && n <= 500) ? sp.highlightFontSize : '18'; })(),
     timeFontSize: (() => { const n = parseInt(sp.timeFontSize ?? ''); return (!isNaN(n) && n >= 1 && n <= 500) ? sp.timeFontSize : '11'; })(),
   embedId:       embedId,  // already extracted + sanitised above

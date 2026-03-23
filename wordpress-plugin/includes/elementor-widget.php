@@ -52,6 +52,7 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
         $this->add_control('logo_size',   ['label' => 'League Logo Size', 'type' => \Elementor\Controls_Manager::SELECT, 'default' => 'md', 'options' => ['sm' => 'Small', 'md' => 'Medium', 'lg' => 'Large']]);
         $this->add_control('line_height', ['label' => 'Line Spacing', 'type' => \Elementor\Controls_Manager::NUMBER, 'default' => '1.6', 'min' => 0.8, 'max' => 4, 'step' => 0.1, 'render_type' => 'template', 'description' => 'Line height multiplier (e.g. 1.6 = normal, 1.2 = tight, 2.0 = double)']);
         $this->add_control('hide_logos',  ['label' => 'Hide Logos',       'type' => \Elementor\Controls_Manager::SWITCHER,'label_on' => 'Yes', 'label_off' => 'No', 'return_value' => '1', 'default' => '']);
+        $this->add_control('no_copy',     ['label' => 'Block Right-Click & Copy', 'type' => \Elementor\Controls_Manager::SWITCHER, 'label_on' => 'On', 'label_off' => 'Off', 'return_value' => '1', 'default' => '', 'description' => 'Prevents visitors from right-clicking or copying widget content (pairs with WP Content Copy Protection plugin)']);
         $this->add_control('padding',     ['label' => 'Content Padding (px)', 'type' => \Elementor\Controls_Manager::NUMBER, 'default' => 12, 'min' => 0, 'max' => 80, 'step' => 1, 'render_type' => 'template', 'description' => 'Inner padding in pixels']);
         $this->add_control('tab_style',   ['label' => 'Tab Style',        'type' => \Elementor\Controls_Manager::SELECT,  'default' => 'pill', 'options' => ['pill' => 'Pill', 'underline' => 'Underline', 'square' => 'Square']]);
         $this->end_controls_section();
@@ -92,6 +93,7 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
             'highlightFontSize' => sanitize_text_field((string)($settings['highlight_font_size'] ?? '14')),
             'lineHeight'    => sanitize_text_field($settings['line_height'] ?? '1.6'),
             'hideLogos'     => !empty($settings['hide_logos']) ? '1' : '0',
+            'noCopy'        => !empty($settings['no_copy'])    ? '1' : '0',
             'hideViewToggle' => empty($settings['show_view_toggle']) ? '1' : '0',
             'padding'       => sanitize_text_field((string)($settings['padding']   ?? '12')),
             'tabStyle'      => sanitize_text_field($settings['tab_style'] ?? 'pill'),
