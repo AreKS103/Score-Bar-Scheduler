@@ -13,6 +13,8 @@ interface SportFilterProps {
   activeFilter: string;
   onFilterChange: (filter: string) => void;
   events: MatchEvent[];
+  businessName?: string | null;
+  businessLogoUrl?: string | null;
 }
 
 interface ContextMenuState {
@@ -36,6 +38,8 @@ export default function SportFilter({
   activeFilter,
   onFilterChange,
   events,
+  businessName,
+  businessLogoUrl,
 }: SportFilterProps) {
   const categories = getCategories();
 
@@ -200,6 +204,22 @@ export default function SportFilter({
 
   return (
     <div ref={containerRef} className="relative">
+      {/* ── Business header ──────────────────────────────────────────────────── */}
+      {(businessLogoUrl || businessName) && (
+        <div className="flex items-center gap-2.5 px-2 pb-3 mb-1 border-b border-border/50">
+          {businessLogoUrl && (
+            <div className="w-8 h-8 rounded-lg border border-border bg-secondary/30 overflow-hidden shrink-0 flex items-center justify-center">
+              <img src={businessLogoUrl} alt="" className="w-full h-full object-contain" />
+            </div>
+          )}
+          {businessName && (
+            <span className="text-xs font-semibold text-foreground/80 truncate leading-tight">
+              {businessName}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* ── Tab bar ─────────────────────────────────────────────────────────── */}
       <div className="flex gap-1 mb-3 px-2">
         <button
@@ -215,7 +235,7 @@ export default function SportFilter({
           <Star className={cn('w-3 h-3', activeTab === 'favorites' && 'fill-amber-400')} />
           Favorites
           {favoriteOrder.length > 0 && (
-            <span className="text-[10px] bg-amber-500/25 text-amber-300 px-1.5 py-0.5 rounded-full leading-none">
+            <span className="text-[10px] bg-amber-500/30 text-amber-200 px-1.5 py-0.5 rounded-full leading-none font-semibold">
               {favoriteOrder.length}
             </span>
           )}

@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Wifi, WifiOff, Loader2, ShieldCheck, Server, Navigation, Globe, Copy, CheckCircle, RefreshCw, EyeOff } from 'lucide-react';
+import { X, Wifi, WifiOff, Loader2, ShieldCheck, Server, Navigation, Globe, Copy, CheckCircle, RefreshCw, EyeOff, User, Mail, Phone, KeyRound, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -19,13 +19,23 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   // API Key & User logic
   const [userId, setUserId] = useState<string | null>(null);
-  const [apiKey, setApiKey] = useState<string | null>(null); // Only storing the RAW key temp after generation
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [apiKey, setApiKey] = useState<string | null>(null);
   const [keyPreview, setKeyPreview] = useState<string | null>(null);
   const [connectedSite, setConnectedSite] = useState<string | null>(null);
   const [loadingKey, setLoadingKey] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const supabase = createClient();
+
+  // Account section state
+  const [phone, setPhone] = useState('');
+  const [savingPhone, setSavingPhone] = useState(false);
+  const [phoneSaved, setPhoneSaved] = useState(false);
+  const [sendingReset, setSendingReset] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Handle modal close
   useEffect(() => {
@@ -40,9 +50,13 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     return () => document.removeEventListener('keydown', handleKey);
   }, [isOpen, onClose]);
 
-  // Fetch User ID
+  // Fetch User ID + email + phone
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id || null));
+    supabase.auth.getUser().then(({ data }) => {
+      setUserId(data.user?.id || null);
+      setUserEmail(data.user?.email || null);
+      setPhone((data.user?.user_metadata?.phone as string) || data.user?.phone || '');
+    });
   }, [supabase.auth]);
 
   // Load Key preview from DB
@@ -102,6 +116,41 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const savePhone = async () => {
+    setSavingPhone(true);
+    const { error } = await supabase.auth.updateUser({ data: { phone: phone.trim() } });
+    setSavingPhone(false);
+    if (!error) {
+      setPhoneSaved(true);
+      setTimeout(() => setPhoneSaved(false), 2000);
+    }
+  };
+
+  const sendPasswordReset = async () => {
+    if (!userEmail) return;
+    setSendingReset(true);
+    await supabase.auth.resetPasswordForEmail(userEmail, {
+      redirectTo: `${window.location.origin}/auth/confirm?type=recovery`,
+    });
+    setSendingReset(false);
+    setResetSent(true);
+    setTimeout(() => setResetSent(false), 4000);
+  };
+
+  const deleteAccount = async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch('/api/auth/delete-account', { method: 'DELETE' });
+      if (!res.ok) throw new Error('Delete failed');
+      await supabase.auth.signOut();
+      window.location.href = '/login';
+    } catch {
+      setDeleting(false);
+      setDeleteConfirm(false);
+      alert('Account deletion failed. Please contact support.');
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -122,6 +171,112 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
+
+          {/* ── Account ──────────────────────────────────────────────────────── */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <User className="w-4 h-4" /> Account
+              </CardTitle>
+              <CardDescription>Manage your profile, password and account.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Email (read-only) */}
+              <div>
+                <label className="text-sm font-medium text-muted-foreground flex items-center gap-1.5 mb-1.5">
+                  <Mail className="w-3.5 h-3.5" /> Email Address
+                </label>
+                <div className="px-3 py-2 rounded-md bg-secondary/50 border border-border text-sm text-foreground select-all">
+                  {userEmail ?? '—'}
+                </div>
+              </div>
+
+              {/* Phone */}
+              <div>
+                <label className="text-sm font-medium text-muted-foreground flex items-center gap-1.5 mb-1.5">
+                  <Phone className="w-3.5 h-3.5" /> Phone Number
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={e => setPhone(e.target.value)}
+                    placeholder="+1 555 000 0000"
+                    className={cn(
+                      'flex-1 px-3 py-2 rounded-md text-sm border border-border bg-secondary/40',
+                      'text-foreground placeholder:text-muted-foreground/50',
+                      'focus:outline-none focus:ring-2 focus:ring-ring transition',
+                    )}
+                  />
+                  <Button variant="outline" size="sm" onClick={savePhone} disabled={savingPhone} className="shrink-0">
+                    {savingPhone
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      : phoneSaved
+                        ? <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
+                        : 'Save'
+                    }
+                  </Button>
+                </div>
+              </div>
+
+              {/* Reset password */}
+              <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border">
+                <div>
+                  <div className="text-sm font-medium text-foreground">Password</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Send a reset link to your email</div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={sendPasswordReset}
+                  disabled={sendingReset || resetSent}
+                  className="shrink-0"
+                >
+                  {sendingReset
+                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    : resetSent
+                      ? <><CheckCircle className="w-3.5 h-3.5 mr-1.5 text-emerald-500" /> Sent</>
+                      : <><KeyRound className="w-3.5 h-3.5 mr-1.5" /> Reset Password</>
+                  }
+                </Button>
+              </div>
+
+              {/* Delete account */}
+              <div className="pt-1">
+                {!deleteConfirm ? (
+                  <button
+                    onClick={() => setDeleteConfirm(true)}
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete Account
+                  </button>
+                ) : (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-3">
+                    <p className="text-sm font-medium text-destructive">
+                      Are you sure? This permanently deletes your account and all data.
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={deleteAccount}
+                        disabled={deleting}
+                        className="flex-1"
+                      >
+                        {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Yes, Delete My Account'}
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => setDeleteConfirm(false)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* ── Timezone ─────────────────────────────────────────────────────── */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">

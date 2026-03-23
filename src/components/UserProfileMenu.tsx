@@ -1,13 +1,14 @@
 'use client';
 
 import { useRef, useState, useEffect } from 'react';
-import { LogOut, Moon, Sun, MoreHorizontal } from 'lucide-react';
+import { LogOut, Moon, Sun, MoreHorizontal, Building2 } from 'lucide-react';
 import { useThemeStore } from '@/lib/themeStore';
 import { cn } from '@/lib/utils';
 
 interface UserProfileMenuProps {
   email: string | null;
   onLogout: () => void;
+  onBusinessInfo: () => void;
 }
 
 function getInitials(email: string | null): string {
@@ -17,7 +18,7 @@ function getInitials(email: string | null): string {
   return email.slice(0, 2).toUpperCase();
 }
 
-export default function UserProfileMenu({ email, onLogout }: UserProfileMenuProps) {
+export default function UserProfileMenu({ email, onLogout, onBusinessInfo }: UserProfileMenuProps) {
   const [open, setOpen] = useState(false);
   const { theme, toggleTheme } = useThemeStore();
   const isDark = theme === 'dark';
@@ -92,6 +93,19 @@ export default function UserProfileMenu({ email, onLogout }: UserProfileMenuProp
           </div>
 
           <div className="border-t border-border mx-2" />
+
+          {/* Business Information */}
+          <div className="px-1.5 pt-1.5">
+            <button
+              onClick={() => { setOpen(false); onBusinessInfo(); }}
+              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+            >
+              <Building2 className="w-3.5 h-3.5" />
+              Business Information
+            </button>
+          </div>
+
+          <div className="border-t border-border mx-2 mt-1.5" />
 
           {/* Sign out */}
           <div className="p-1.5">

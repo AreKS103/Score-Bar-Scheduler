@@ -39,6 +39,7 @@ import SearchField from '@/components/SearchField';
 import PreviewPanel from '@/components/PreviewPanel';
 import SettingsModal from '@/components/SettingsModal';
 import UserProfileMenu from '@/components/UserProfileMenu';
+import BusinessInfoModal from '@/components/BusinessInfoModal';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -174,8 +175,11 @@ export default function SchedulePage() {
   const [deleteAllConfirm, setDeleteAllConfirm] = useState(false);
   const [panelWidth, setPanelWidth] = useState(700);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [businessInfoOpen, setBusinessInfoOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [businessName, setBusinessName] = useState<string | null>(null);
+  const [businessLogoUrl, setBusinessLogoUrl] = useState<string | null>(null);
   const [featuredLeagues, setFeaturedLeagues] = useState<Map<string, string>>(new Map());
   const [highlightMenu, setHighlightMenu] = useState<
     | {
@@ -497,7 +501,23 @@ export default function SchedulePage() {
     // Check on mount and load user email
     supabase.auth.getUser().then(({ data, error }) => {
       if (error) router.push('/login');
-      else setUserEmail(data.user?.email ?? null);
+      else {
+        setUserEmail(data.user?.email ?? null);
+        // Load business info for sidebar header
+        if (data.user?.id) {
+          supabase
+            .from('business_info')
+            .select('business_name, logo_url')
+            .eq('user_id', data.user.id)
+            .single()
+            .then(({ data: biz }) => {
+              if (biz) {
+                setBusinessName(biz.business_name ?? null);
+                setBusinessLogoUrl(biz.logo_url ?? null);
+              }
+            });
+        }
+      }
     });
     // Listen for sign-out / token-refresh failures
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -1427,25 +1447,26 @@ export default function SchedulePage() {
               activeFilter={activeSportFilter}
               onFilterChange={(f) => { setActiveSportFilter(f); setFlashKey(k => k + 1); setSidebarOpen(false); }}
               events={events}
+              businessName={businessName}
+              businessLogoUrl={businessLogoUrl}
             />
           </div>
+        </div>
 
-          <Separator className="mx-3 mt-3" />
-
-          <div className="p-3">
-            <button
-              onClick={() => { setSettingsOpen(true); setSidebarOpen(false); }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-all text-muted-foreground hover:text-foreground hover:bg-accent"
-            >
-              <Settings className="w-4 h-4" />
-              Settings
-            </button>
-          </div>
+        {/* Pinned Settings button above profile */}
+        <div className="shrink-0 border-t border-border px-3 py-2">
+          <button
+            onClick={() => { setSettingsOpen(true); setSidebarOpen(false); }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-all text-muted-foreground hover:text-foreground hover:bg-accent"
+          >
+            <Settings className="w-4 h-4" />
+            Settings
+          </button>
         </div>
 
         {/* Pinned user profile at bottom */}
         <div className="shrink-0 border-t border-border px-2 py-1.5">
-          <UserProfileMenu email={userEmail} onLogout={handleLogout} />
+          <UserProfileMenu email={userEmail} onLogout={handleLogout} onBusinessInfo={() => setBusinessInfoOpen(true)} />
         </div>
       </aside>
 
@@ -2123,6 +2144,14 @@ export default function SchedulePage() {
 
       {/* Settings lightbox */}
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <BusinessInfoModal
+        isOpen={businessInfoOpen}
+        onClose={() => setBusinessInfoOpen(false)}
+        onSaved={({ business_name, logo_url }) => {
+          setBusinessName(business_name || null);
+          setBusinessLogoUrl(logo_url);
+        }}
+      />
 
       {/* Edit match modal */}
       <EditMatchModal
