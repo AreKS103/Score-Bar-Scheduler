@@ -403,6 +403,9 @@
           var widgetId = w.dataset && w.dataset.id;
           if (!widgetId) return;
 
+          // Skip early if already registered (sbHeight fires on every resize)
+          if (registeredWidgets.has(widgetId)) return;
+
           var embedId = null;
           try {
             var fr = w.querySelector('iframe[src]');
