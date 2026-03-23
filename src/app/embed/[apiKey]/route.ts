@@ -100,7 +100,7 @@ body{padding:${bodyPad}}
 .tab{background:var(--tab-bg);border:1px solid var(--border);color:var(--tab-text);padding:4px 14px;${tabBorder};cursor:pointer;font-size:12px;font-family:inherit;font-weight:500;white-space:nowrap;transition:background .15s,color .15s,border-color .15s}
 .tab:hover{color:var(--text);border-color:var(--accent)}
 .tab.active{${tabActiveBorder}}
-.cat-gap{height:${(lineH * 1.2).toFixed(2)}em;display:block}
+.cat-gap{height:${(lineH * 0.5).toFixed(2)}em;display:block}
 .schedule-content h2{font-size:0.78em;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);padding:6px 0 5px;margin:8px 0 13px;border-bottom:1px solid var(--border)}
 .schedule-content h2:first-child{margin-top:8px}
 #schedule-root,.schedule-content{width:100%}
