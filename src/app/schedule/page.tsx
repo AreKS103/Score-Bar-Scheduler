@@ -9,7 +9,6 @@ import {
   Tag,
   Loader2,
   RefreshCw,
-  Settings,
   X,
   ArrowUp,
   ArrowDown,
@@ -1451,17 +1450,6 @@ export default function SchedulePage() {
               businessLogoUrl={businessLogoUrl}
             />
           </div>
-        </div>
-
-        {/* Pinned Settings button above profile */}
-        <div className="shrink-0 border-t border-border px-3 py-2">
-          <button
-            onClick={() => { setSettingsOpen(true); setSidebarOpen(false); }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-all text-muted-foreground hover:text-foreground hover:bg-accent"
-          >
-            <Settings className="w-4 h-4" />
-            Settings
-          </button>
         </div>
 
         {/* Pinned user profile at bottom */}
