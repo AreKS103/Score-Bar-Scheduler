@@ -90,7 +90,10 @@ function schedule_shortcode_render($atts) {
         $query_args['textColor'] = ltrim(sanitize_hex_color('#' . ltrim($atts['text_color'], '#')), '#');
     }
 
-    $uid        = 'sb' . substr(md5(serialize($atts) . rand()), 0, 8);
+    // Deterministic UID — must NOT use rand() because Elementor re-renders the
+    // shortcode with a new PHP execution, and if the UID changes the MutationObserver
+    // can no longer find the old element and fires a false-positive DELETE.
+    $uid        = 'sb' . substr(md5(serialize($atts)), 0, 8);
     $app_domain  = schedule_get_app_domain();
     $iframe_url = $app_domain . '/embed/' . sanitize_text_field($iframe_key) . '?' . http_build_query($query_args);
     $auto       = ($atts['height'] === 'auto');
@@ -194,14 +197,19 @@ function schedule_shortcode_render($atts) {
                         if (node.nodeType !== 1) continue;
                         if (node === wid || (node.contains && node.contains(wid))) {
                             deleted = true;
-                            // Debounce: wait 2s to avoid false positives from Elementor re-renders
+                            // Debounce: increased to 10s to match Elementor widget; 2s was too
+                            // short — Elementor re-renders can take 3–7s on a slow host, causing
+                            // the old element to transiently vanish and trigger a false DELETE.
                             setTimeout(function() {
+                                // Re-check: if the wrapper is back in the DOM, abort.
                                 if (document.getElementById(widId)) { deleted = false; return; }
-                                obs.disconnect();
+                                // Only fire for named embeds. If there's no embed_id we can't
+                                // safely identify which schedule to target and should not fire.
                                 var delParams = {};
-                                <?php if (!empty($atts['embed_id'])): ?>delParams.embedId = '<?php echo esc_js($atts['embed_id']); ?>';<?php else: ?>delParams.embedId = '__null__';<?php endif; ?>
+                                <?php if (!empty($atts['embed_id'])): ?>delParams.embedId = '<?php echo esc_js($atts['embed_id']); ?>';<?php else: ?>deleted = false; return;<?php endif; ?>
+                                obs.disconnect();
                                 if (typeof sbFireDelete === 'function') sbFireDelete(delParams);
-                            }, 2000);
+                            }, 10000);
                             return;
                         }
                     }

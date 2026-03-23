@@ -363,18 +363,13 @@ export async function DELETE(req: NextRequest) {
     await query.eq('embed_id', instanceId);
   }
 
-  // Also delete published schedule for this embed target so a future embed with the
-  // same ID doesn't inherit the old schedule contents.
-  const scheduleDeleteQuery = supabase
-    .from('published_schedules')
-    .delete()
-    .eq('user_id', userId);
-
-  if (instanceId === null) {
-    await scheduleDeleteQuery.is('embed_target', null);
-  } else {
-    await scheduleDeleteQuery.eq('embed_target', instanceId);
-  }
+  // NOTE: published_schedules is intentionally NOT cascade-deleted here.
+  // The MutationObserver (in shortcode.php / elementor-widget.php) fires this
+  // DELETE on Elementor re-renders (false positives). If we also deleted
+  // published_schedules the user would silently lose their published content,
+  // and the beacon would re-create embed_instances on next load — making the
+  // data disappear with no obvious trace. Published schedules must only be
+  // cleared via the explicit "Clear Schedule" button (/api/delete-schedule).
 
   // Also clean up saved user selections for this embed target so stale rows
   // don't accumulate in user_selections after the embed is removed.

@@ -120,7 +120,10 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
         $app_domain = schedule_get_app_domain();
         $iframe_url = $app_domain . '/embed/' . sanitize_text_field($iframe_key) . '?' . http_build_query($query_args);
         $height_val = ($settings['iframe_height']['size'] ?? 600) . ($settings['iframe_height']['unit'] ?? 'px');
-        $uid = 'sb' . substr(md5($iframe_url . rand()), 0, 8);
+        // Deterministic UID — must NOT use rand() because Elementor re-renders the
+        // widget on every save/preview refresh. A changing UID means the MutationObserver
+        // finds the old element gone and fires a false-positive DELETE.
+        $uid = 'sb' . substr(md5($iframe_url), 0, 8);
         $height_css = $auto_height ? 'auto'    : esc_attr($height_val);
         $overflow   = $auto_height ? 'visible' : 'auto';
         ?>
@@ -253,6 +256,10 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
                                         } catch(e) {}
                                     }
                                     if (stillExists) { deleted = false; return; }
+                                    // Safety guard: if stableId is empty we cannot confirm the
+                                    // widget is really gone (Elementor may have re-rendered it
+                                    // with a new wrapper). Abort to prevent a false-positive DELETE.
+                                    if (!stableId) { deleted = false; return; }
                                     obs.disconnect();
                                     var delParams = {};
                                     <?php if (!empty($widget_id)): ?>delParams.widgetId = '<?php echo esc_js($widget_id); ?>';<?php elseif (!empty($settings['embed_id'])): ?>delParams.embedId = '<?php echo esc_js($settings['embed_id']); ?>';<?php else: ?>delParams.embedId = '__null__';<?php endif; ?>
