@@ -270,50 +270,12 @@ export async function GET(req: NextRequest) {
     .eq('user_id', userId)
     .order('created_at', { ascending: true });
 
-  // Async TTL cleanup: remove rows not seen in 3 days. Fire-and-forget —
-  // don't await so it doesn't slow down the response.
-  const ttlCutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
-  void supabase
-    .from('embed_instances')
-    .delete()
-    .eq('user_id', userId)
-    .lt('last_seen', ttlCutoff);
-
-  // Orphan cleanup: remove user_selections and published_schedules rows
-  // whose embed_target no longer matches any alive embed instance.
-  void (async () => {
-    try {
-      const { data: alive } = await supabase
-        .from('embed_instances')
-        .select('embed_id')
-        .eq('user_id', userId);
-      const aliveIds = new Set((alive ?? []).map(r => r.embed_id).filter(Boolean));
-
-      // Clean orphaned user_selections
-      const { data: allSel } = await supabase
-        .from('user_selections')
-        .select('id, embed_target')
-        .eq('user_id', userId);
-      const orphanedSelIds = (allSel ?? [])
-        .filter(r => r.embed_target && r.embed_target !== '' && !aliveIds.has(r.embed_target))
-        .map(r => r.id);
-      if (orphanedSelIds.length > 0) {
-        await supabase.from('user_selections').delete().in('id', orphanedSelIds);
-      }
-
-      // Clean orphaned published_schedules
-      const { data: allPub } = await supabase
-        .from('published_schedules')
-        .select('id, embed_target')
-        .eq('user_id', userId);
-      const orphanedPubIds = (allPub ?? [])
-        .filter(r => r.embed_target && r.embed_target !== '' && !aliveIds.has(r.embed_target))
-        .map(r => r.id);
-      if (orphanedPubIds.length > 0) {
-        await supabase.from('published_schedules').delete().in('id', orphanedPubIds);
-      }
-    } catch { /* best-effort cleanup */ }
-  })();
+  // NOTE: No TTL / orphan auto-cleanup here.
+  // Embed instances are permanent registrations managed explicitly by the user.
+  // Silently deleting rows based on last_seen would cascade-delete published
+  // schedules and selections when a page simply hasn't been visited in a few days.
+  // Explicit cleanup is handled by the DELETE endpoint when the user intentionally
+  // removes an embed via the web app UI.
 
   // embed_id is always set for widget-based embeds (numeric "1","2",… or user label).
   // Only legacy null rows (old shortcode embeds) get a fallback auto-label.
