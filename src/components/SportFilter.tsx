@@ -146,6 +146,91 @@ export default function SportFilter({
     setDraggedCat(cat);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', `cat:${cat}`);
+
+    // ── Custom drag ghost: category header + top 5 leagues ──────────────────
+    const catLeagues = favoriteSports.filter((s) => s.category === cat);
+    const ghost = document.createElement('div');
+    ghost.style.cssText = [
+      'position:fixed',
+      'top:-9999px',
+      'left:-9999px',
+      'width:200px',
+      'background:rgba(12,14,26,0.97)',
+      'border:1px solid rgba(99,160,255,0.28)',
+      'border-radius:10px',
+      'padding:8px 10px',
+      'color:#e5e7eb',
+      'font-family:inherit',
+      'font-size:11px',
+      'box-shadow:0 12px 40px rgba(0,0,0,0.7)',
+      'pointer-events:none',
+      'transform:rotate(1.5deg) scale(1.03)',
+    ].join(';');
+
+    // Category header row
+    const header = document.createElement('div');
+    header.style.cssText = [
+      'font-size:10px',
+      'font-weight:700',
+      'text-transform:uppercase',
+      'letter-spacing:0.1em',
+      'color:rgba(156,163,175,0.55)',
+      'margin-bottom:6px',
+      'padding-bottom:5px',
+      'border-bottom:1px solid rgba(255,255,255,0.08)',
+      'display:flex',
+      'align-items:center',
+      'justify-content:space-between',
+    ].join(';');
+    header.textContent = cat;
+    const grip = document.createElement('span');
+    grip.style.cssText = 'color:rgba(255,255,255,0.2);font-size:11px';
+    grip.textContent = '⠿';
+    header.appendChild(grip);
+    ghost.appendChild(header);
+
+    // Top 5 leagues
+    const visible = catLeagues.slice(0, 5);
+    visible.forEach((league) => {
+      const row = document.createElement('div');
+      row.style.cssText = [
+        'display:flex',
+        'align-items:center',
+        'gap:6px',
+        'padding:3px 4px',
+        'border-radius:4px',
+        'color:#d1d5db',
+        'font-size:11px',
+      ].join(';');
+      const dot = document.createElement('span');
+      dot.style.cssText = 'width:6px;height:6px;border-radius:50%;background:rgba(99,160,255,0.4);flex-shrink:0';
+      row.appendChild(dot);
+      const label = document.createElement('span');
+      label.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      label.textContent = league.label;
+      row.appendChild(label);
+      ghost.appendChild(row);
+    });
+
+    // "+ N more" footer
+    if (catLeagues.length > 5) {
+      const more = document.createElement('div');
+      more.style.cssText = [
+        'margin-top:5px',
+        'padding-top:4px',
+        'border-top:1px solid rgba(255,255,255,0.08)',
+        'font-size:10px',
+        'color:rgba(156,163,175,0.45)',
+        'text-align:center',
+      ].join(';');
+      more.textContent = `+${catLeagues.length - 5} more`;
+      ghost.appendChild(more);
+    }
+
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, ghost.offsetWidth / 2, 24);
+    // Remove ghost after browser captures it
+    requestAnimationFrame(() => { document.body.contains(ghost) && document.body.removeChild(ghost); });
   };
 
   // onCatDragOver is placed on the outer category group div (not just the header)
@@ -268,8 +353,8 @@ export default function SportFilter({
                     onDragStart={(e) => onCatDragStart(e, cat)}
                     onDragEnd={onCatDragEnd}
                     className={cn(
-                      'flex items-center justify-between px-3 pt-2 pb-0.5 cursor-grab active:cursor-grabbing select-none group/cat',
-                      isCatDragging && 'opacity-40'
+                      'flex items-center justify-between px-3 pt-2 pb-0.5 cursor-grab active:cursor-grabbing select-none group/cat transition-all duration-150',
+                      isCatDragging && 'opacity-50 rotate-1 scale-[1.02] ring-1 ring-primary/40 shadow-md rounded-md'
                     )}
                   >
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/40">
