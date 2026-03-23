@@ -21,8 +21,9 @@
     return;
   }
 
-  /* ── Dedup: prevent multiple hooks from sending duplicate DELETEs ────── */
+  /* ── Dedup: prevent multiple hooks from sending duplicate DELETEs / REGISTERs ── */
   var deletedWidgets = {};
+  var registeredWidgets = new Set();
 
   /* ── HTTP helpers ──────────────────────────────────────────────────────── */
 
@@ -48,16 +49,37 @@
     var key = widgetId || embedId || '__null__';
     if (deletedWidgets[key]) return;
     deletedWidgets[key] = true;
+    registeredWidgets.delete(key); // allow re-registration if widget is re-added
     apiDelete(widgetId, embedId);
   }
 
+  function getPageUrl() {
+    try {
+      var iframe = document.getElementById('elementor-preview-iframe');
+      if (iframe && iframe.contentWindow) {
+        var loc = iframe.contentWindow.location.href;
+        var url = new URL(loc);
+        url.searchParams.delete('elementor-preview');
+        url.searchParams.delete('ver');
+        return url.origin + url.pathname;
+      }
+    } catch (e) {}
+    return window.location.href;
+  }
+
   function apiRegister(widgetId, embedId) {
+    var dedupKey = widgetId || embedId || '__unknown__';
+    if (registeredWidgets.has(dedupKey)) {
+      console.log('[SB] already registered, skipping:', dedupKey);
+      return;
+    }
+    registeredWidgets.add(dedupKey);
     try {
       var body = JSON.stringify({
         apiKey:     apiKey,
         widgetId:   widgetId  || null,
         embedId:    embedId   || null,
-        pageUrl:    window.location.href,
+        pageUrl:    getPageUrl(),
         pageTitle:  document.title,
       });
       fetch(appUrl + '/api/embed-instances', {
