@@ -330,6 +330,40 @@
     console.log('[SB] init() running — setting up hooks and observer');
     setupElementorHooks();
     observePreviewIframe();
+
+    // ── postMessage listener: sbHeight from Scheduler widget iframes ───────
+    // The embed iframe sends { sbHeight: number } on every load/resize.
+    // This is the most reliable signal that a Scheduler widget exists in the preview.
+    window.addEventListener('message', function (ev) {
+      try {
+        if (!ev.data || typeof ev.data.sbHeight === 'undefined') return;
+
+        var previewIframe = document.getElementById('elementor-preview-iframe');
+        if (!previewIframe) return;
+
+        var previewDoc;
+        try {
+          previewDoc = previewIframe.contentDocument || previewIframe.contentWindow.document;
+        } catch (e) { return; }
+
+        if (!previewDoc || !previewDoc.body) return;
+
+        var widgets = previewDoc.querySelectorAll('[data-widget_type^="schedule_widget"]');
+        widgets.forEach(function (w) {
+          var widgetId = w.dataset && w.dataset.id;
+          if (!widgetId) return;
+
+          var embedId = null;
+          try {
+            var fr = w.querySelector('iframe[src]');
+            if (fr) embedId = new URL(fr.src).searchParams.get('embedId') || null;
+          } catch (e) {}
+
+          console.log('[SB] sbHeight → registering widget:', widgetId, embedId);
+          apiRegister(widgetId, embedId);
+        });
+      } catch (e) {}
+    });
   }
 
   function tryInit() {
