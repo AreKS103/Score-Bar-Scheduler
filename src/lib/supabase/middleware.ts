@@ -66,6 +66,11 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
+  // Allow email-verification callback (must run before session is established)
+  if (request.nextUrl.pathname.startsWith('/auth/')) {
+    return supabaseResponse;
+  }
+
   // Allow API routes for auth and public endpoints
   if (request.nextUrl.pathname.startsWith('/api/')) {
     return supabaseResponse;

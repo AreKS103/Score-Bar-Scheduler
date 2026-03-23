@@ -10,6 +10,7 @@ interface FavoritesState {
   favoriteOrder: string[];
   categoryOrder: string[];
   _loaded: boolean;
+  _userId: string | null; // tracks which user's data is in localStorage
   addFavorite: (sportId: string) => void;
   removeFavorite: (sportId: string) => void;
   toggleFavorite: (sportId: string) => void;
@@ -45,6 +46,7 @@ export const useFavoritesStore = create<FavoritesState>()(
       favoriteOrder: [],
       categoryOrder: [],
       _loaded: false,
+      _userId: null,
 
       addFavorite: (sportId) =>
         set((state) => {
@@ -85,24 +87,23 @@ export const useFavoritesStore = create<FavoritesState>()(
           const supabase = createClient();
           const { data: { user } } = await supabase.auth.getUser();
           if (!user) return;
+
+          // If localStorage belongs to a DIFFERENT user, wipe it before loading
+          const cachedUserId = get()._userId;
+          if (cachedUserId && cachedUserId !== user.id) {
+            set({ favoriteOrder: [], categoryOrder: [], _userId: user.id });
+          }
+
           const { data } = await supabase
             .from('favorites')
             .select('favorite_order')
             .eq('user_id', user.id)
             .single();
           if (data?.favorite_order) {
-            set({ favoriteOrder: data.favorite_order, _loaded: true });
+            set({ favoriteOrder: data.favorite_order, _loaded: true, _userId: user.id });
           } else {
-            // Push current localStorage favorites up to Supabase
-            const current = get().favoriteOrder;
-            if (current.length > 0) {
-              await supabase.from('favorites').upsert({
-                user_id: user.id,
-                favorite_order: current,
-                updated_at: new Date().toISOString(),
-              });
-            }
-            set({ _loaded: true });
+            // New user: start fresh — never inherit another user's localStorage data
+            set({ favoriteOrder: [], categoryOrder: [], _loaded: true, _userId: user.id });
           }
         } catch (e) {
           console.error('[Favorites] load failed:', e);
@@ -112,7 +113,11 @@ export const useFavoritesStore = create<FavoritesState>()(
     }),
     {
       name: 'score-favorites',
-      partialize: (state) => ({ favoriteOrder: state.favoriteOrder, categoryOrder: state.categoryOrder }),
+      partialize: (state) => ({
+        favoriteOrder: state.favoriteOrder,
+        categoryOrder: state.categoryOrder,
+        _userId: state._userId,
+      }),
     }
   )
 );
