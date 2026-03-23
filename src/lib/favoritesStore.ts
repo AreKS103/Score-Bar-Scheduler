@@ -8,11 +8,13 @@ import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 
 interface FavoritesState {
   favoriteOrder: string[];
+  categoryOrder: string[];
   _loaded: boolean;
   addFavorite: (sportId: string) => void;
   removeFavorite: (sportId: string) => void;
   toggleFavorite: (sportId: string) => void;
   reorderFavorites: (newOrder: string[]) => void;
+  reorderCategories: (newOrder: string[]) => void;
   isFavorite: (sportId: string) => boolean;
   loadFromSupabase: () => Promise<void>;
 }
@@ -41,6 +43,7 @@ export const useFavoritesStore = create<FavoritesState>()(
   persist(
     (set, get) => ({
       favoriteOrder: [],
+      categoryOrder: [],
       _loaded: false,
 
       addFavorite: (sportId) =>
@@ -68,6 +71,11 @@ export const useFavoritesStore = create<FavoritesState>()(
         debouncedSave(newOrder);
         set({ favoriteOrder: newOrder });
       },
+
+      reorderCategories: (newOrder) => {
+        set({ categoryOrder: newOrder });
+      },
+
 
       isFavorite: (sportId) => get().favoriteOrder.includes(sportId),
 
@@ -104,7 +112,7 @@ export const useFavoritesStore = create<FavoritesState>()(
     }),
     {
       name: 'score-favorites',
-      partialize: (state) => ({ favoriteOrder: state.favoriteOrder }),
+      partialize: (state) => ({ favoriteOrder: state.favoriteOrder, categoryOrder: state.categoryOrder }),
     }
   )
 );

@@ -49,13 +49,18 @@ export default function SportFilter({
   // ── Unfavorite confirmation (Favorites tab) ────────────────────────────────
   const [unfavoriteConfirm, setUnfavoriteConfirm] = useState<string | null>(null);
 
-  // ── Drag state (Favorites tab only) ───────────────────────────────────────
+  // ── Drag state: individual leagues ───────────────────────────────────────
   const [draggedId, setDraggedId]   = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+  // ── Drag state: category groups ───────────────────────────────────────────
+  const [draggedCat, setDraggedCat]   = useState<string | null>(null);
+  const [dragOverCat, setDragOverCat] = useState<string | null>(null);
+
   const containerRef = useRef<HTMLDivElement>(null);
 
   // ── Favorites store ────────────────────────────────────────────────────────
-  const { favoriteOrder, addFavorite, removeFavorite, isFavorite, reorderFavorites } =
+  const { favoriteOrder, categoryOrder, addFavorite, removeFavorite, isFavorite, reorderFavorites, reorderCategories } =
     useFavoritesStore();
 
   // ── Dismiss context menu on outside click / Escape ─────────────────────────
@@ -122,12 +127,51 @@ export default function SportFilter({
   const onDragEnd = () => resetDrag();
   const resetDrag = () => { setDraggedId(null); setDragOverId(null); };
 
+  // ── Category drag handlers ────────────────────────────────────────────────
+  const onCatDragStart = (e: React.DragEvent<HTMLDivElement>, cat: string) => {
+    // Do not start a category drag if a league item is already being dragged
+    if (draggedId) { e.preventDefault(); return; }
+    setDraggedCat(cat);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', `cat:${cat}`);
+  };
+
+  const onCatDragOver = (e: React.DragEvent<HTMLDivElement>, cat: string) => {
+    // Only handle category-level drags, not league-item drags
+    if (!draggedCat || draggedCat === cat) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverCat(cat);
+  };
+
+  const onCatDrop = (e: React.DragEvent<HTMLDivElement>, targetCat: string) => {
+    e.preventDefault();
+    if (!draggedCat || draggedCat === targetCat) { resetCatDrag(); return; }
+    const next = [...orderedFavCats];
+    const from = next.indexOf(draggedCat);
+    const to   = next.indexOf(targetCat);
+    if (from !== -1 && to !== -1) {
+      next.splice(from, 1);
+      next.splice(to, 0, draggedCat);
+      reorderCategories(next);
+    }
+    resetCatDrag();
+  };
+
+  const onCatDragEnd = () => resetCatDrag();
+  const resetCatDrag = () => { setDraggedCat(null); setDragOverCat(null); };
+
   // ── Build ordered favorites list ───────────────────────────────────────────
   const favoriteSports = favoriteOrder
     .map((id) => SPORTS_CONFIG.find((s) => s.id === id))
     .filter((s): s is (typeof SPORTS_CONFIG)[number] => Boolean(s));
 
-  const favCats = [...new Set(favoriteSports.map((s) => s.category))];
+  const derivedFavCats = [...new Set(favoriteSports.map((s) => s.category))];
+  // Apply saved category order; append any new categories (not yet in saved order) at the end
+  const orderedFavCats = [
+    ...categoryOrder.filter((c) => derivedFavCats.includes(c)),
+    ...derivedFavCats.filter((c) => !categoryOrder.includes(c)),
+  ];
 
   return (
     <div ref={containerRef} className="relative">
@@ -180,13 +224,32 @@ export default function SportFilter({
               </p>
             </div>
           ) : (
-            favCats.map((cat) => {
+            orderedFavCats.map((cat) => {
               const catSports = favoriteSports.filter((s) => s.category === cat);
+              const isCatDragging   = draggedCat === cat;
+              const isCatDropTarget = dragOverCat === cat;
               return (
                 <div key={cat} className="mb-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/40 px-3 pt-2 pb-0.5">
-                    {cat}
-                  </p>
+                  {/* Drop indicator line above hovered category */}
+                  {isCatDropTarget && (
+                    <div className="h-0.5 mx-2 rounded-full bg-primary/70 mb-0.5" />
+                  )}
+                  <div
+                    draggable
+                    onDragStart={(e) => onCatDragStart(e, cat)}
+                    onDragOver={(e)  => onCatDragOver(e, cat)}
+                    onDrop={(e)      => onCatDrop(e, cat)}
+                    onDragEnd={onCatDragEnd}
+                    className={cn(
+                      'flex items-center justify-between px-3 pt-2 pb-0.5 cursor-grab active:cursor-grabbing select-none group/cat',
+                      isCatDragging && 'opacity-40'
+                    )}
+                  >
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/40">
+                      {cat}
+                    </p>
+                    <span className="text-muted-foreground/20 text-[11px] leading-none opacity-0 group-hover/cat:opacity-100 transition-opacity" aria-hidden>⠿</span>
+                  </div>
                   <div className="space-y-0.5">
                     {catSports.map((league) => {
                       const count        = countByLeague(league.id);
