@@ -3,7 +3,7 @@
  * Plugin Name: Scheduler
  * Plugin URI:
  * Description: A sports schedule widget for your website.
- * Version: 1.2.1
+ * Version: 1.2.2
  * Text Domain: scorebar-scheduler
  * Requires at least: 6.0
  * Tested up to: 6.7
@@ -12,7 +12,7 @@
 if (!defined('ABSPATH')) exit;
 
 // Plugin version — must match the "Version:" header above.
-define('SCHEDULE_PLUGIN_VERSION', '1.2.1');
+define('SCHEDULE_PLUGIN_VERSION', '1.2.2');
 
 // ── PHP version gate ────────────────────────────────────────────────────────
 if (version_compare(PHP_VERSION, '7.4', '<')) {
@@ -211,7 +211,7 @@ if (!function_exists('schedule_check_for_plugin_update')) {
             );
             if (!is_wp_error($result) && 200 === wp_remote_retrieve_response_code($result)) {
                 $cached = json_decode(wp_remote_retrieve_body($result), true);
-                set_transient('scorebar_update_check', $cached, 1 * HOUR_IN_SECONDS);
+                set_transient('scorebar_update_check', $cached, 5 * MINUTE_IN_SECONDS);
             }
         }
 
