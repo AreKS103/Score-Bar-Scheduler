@@ -54,14 +54,16 @@
   }
 
   function getPageUrl() {
+    // Read the iframe's `src` attribute — cross-origin-safe, no contentWindow access needed.
+    // Elementor sets src to the actual page URL with ?elementor-preview=<postId> appended.
+    // Strip query params to get the clean page URL (e.g. https://scorekh.com/sports-schedule/).
     try {
       var iframe = document.getElementById('elementor-preview-iframe');
-      if (iframe && iframe.contentWindow) {
-        var loc = iframe.contentWindow.location.href;
-        var url = new URL(loc);
-        url.searchParams.delete('elementor-preview');
-        url.searchParams.delete('ver');
-        return url.origin + url.pathname;
+      if (iframe && iframe.src) {
+        var iframeSrc = new URL(iframe.src);
+        if (iframeSrc.searchParams.get('elementor-preview')) {
+          return iframeSrc.origin + iframeSrc.pathname;
+        }
       }
     } catch (e) {}
     return window.location.href;
