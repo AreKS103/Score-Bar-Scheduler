@@ -52,10 +52,12 @@ export default function SportFilter({
   // ── Drag state: individual leagues ───────────────────────────────────────
   const [draggedId, setDraggedId]   = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [dragOverPos, setDragOverPos] = useState<'before' | 'after'>('before');
 
   // ── Drag state: category groups ───────────────────────────────────────────
   const [draggedCat, setDraggedCat]   = useState<string | null>(null);
   const [dragOverCat, setDragOverCat] = useState<string | null>(null);
+  const [dragOverCatPos, setDragOverCatPos] = useState<'before' | 'after'>('before');
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -105,12 +107,20 @@ export default function SportFilter({
   };
 
   const onDragOver = (e: React.DragEvent<HTMLDivElement>, sportId: string) => {
+    // Don't interfere while a category is being dragged
+    if (draggedCat) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    if (sportId !== draggedId) setDragOverId(sportId);
+    if (sportId !== draggedId) {
+      setDragOverId(sportId);
+      const rect = e.currentTarget.getBoundingClientRect();
+      setDragOverPos(e.clientY < rect.top + rect.height / 2 ? 'before' : 'after');
+    }
   };
 
   const onDrop = (e: React.DragEvent<HTMLDivElement>, targetId: string) => {
+    // Don't interfere while a category is being dragged
+    if (draggedCat) return;
     e.preventDefault();
     if (!draggedId || draggedId === targetId) { resetDrag(); return; }
     const next = [...favoriteOrder];
@@ -118,14 +128,16 @@ export default function SportFilter({
     const to   = next.indexOf(targetId);
     if (from !== -1 && to !== -1) {
       next.splice(from, 1);
-      next.splice(to, 0, draggedId);
+      const newTo = next.indexOf(targetId);
+      const insertAt = dragOverPos === 'after' ? newTo + 1 : newTo;
+      next.splice(insertAt, 0, draggedId);
       reorderFavorites(next);
     }
     resetDrag();
   };
 
   const onDragEnd = () => resetDrag();
-  const resetDrag = () => { setDraggedId(null); setDragOverId(null); };
+  const resetDrag = () => { setDraggedId(null); setDragOverId(null); setDragOverPos('before'); };
 
   // ── Category drag handlers ────────────────────────────────────────────────
   const onCatDragStart = (e: React.DragEvent<HTMLDivElement>, cat: string) => {
@@ -136,12 +148,15 @@ export default function SportFilter({
     e.dataTransfer.setData('text/plain', `cat:${cat}`);
   };
 
+  // onCatDragOver is placed on the outer category group div (not just the header)
+  // so e.currentTarget spans the full group height for accurate before/after detection
   const onCatDragOver = (e: React.DragEvent<HTMLDivElement>, cat: string) => {
-    // Only handle category-level drags, not league-item drags
     if (!draggedCat || draggedCat === cat) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     setDragOverCat(cat);
+    const rect = e.currentTarget.getBoundingClientRect();
+    setDragOverCatPos(e.clientY < rect.top + rect.height / 2 ? 'before' : 'after');
   };
 
   const onCatDrop = (e: React.DragEvent<HTMLDivElement>, targetCat: string) => {
@@ -152,14 +167,23 @@ export default function SportFilter({
     const to   = next.indexOf(targetCat);
     if (from !== -1 && to !== -1) {
       next.splice(from, 1);
-      next.splice(to, 0, draggedCat);
+      const newTo = next.indexOf(targetCat);
+      const insertAt = dragOverCatPos === 'after' ? newTo + 1 : newTo;
+      next.splice(insertAt, 0, draggedCat);
       reorderCategories(next);
     }
     resetCatDrag();
   };
 
   const onCatDragEnd = () => resetCatDrag();
-  const resetCatDrag = () => { setDraggedCat(null); setDragOverCat(null); };
+  const resetCatDrag = () => {
+    setDraggedCat(null);
+    setDragOverCat(null);
+    setDragOverCatPos('before');
+    // Also clear any residual league drag state to prevent lingering indicators
+    setDraggedId(null);
+    setDragOverId(null);
+  };
 
   // ── Build ordered favorites list ───────────────────────────────────────────
   const favoriteSports = favoriteOrder
@@ -229,16 +253,19 @@ export default function SportFilter({
               const isCatDragging   = draggedCat === cat;
               const isCatDropTarget = dragOverCat === cat;
               return (
-                <div key={cat} className="mb-1">
+                <div
+                key={cat}
+                className="mb-1"
+                onDragOver={(e) => onCatDragOver(e, cat)}
+                onDrop={(e) => onCatDrop(e, cat)}
+              >
                   {/* Drop indicator line above hovered category */}
-                  {isCatDropTarget && (
+                  {isCatDropTarget && dragOverCatPos === 'before' && (
                     <div className="h-0.5 mx-2 rounded-full bg-primary/70 mb-0.5" />
                   )}
                   <div
                     draggable
                     onDragStart={(e) => onCatDragStart(e, cat)}
-                    onDragOver={(e)  => onCatDragOver(e, cat)}
-                    onDrop={(e)      => onCatDrop(e, cat)}
                     onDragEnd={onCatDragEnd}
                     className={cn(
                       'flex items-center justify-between px-3 pt-2 pb-0.5 cursor-grab active:cursor-grabbing select-none group/cat',
@@ -260,8 +287,8 @@ export default function SportFilter({
 
                       return (
                         <div key={league.id}>
-                          {/* Drop indicator line (appears above target) */}
-                          {isDropTarget && (
+                          {/* Drop indicator line (before target) */}
+                          {isDropTarget && dragOverPos === 'before' && (
                             <div className="h-0.5 mx-2 rounded-full bg-primary/70 my-0.5" />
                           )}
                           {isConfirming ? (
@@ -337,10 +364,18 @@ export default function SportFilter({
                             </span>
                           </div>
                           )}
+                          {/* Drop indicator line (after target) */}
+                          {isDropTarget && dragOverPos === 'after' && (
+                            <div className="h-0.5 mx-2 rounded-full bg-primary/70 my-0.5" />
+                          )}
                         </div>
                       );
                     })}
                   </div>
+                  {/* Drop indicator line below hovered category (for dropping at the bottom) */}
+                  {isCatDropTarget && dragOverCatPos === 'after' && (
+                    <div className="h-0.5 mx-2 rounded-full bg-primary/70 mt-0.5" />
+                  )}
                 </div>
               );
             })
