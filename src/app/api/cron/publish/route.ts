@@ -41,6 +41,7 @@ export async function GET(req: NextRequest) {
         league_order: item.league_order || [],
         featured_leagues: item.featured_leagues || {},
         published_at: new Date().toISOString(),
+        embed_target: item.embed_target || null,
       });
 
       if (insertErr) throw insertErr;

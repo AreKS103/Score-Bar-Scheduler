@@ -344,6 +344,7 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
           eventsSnapshot: snapshot?.eventsSnapshot,
           leagueOrder: snapshot?.leagueOrder,
           featuredLeagues: snapshot?.featuredLeagues,
+          embedTarget: publishTarget || null,
         }),
       });
       if (!res.ok) {

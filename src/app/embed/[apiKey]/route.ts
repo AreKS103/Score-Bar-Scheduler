@@ -87,8 +87,8 @@ function buildEmbedPage(
 
   const bgOverride   = opts.bgColor || '';
   const textOverride = opts.textColor || '';
-  const lightVars = `--bg:${bgOverride || '#fff'};--text:${textOverride || '#111827'};--muted:#6b7280;--heading:${textOverride || '#111827'};--border:#e5e7eb;--tab-bg:#f3f4f6;--tab-text:#6b7280;--tab-active:${accent};--tab-active-text:#fff;--accent:${accent};--card-bg:#f4f6f9;`;
-  const darkVars  = `--bg:${bgOverride || '#0f1117'};--text:${textOverride || '#e8eaf0'};--muted:#8b92a8;--heading:${textOverride || '#f0f2f8'};--border:#2d3142;--tab-bg:#1e2130;--tab-text:#8b92a8;--tab-active:${accent};--tab-active-text:#fff;--accent:${accent};--card-bg:#181c28;`;
+  const lightVars = `--bg:${bgOverride || '#fff'};--text:${textOverride || '#111827'};--muted:#6b7280;--heading:${textOverride || '#111827'};--border:#e5e7eb;--tab-bg:#f3f4f6;--tab-text:#6b7280;--tab-active:${accent};--tab-active-text:#fff;--accent:${accent};--card-bg:#f4f6f9;--hl-title-color:#000;`;
+  const darkVars  = `--bg:${bgOverride || '#0f1117'};--text:${textOverride || '#e8eaf0'};--muted:#8b92a8;--heading:${textOverride || '#f0f2f8'};--border:#2d3142;--tab-bg:#1e2130;--tab-text:#8b92a8;--tab-active:${accent};--tab-active-text:#fff;--accent:${accent};--card-bg:#181c28;--hl-title-color:${textOverride || '#f0f2f8'};`;
 
   const css = `
 :root{${isAuto ? lightVars : isDark ? darkVars : lightVars};--sb-match-size:${matchSize};--sb-date-size:${dateSize};--sb-h3-size:${h3Size};--sb-logo-height:${logoHeight};--sb-hl-size:${hlFontSize};--sb-time-size:${timeSize}}
@@ -125,7 +125,9 @@ ${isCard ? `.league-block{background:var(--card-bg);border:1px solid var(--borde
 .mc-team{display:inline-flex;align-items:center;gap:3px}
 .mc-round{font-size:.82em;color:var(--muted,#888)}
 .hl-section{margin-bottom:22px}
-.hl-title{font-size:var(--sb-h3-size)!important;font-weight:800;color:var(--heading,var(--text));margin:0 0 12px;text-transform:uppercase}
+.hl-title{font-size:var(--sb-h3-size)!important;font-weight:800;color:var(--hl-title-color,#000);margin:0 0 4px;text-transform:uppercase}
+.hl-updated{font-size:12px;color:#4ade80;margin:0 0 12px;display:flex;align-items:center;gap:6px}
+.hl-updated-dot{width:8px;height:8px;border-radius:50%;background:#4ade80;flex-shrink:0;display:inline-block}
 .hl-date-group{margin-bottom:10px}
 .hl-date-header{font-size:var(--sb-date-size)!important;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--heading,var(--text));padding:6px 0;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:8px}
 .hl-event{padding:7px 0}
@@ -166,7 +168,10 @@ ${isCard ? `.league-block{background:var(--card-bg);border:1px solid var(--borde
   const toggleBar = !opts.hideViewToggle && !opts.noInlineToggle ? `<div class="vt-bar" style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:10px"><button class="vt-btn vt-active" data-layout="list" style="padding:4px 14px;border-radius:999px;border:1px solid var(--accent,#3b82f6);background:var(--accent,#3b82f6);color:#fff;cursor:pointer;font-size:12px;font-family:inherit;font-weight:600">List</button><button class="vt-btn" data-layout="calendar" style="padding:4px 14px;border-radius:999px;border:1px solid var(--border,#e5e7eb);background:var(--tab-bg,#f3f4f6);color:var(--tab-text,#6b7280);cursor:pointer;font-size:12px;font-family:inherit;font-weight:500">Calendar</button></div>` : '';
   const toggleJS = !opts.hideViewToggle ? `\n<script>\n(function(){document.querySelectorAll('.vt-btn').forEach(function(b){b.addEventListener('click',function(){var u=new URL(location.href);u.searchParams.set('layout',b.getAttribute('data-layout'));location.replace(u.toString());});});})();\n</script>` : '';
 
-  return `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width,initial-scale=1.0"/>\n<title>Schedule</title>\n<style>${css}</style>\n</head>\n<body>\n${toggleBar}\n<div id="schedule-root" data-serial="${serial}">\n${tabsHTML}\n<div class="schedule-content">${scheduleContent}</div>\n</div>\n${tabJS}\n${cardJS}\n${toggleJS}\n${resizeJS}\n${styleJS}\n${noCopyJS}\n${beaconJS}\n${pollJS}\n</body>\n</html>`;
+  const safeSerial = serial.replace(/[^0-9a-zA-Z.:+\-TZ]/g, '');
+  const lastUpdatedJS = safeSerial ? `\n<script>\n(function(){\n  var d=new Date('${safeSerial}');\n  if(isNaN(d))return;\n  var el=document.getElementById('last-updated');\n  if(!el)return;\n  el.innerHTML='<span class=\"hl-updated-dot\"></span> Last updated: '+d.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long',year:'numeric'})+', '+d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});\n})();\n</script>` : '';
+
+  return `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width,initial-scale=1.0"/>\n<title>Schedule</title>\n<style>${css}</style>\n</head>\n<body>\n${toggleBar}\n<div id="schedule-root" data-serial="${serial}">\n<div class="hl-updated" id="last-updated"></div>\n${tabsHTML}\n<div class="schedule-content">${scheduleContent}</div>\n</div>\n${tabJS}\n${cardJS}\n${toggleJS}\n${resizeJS}\n${styleJS}\n${noCopyJS}\n${beaconJS}\n${pollJS}\n${lastUpdatedJS}\n</body>\n</html>`;
 }
 
 function buildCalendarPage(
@@ -190,8 +195,8 @@ function buildCalendarPage(
   const paddingVal = Math.max(0, Math.min(80, parseInt(opts.padding) || 12));
   const bgOverride = opts.bgColor || '';
   const textOverride = opts.textColor || '';
-  const lightVars = `--bg:${bgOverride || '#fff'};--text:${textOverride || '#111827'};--muted:#6b7280;--heading:${textOverride || '#111827'};--border:#e5e7eb;--tab-bg:#f3f4f6;--surface:#f8f9fa;--accent:${accent};--card-bg:#f4f6f9;`;
-  const darkVars  = `--bg:${bgOverride || '#0f1117'};--text:${textOverride || '#e8eaf0'};--muted:#8b92a8;--heading:${textOverride || '#f0f2f8'};--border:#2d3142;--tab-bg:#1e2130;--surface:#1a1d27;--accent:${accent};--card-bg:#181c28;`;
+  const lightVars = `--bg:${bgOverride || '#fff'};--text:${textOverride || '#111827'};--muted:#6b7280;--heading:${textOverride || '#111827'};--border:#e5e7eb;--tab-bg:#f3f4f6;--surface:#f8f9fa;--accent:${accent};--card-bg:#f4f6f9;--hl-title-color:#000;`;
+  const darkVars  = `--bg:${bgOverride || '#0f1117'};--text:${textOverride || '#e8eaf0'};--muted:#8b92a8;--heading:${textOverride || '#f0f2f8'};--border:#2d3142;--tab-bg:#1e2130;--surface:#1a1d27;--accent:${accent};--card-bg:#181c28;--hl-title-color:${textOverride || '#f0f2f8'};`;
 
   const h3SizeCal   = rpc(opts.headerSize,       '14px', '16px', '19px');
   const dateSizeCal  = rpc(opts.dateFontSize,      '10px', '11px', '13px');
@@ -209,7 +214,9 @@ body{padding:${paddingVal}px}
 .vt-active{background:var(--accent,#3b82f6)!important;color:#fff!important;border-color:var(--accent,#3b82f6)!important}
 .hl-teams{font-size:var(--sb-hl-size)!important}
 .hl-league-spotlight{font-size:var(--sb-hl-size)!important;display:flex;align-items:center;gap:8px}
-.hl-title{font-size:var(--sb-h3-size)!important;font-weight:800;color:var(--heading,var(--text));margin:0 0 12px;text-transform:uppercase}
+.hl-title{font-size:var(--sb-h3-size)!important;font-weight:800;color:var(--hl-title-color,#000);margin:0 0 4px;text-transform:uppercase}
+.hl-updated{font-size:12px;color:#4ade80;margin:0 0 12px;display:flex;align-items:center;gap:6px}
+.hl-updated-dot{width:8px;height:8px;border-radius:50%;background:#4ade80;flex-shrink:0;display:inline-block}
 .hl-date-header{font-size:var(--sb-date-size)!important;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--heading,var(--text));padding:6px 0;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:8px}
 .hl-time{font-size:var(--sb-date-size)!important;font-weight:600;color:var(--accent,#3b82f6)}
 .hl-league-name{font-size:var(--sb-date-size)!important;font-weight:700;color:var(--heading,var(--text))}
@@ -237,7 +244,10 @@ body{padding:${paddingVal}px}
   const calToggleBar = !opts.hideViewToggle && !opts.noInlineToggle ? `<div class="vt-bar" style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:10px"><button class="vt-btn" data-layout="list" style="padding:4px 14px;border-radius:999px;border:1px solid var(--border,#e5e7eb);background:var(--tab-bg,#f3f4f6);color:var(--tab-text,#6b7280);cursor:pointer;font-size:12px;font-family:inherit;font-weight:500">List</button><button class="vt-btn vt-active" data-layout="calendar" style="padding:4px 14px;border-radius:999px;border:1px solid var(--accent,#3b82f6);background:var(--accent,#3b82f6);color:#fff;cursor:pointer;font-size:12px;font-family:inherit;font-weight:600">Calendar</button></div>` : '';
   const calToggleJS = !opts.hideViewToggle ? `\n<script>\n(function(){document.querySelectorAll('.vt-btn').forEach(function(b){b.addEventListener('click',function(){var u=new URL(location.href);u.searchParams.set('layout',b.getAttribute('data-layout'));location.replace(u.toString());});});})();\n</script>` : '';
 
-  return `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width,initial-scale=1.0"/>\n<title>Schedule</title>\n<style>${baseCss}${calendarCss}</style>\n</head>\n<body>\n${calToggleBar}\n<div id="schedule-root" data-serial="${serial}">${calendarHTML}</div>\n${calNavJS}\n${calToggleJS}\n${resizeJS}\n${styleJSCal}\n${noCopyJSCal}\n${beaconJS}\n${pollJS}\n</body>\n</html>`;
+  const safeSerialCal = serial.replace(/[^0-9a-zA-Z.:+\-TZ]/g, '');
+  const lastUpdatedJSCal = safeSerialCal ? `\n<script>\n(function(){\n  var d=new Date('${safeSerialCal}');\n  if(isNaN(d))return;\n  var el=document.getElementById('last-updated');\n  if(!el)return;\n  el.innerHTML='<span class=\"hl-updated-dot\"></span> Last updated: '+d.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long',year:'numeric'})+', '+d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});\n})();\n</script>` : '';
+
+  return `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width,initial-scale=1.0"/>\n<title>Schedule</title>\n<style>${baseCss}${calendarCss}</style>\n</head>\n<body>\n${calToggleBar}\n<div id="schedule-root" data-serial="${serial}"><div class="hl-updated" id="last-updated"></div>${calendarHTML}</div>\n${calNavJS}\n${calToggleJS}\n${resizeJS}\n${styleJSCal}\n${noCopyJSCal}\n${beaconJS}\n${pollJS}\n${lastUpdatedJSCal}\n</body>\n</html>`;
 }
 
 export async function GET(
@@ -331,6 +341,24 @@ export async function GET(
 
     schedule = data;
     if (data) scheduleAt = data.published_at ?? '';
+
+    // Global fallback: if a targeted query found nothing, try the global schedule
+    // (embed_target IS NULL). This prevents "No schedule published" when the user
+    // published via scheduled-publish/cron before embed_target support was added.
+    if (!schedule && scheduleTarget) {
+      const { data: globalData } = await supabase
+        .from('published_schedules')
+        .select('events_snapshot, league_order, featured_leagues, published_at')
+        .eq('user_id', keyData.user_id)
+        .is('embed_target', null)
+        .order('published_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (globalData) {
+        schedule = globalData;
+        scheduleAt = globalData.published_at ?? '';
+      }
+    }
   }
 
   if (!schedule) {

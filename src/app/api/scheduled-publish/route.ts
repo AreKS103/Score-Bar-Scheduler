@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { html, scheduledAt, weekLabel, dateRangeStart, dateRangeEnd, eventsSnapshot, leagueOrder, featuredLeagues } = await req.json();
+    const { html, scheduledAt, weekLabel, dateRangeStart, dateRangeEnd, eventsSnapshot, leagueOrder, featuredLeagues, embedTarget } = await req.json();
 
     if (!html || typeof html !== 'string') {
       return NextResponse.json({ error: 'Missing HTML content' }, { status: 400 });
@@ -20,6 +20,8 @@ export async function POST(req: NextRequest) {
     if (new Date(scheduledAt).getTime() <= Date.now()) {
       return NextResponse.json({ error: 'Scheduled time must be in the future' }, { status: 400 });
     }
+
+    const targetValue = (typeof embedTarget === 'string' && embedTarget.trim()) ? embedTarget.trim() : null;
 
     const { error } = await supabase.from('scheduled_publishes').insert({
       user_id: user.id,
@@ -32,6 +34,7 @@ export async function POST(req: NextRequest) {
       league_order: leagueOrder || [],
       featured_leagues: featuredLeagues || {},
       status: 'pending',
+      embed_target: targetValue,
     });
 
     if (error) {
@@ -148,6 +151,7 @@ export async function PATCH() {
           league_order: item.league_order || [],
           featured_leagues: item.featured_leagues || {},
           published_at: new Date().toISOString(),
+          embed_target: item.embed_target || null,
         });
 
         if (insertErr) throw insertErr;
