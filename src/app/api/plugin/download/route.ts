@@ -35,23 +35,25 @@ export async function GET() {
     }
 
     // Proxy the download server-side so WordPress never needs a GitHub token.
-    // Works for both public and private repos.
-    const dlHeaders: Record<string, string> = {
-      Accept: 'application/octet-stream',
+    // Use the GitHub Assets API endpoint (with asset ID) instead of browser_download_url.
+    // browser_download_url redirects to S3 and fetch() strips the Authorization header
+    // on redirect, causing 403 for private repos. The API endpoint returns bytes directly.
+    const assetHeaders: Record<string, string> = {
+      'Accept': 'application/octet-stream',
+      'X-GitHub-Api-Version': '2022-11-28',
       'User-Agent': 'ScoreBarScheduler-UpdateChecker/1.0',
     };
     if (process.env.GITHUB_TOKEN) {
-      dlHeaders['Authorization'] = `Bearer ${process.env.GITHUB_TOKEN}`;
+      assetHeaders['Authorization'] = `Bearer ${process.env.GITHUB_TOKEN}`;
     }
 
-    const zipRes = await fetch(zipAsset.browser_download_url, {
-      headers: dlHeaders,
-      redirect: 'follow',
-    });
-    console.log('[download] GitHub fetch status:', zipRes?.status);
-    console.log('[download] GitHub fetch ok:', zipRes?.ok);
-    console.log('[download] token present:', !!process.env.GITHUB_TOKEN);
-    console.log('[download] token prefix:', process.env.GITHUB_TOKEN?.substring(0, 4));
+    const zipRes = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO}/releases/assets/${zipAsset.id}`,
+      {
+        headers: assetHeaders,
+        redirect: 'follow',
+      },
+    );
     if (!zipRes.ok || !zipRes.body) {
       return NextResponse.json({ error: 'Failed to fetch zip from GitHub' }, { status: 502 });
     }
