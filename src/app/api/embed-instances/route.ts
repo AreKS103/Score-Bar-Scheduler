@@ -22,7 +22,10 @@ function getSessionCorsHeaders(req: NextRequest): Record<string, string> {
 }
 
 export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: corsHeaders });
+  return new NextResponse(null, { status: 204, headers: {
+    ...corsHeaders,
+    'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+  } });
 }
 
 const supabase = createClient(
@@ -190,6 +193,51 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return NextResponse.json({ error: 'Server error' }, { status: 500, headers: corsHeaders });
   }
+}
+
+/** PATCH /api/embed-instances — rename an embed (webapp only, session auth) */
+export async function PATCH(req: NextRequest) {
+  const sessionClient = await createServerClient();
+  const { data: { user } } = await sessionClient.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { embedId, newName } = await req.json();
+  if (!embedId || typeof newName !== 'string')
+    return NextResponse.json({ error: 'Missing embedId or newName' }, { status: 400 });
+
+  const safeName = newName.trim().substring(0, 64);
+  if (!safeName) return NextResponse.json({ error: 'Name cannot be empty' }, { status: 400 });
+  if (safeName === embedId) return NextResponse.json({ ok: true });
+
+  // Reject if the new name is already in use by another instance
+  const { data: conflict } = await supabase
+    .from('embed_instances')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('embed_id', safeName)
+    .maybeSingle();
+  if (conflict) return NextResponse.json({ error: 'Name already in use' }, { status: 409 });
+
+  const { error } = await supabase
+    .from('embed_instances')
+    .update({ embed_id: safeName })
+    .eq('user_id', user.id)
+    .eq('embed_id', embedId);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Cascade rename to related tables
+  await Promise.all([
+    supabase.from('published_schedules')
+      .update({ embed_target: safeName })
+      .eq('user_id', user.id)
+      .eq('embed_target', embedId),
+    supabase.from('user_selections')
+      .update({ embed_target: safeName })
+      .eq('user_id', user.id)
+      .eq('embed_target', embedId),
+  ]);
+
+  return NextResponse.json({ ok: true, newName: safeName });
 }
 
 /** GET /api/embed-instances

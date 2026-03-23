@@ -22,6 +22,7 @@
   /* ── Dedup: prevent multiple hooks from sending duplicate DELETEs / REGISTERs ── */
   var deletedWidgets = {};
   var registeredWidgets = new Set();
+  var registeredEmbedIds = {}; // widgetId → last embedId sent, for rename detection
 
   /* ── HTTP helpers ──────────────────────────────────────────────────────── */
 
@@ -48,6 +49,7 @@
     if (deletedWidgets[key]) return;
     deletedWidgets[key] = true;
     registeredWidgets.delete(key); // allow re-registration if widget is re-added
+    delete registeredEmbedIds[key];
     apiDelete(widgetId, embedId);
   }
 
@@ -67,8 +69,14 @@
 
   function apiRegister(widgetId, embedId) {
     var dedupKey = widgetId || embedId || '__unknown__';
-    if (registeredWidgets.has(dedupKey)) return;
+    if (registeredWidgets.has(dedupKey)) {
+      // Allow re-registration if the embed name changed in Elementor settings
+      if (!widgetId || registeredEmbedIds[widgetId] === (embedId || null)) return;
+      // embedId changed — clear slot so it re-registers with the new name
+      registeredWidgets.delete(dedupKey);
+    }
     registeredWidgets.add(dedupKey);
+    if (widgetId) registeredEmbedIds[widgetId] = embedId || null;
     try {
       var body = JSON.stringify({
         apiKey:     apiKey,
@@ -365,16 +373,17 @@
           var widgetId = w.dataset && w.dataset.id;
           if (!widgetId) return;
 
-          // Skip early if already registered (sbHeight fires on every resize)
-          if (registeredWidgets.has(widgetId)) return;
-
+          // Extract embedId first so we can detect renames even for registered widgets
           var embedId = null;
           try {
             var fr = w.querySelector('iframe[src]');
             if (fr) embedId = new URL(fr.src).searchParams.get('embedId') || null;
           } catch (e) {}
 
-          console.log('[SB] sbHeight relay → registering:', widgetId, embedId);
+          // Skip if already registered with the same embedId (sbHeight fires on every resize)
+          if (registeredWidgets.has(widgetId) &&
+              registeredEmbedIds[widgetId] === (embedId || null)) return;
+
           apiRegister(widgetId, embedId);
         });
       } catch (e) {}

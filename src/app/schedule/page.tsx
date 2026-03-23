@@ -208,6 +208,8 @@ export default function SchedulePage() {
   const [flashKey, setFlashKey] = useState(0);
   const [embedInstances, setEmbedInstances] = useState<{ display_id: string; embed_id: string | null }[]>([]);
   const [publishTarget, setPublishTarget] = useState<string>(''); // '' = all, or specific embed_id
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
 
   // ─── Derived embed selection key ───────────────────────────────────────────
   // When "All" is selected (publishTarget=''), we show the first embed's state.
@@ -243,6 +245,28 @@ export default function SchedulePage() {
     const id = setInterval(load, 120_000);
     return () => clearInterval(id);
   }, []);
+
+  // ─── Rename embed instance ─────────────────────────────────────────────────
+  async function commitRename(oldId: string) {
+    const trimmed = renameValue.trim();
+    setRenamingId(null);
+    if (!trimmed || trimmed === oldId) return;
+    try {
+      const r = await fetch('/api/embed-instances', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ embedId: oldId, newName: trimmed }),
+      });
+      const d = await r.json();
+      if (!r.ok) { alert(d.error ?? 'Rename failed'); return; }
+      setEmbedInstances(prev => prev.map(i =>
+        (i.embed_id ?? i.display_id) === oldId
+          ? { ...i, embed_id: trimmed, display_id: trimmed }
+          : i
+      ));
+      if (publishTarget === oldId) setPublishTarget(trimmed);
+    } catch { /* ignore */ }
+  }
 
   // ─── Reload selections when switching embeds ──────────────────────────────
   // Each embed has its own independent set of selected matches, league order,
@@ -1658,19 +1682,37 @@ export default function SchedulePage() {
               </button>
               {embedInstances.map((inst) => {
                 const value = inst.embed_id ?? inst.display_id;
+                const isRenaming = renamingId === value;
                 return (
-                  <button
-                    key={inst.display_id}
-                    onClick={() => setPublishTarget(value)}
-                    className={cn(
-                      'text-[11px] px-2 py-0.5 rounded-full border transition-all',
-                      publishTarget === value
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/30'
+                  <div key={inst.display_id} className="inline-flex">
+                    {isRenaming ? (
+                      <input
+                        autoFocus
+                        className="text-[11px] px-2 py-0.5 rounded-full border border-primary bg-background text-foreground outline-none w-24"
+                        value={renameValue}
+                        onChange={e => setRenameValue(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') commitRename(value);
+                          if (e.key === 'Escape') setRenamingId(null);
+                        }}
+                        onBlur={() => commitRename(value)}
+                      />
+                    ) : (
+                      <button
+                        onClick={() => setPublishTarget(value)}
+                        onDoubleClick={() => { setRenamingId(value); setRenameValue(inst.display_id); }}
+                        title="Double-click to rename"
+                        className={cn(
+                          'text-[11px] px-2 py-0.5 rounded-full border transition-all',
+                          publishTarget === value
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/30'
+                        )}
+                      >
+                        {inst.display_id}
+                      </button>
                     )}
-                  >
-                    {inst.display_id}
-                  </button>
+                  </div>
                 );
               })}
             </div>
