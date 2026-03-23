@@ -201,6 +201,12 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
                 if (e.data && typeof e.data.sbHeight === 'number') {
                     var f = document.getElementById(fid);
                     try { if (f && new URL(f.src).origin === e.origin) { f.style.height = e.data.sbHeight + 'px'; } } catch(err) {}
+                    // Relay to the Elementor editor window (parent of the preview iframe)
+                    try {
+                        if (window.parent && window.parent !== window) {
+                            window.parent.postMessage({ sbHeight: e.data.sbHeight, sbFromWidget: true }, '*');
+                        }
+                    } catch(er) {}
                 }
             });
             // MutationObserver: fire DELETE to clean up Supabase when this embed's DOM node is removed.

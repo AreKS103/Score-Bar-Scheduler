@@ -288,6 +288,21 @@
         return;
       }
       attachDocObserver(iframe.contentDocument);
+      // Relay sbHeight messages from nested widget iframes up to the editor window
+      function attachMessageRelay(win) {
+        try {
+          win.addEventListener('message', function (ev) {
+            try {
+              if (!ev.data || typeof ev.data.sbHeight === 'undefined') return;
+              window.postMessage({ sbHeight: ev.data.sbHeight, sbFromWidget: true }, '*');
+            } catch (e) {}
+          });
+          console.log('[SB] preview message relay attached');
+        } catch (e) {
+          console.warn('[SB] could not attach preview relay:', e);
+        }
+      }
+      attachMessageRelay(iframe.contentWindow);
       // Poll every 2s to detect iframe document replacement (Elementor swaps doc on preview refresh)
       var lastDoc = iframe.contentDocument;
       setInterval(function () {
@@ -310,6 +325,8 @@
           if (newDoc && newDoc.body) {
             attachDocObserver(newDoc);
           }
+          // Re-attach message relay on the new window after reload
+          if (iframe.contentWindow) attachMessageRelay(iframe.contentWindow);
         } catch (e) { console.warn('[SB] re-attach after reload failed', e); }
       });
     } catch (e) {
@@ -349,6 +366,8 @@
         if (!previewDoc || !previewDoc.body) return;
 
         var widgets = previewDoc.querySelectorAll('[data-widget_type^="schedule_widget"]');
+        if (!widgets.length) return;
+
         widgets.forEach(function (w) {
           var widgetId = w.dataset && w.dataset.id;
           if (!widgetId) return;
@@ -359,7 +378,7 @@
             if (fr) embedId = new URL(fr.src).searchParams.get('embedId') || null;
           } catch (e) {}
 
-          console.log('[SB] sbHeight → registering widget:', widgetId, embedId);
+          console.log('[SB] sbHeight relay → registering:', widgetId, embedId);
           apiRegister(widgetId, embedId);
         });
       } catch (e) {}
