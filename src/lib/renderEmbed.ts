@@ -134,9 +134,15 @@ function buildMatchLine(event: MatchEvent, showTime: boolean, sharedRound: strin
   const isCombat = ['boxing', 'ufc', 'bellator'].includes(e.sportId);
   const homeFlag = isCombat && e.homeCountry ? `<span style="font-size:1em;margin-right:2px" title="${esc(e.homeCountry)}">${countryFlag(e.homeCountry)}</span>` : '';
   const awayFlag = isCombat && e.awayCountry ? `<span style="font-size:1em;margin-right:2px" title="${esc(e.awayCountry)}">${countryFlag(e.awayCountry)}</span>` : '';
+  // For combat-sport card-level entries (no away fighter), the home field may contain
+  // the full advertised name like "UFC Fight Night: Adesanya vs. Pyfer". Strip the
+  // ": Fighter vs. Fighter" suffix so individual fight rows below aren't duplicated.
+  const homeDisplay = isCombat && !e.away && e.home.includes(':')
+    ? e.home.substring(0, e.home.indexOf(':')).trim()
+    : e.home;
   const matchContent = e.away
     ? `<span class="mc-team">${homeFlag}${esc(e.home)}</span><span class="vs-sep">vs</span><span class="mc-team">${awayFlag}${esc(e.away)}</span>`
-    : `<span class="mc-team">${esc(e.home)}</span>`;
+    : `<span class="mc-team">${esc(homeDisplay)}</span>`;
   const roundStr = e.round ? `<span class="mc-round"> \u2013 ${esc(e.round)}</span>` : '';
   const tagsStr = e.tags?.length ? ` \u2013 <em>(${e.tags.join(', ')})</em>` : '';
   return showTime

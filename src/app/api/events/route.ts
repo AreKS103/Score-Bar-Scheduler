@@ -752,9 +752,10 @@ const COMBAT_SPORT_IDS = new Set(['4445']);
  * Parse a TheSportsDB fight event name into card name, home fighter, away fighter.
  *
  * UFC examples:
- *   "UFC 326 Holloway vs Oliveira 2"      → card="UFC 326", home="Holloway", away="Oliveira 2"
- *   "UFC Fight Night 269 Emmett vs Vallejos" → card="UFC Fight Night 269", home="Emmett", away="Vallejos"
- *   "UFC White House"                      → card="UFC White House", home="UFC White House", away=""
+ *   "UFC 326 Holloway vs Oliveira 2"        → card="UFC 326", home="Holloway", away="Oliveira 2"
+ *   "UFC Fight Night 269 Emmett vs Vallejos"  → card="UFC Fight Night 269", home="Emmett", away="Vallejos"
+ *   "UFC Fight Night: Adesanya vs. Pyfer"     → card="UFC Fight Night", home="Adesanya", away="Pyfer"
+ *   "UFC White House"                         → card="UFC White House", home="UFC White House", away=""
  *
  * Boxing examples:
  *   "Teofimo Lopez vs Shakur Stevenson"   → card="", home="Teofimo Lopez", away="Shakur Stevenson"
@@ -764,7 +765,21 @@ function parseSDBFightEvent(
   strEvent: string,
   sportsdbId: string
 ): { cardName: string; home: string; away: string } {
-  const vsMatch = strEvent.match(/^(.+?)\s+vs\s+(.+)$/i);
+  // Handle "Card Name: Fighter vs. Fighter" (colon-separated, optional dot after vs).
+  // TheSportsDB often uses this format, e.g. "UFC Fight Night: Adesanya vs. Pyfer".
+  // Must be checked BEFORE the plain-vs path so the colon doesn't end up in home.
+  const colonVsMatch = strEvent.match(/^(.+?):\s*(.+?)\s+vs\.?\s+(.+)$/i);
+  if (colonVsMatch) {
+    return {
+      cardName: colonVsMatch[1].trim(),
+      home:     colonVsMatch[2].trim(),
+      away:     colonVsMatch[3].trim(),
+    };
+  }
+
+  // Standard "Fighter vs[.] Fighter" or "Card# Fighter vs Fighter" format.
+  // Also handles "vs." (with dot) used by ESPN-style names copied into SportsDB.
+  const vsMatch = strEvent.match(/^(.+?)\s+vs\.?\s+(.+)$/i);
 
   if (!vsMatch) {
     // No "vs" — special event (e.g. "UFC White House", "Night of Champions XIV")

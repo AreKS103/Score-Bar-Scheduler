@@ -163,10 +163,15 @@ function generateMatchLine(event: MatchEvent): string {
   const isCombat = ['boxing', 'ufc', 'bellator'].includes(event.sportId);
   const homeFlag = isCombat && event.homeCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(event.homeCountry)}</span>` : '';
   const awayFlag = isCombat && event.awayCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(event.awayCountry)}</span>` : '';
+  // For combat-sport card-level entries (no away fighter), strip the ":Fighter vs. Fighter"
+  // suffix so only the card name (e.g. "UFC Fight Night") shows in this row.
+  const homeDisplay = isCombat && !event.away && event.home.includes(':')
+    ? event.home.substring(0, event.home.indexOf(':')).trim()
+    : event.home;
   // Team logos are only shown in the highlights section, not in the schedule list rows.
   const matchContent = event.away
     ? `<span class="mc-team">${homeFlag}${escapeHTML(event.home)}</span><span class="vs-sep">vs</span><span class="mc-team">${awayFlag}${escapeHTML(event.away)}</span>`
-    : `<span class="mc-team">${escapeHTML(event.home)}</span>`;
+    : `<span class="mc-team">${escapeHTML(homeDisplay)}</span>`;
   const roundStr = event.round ? `<span class="mc-round"> \u2013 ${escapeHTML(event.round)}</span>` : '';
   const tags = formatTags(event.tags);
   return `<span class="ml-time">${escapeHTML(event.time)}</span><span class="ml-match">${matchContent}${roundStr}${tags}</span>`;
