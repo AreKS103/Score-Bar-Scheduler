@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState, useEffect } from 'react';
-import { LogOut, Moon, Sun, MoreHorizontal, Building2 } from 'lucide-react';
+import { LogOut, Moon, Sun, MoreHorizontal, Building2, Settings } from 'lucide-react';
 import { useThemeStore } from '@/lib/themeStore';
 import { cn } from '@/lib/utils';
 
@@ -9,6 +9,7 @@ interface UserProfileMenuProps {
   email: string | null;
   onLogout: () => void;
   onBusinessInfo: () => void;
+  onSettings: () => void;
 }
 
 function getInitials(email: string | null): string {
@@ -18,7 +19,7 @@ function getInitials(email: string | null): string {
   return email.slice(0, 2).toUpperCase();
 }
 
-export default function UserProfileMenu({ email, onLogout, onBusinessInfo }: UserProfileMenuProps) {
+export default function UserProfileMenu({ email, onLogout, onBusinessInfo, onSettings }: UserProfileMenuProps) {
   const [open, setOpen] = useState(false);
   const { theme, toggleTheme } = useThemeStore();
   const isDark = theme === 'dark';
@@ -52,18 +53,21 @@ export default function UserProfileMenu({ email, onLogout, onBusinessInfo }: Use
           'bg-popover border border-border rounded-xl shadow-2xl shadow-black/30 overflow-hidden',
           'animate-in fade-in-0 slide-in-from-bottom-2 duration-150',
         )}>
-          {/* User info header */}
-          <div className="flex items-center gap-3 px-3 py-3 border-b border-border">
+          {/* User info header — clicking opens Settings */}
+          <button
+            onClick={() => { setOpen(false); onSettings(); }}
+            className="w-full flex items-center gap-3 px-3 py-3 border-b border-border hover:bg-accent transition-colors text-left"
+          >
             <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold shrink-0 select-none">
               {initials}
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold text-foreground truncate leading-tight">
                 {email ?? 'Unknown user'}
               </p>
               <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">Your Account</p>
             </div>
-          </div>
+          </button>
 
           {/* Theme toggle */}
           <div className="px-3 py-2.5 flex items-center justify-between">
@@ -94,8 +98,15 @@ export default function UserProfileMenu({ email, onLogout, onBusinessInfo }: Use
 
           <div className="border-t border-border mx-2" />
 
-          {/* Business Information */}
-          <div className="px-1.5 pt-1.5">
+          {/* Settings + Business Information */}
+          <div className="px-1.5 pt-1.5 space-y-0.5">
+            <button
+              onClick={() => { setOpen(false); onSettings(); }}
+              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              Settings
+            </button>
             <button
               onClick={() => { setOpen(false); onBusinessInfo(); }}
               className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
@@ -120,32 +131,30 @@ export default function UserProfileMenu({ email, onLogout, onBusinessInfo }: Use
         </div>
       )}
 
-      {/* ── Trigger row ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 px-2 py-2">
+      {/* ── Trigger row — whole row opens the popover ───────────────────────── */}
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-label="Open user menu"
+        aria-expanded={open}
+        className={cn(
+          'w-full flex items-center gap-2 px-2 py-2 rounded-lg transition-all',
+          'hover:bg-accent',
+          open && 'bg-accent'
+        )}
+      >
         {/* Avatar */}
         <div className="w-7 h-7 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[11px] font-bold shrink-0 select-none">
           {initials}
         </div>
 
         {/* Email */}
-        <p className="flex-1 text-xs text-muted-foreground truncate min-w-0 leading-none">
+        <p className="flex-1 text-xs text-muted-foreground truncate min-w-0 leading-none text-left">
           {email ?? '—'}
         </p>
 
-        {/* Three-dot button */}
-        <button
-          onClick={() => setOpen((v) => !v)}
-          aria-label="Open user menu"
-          aria-expanded={open}
-          className={cn(
-            'shrink-0 p-1 rounded-md text-muted-foreground transition-all',
-            'hover:text-foreground hover:bg-accent',
-            open && 'bg-accent text-foreground'
-          )}
-        >
-          <MoreHorizontal className="w-4 h-4" />
-        </button>
-      </div>
+        {/* Three-dot icon (decorative — whole row is the click target) */}
+        <MoreHorizontal className={cn('w-4 h-4 shrink-0 transition-colors', open ? 'text-foreground' : 'text-muted-foreground')} />
+      </button>
     </div>
   );
 }

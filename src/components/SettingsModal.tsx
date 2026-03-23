@@ -241,38 +241,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </Button>
               </div>
 
-              {/* Delete account */}
-              <div className="pt-1">
-                {!deleteConfirm ? (
-                  <button
-                    onClick={() => setDeleteConfirm(true)}
-                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    Delete Account
-                  </button>
-                ) : (
-                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-3">
-                    <p className="text-sm font-medium text-destructive">
-                      Are you sure? This permanently deletes your account and all data.
-                    </p>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={deleteAccount}
-                        disabled={deleting}
-                        className="flex-1"
-                      >
-                        {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Yes, Delete My Account'}
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => setDeleteConfirm(false)}>
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
+
             </CardContent>
           </Card>
 
@@ -410,6 +379,46 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
             </CardContent>
           </Card>
+
+          {/* ── Delete Account (Vercel-style) ─────────────────────────────── */}
+          <div className="rounded-xl border border-destructive/40 overflow-hidden">
+            {/* Header */}
+            <div className="px-5 py-4">
+              <h3 className="text-sm font-semibold text-foreground">Delete Account</h3>
+              <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                Permanently remove your account and all of its contents. This action is not reversible, so please continue with caution.
+              </p>
+            </div>
+            {/* Footer strip */}
+            <div className={cn(
+              'px-5 py-3 flex items-center justify-end gap-3',
+              'bg-destructive/8 border-t border-destructive/30',
+            )}>
+              {deleteConfirm ? (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => setDeleteConfirm(false)} disabled={deleting}>
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={deleteAccount}
+                    disabled={deleting}
+                    className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                  >
+                    {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Confirm Delete'}
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  size="sm"
+                  onClick={() => setDeleteConfirm(true)}
+                  className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                >
+                  Delete Account
+                </Button>
+              )}
+            </div>
+          </div>
 
         </div>
       </div>
