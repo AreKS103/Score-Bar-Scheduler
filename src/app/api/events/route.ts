@@ -548,6 +548,30 @@ async function fetchESPNLeague(
       }
     }
 
+    // NCAA Tournament: augment with the full bracket from the schedule endpoint.
+    // The scoreboard only surfaces games on/near today; schedule?seasontype=3 returns
+    // all 67 tournament games so the full bracket is available for any date range.
+    if (league.id === 'basketball-ncaam') {
+      // NCAA academic year: Aug–Dec → season year = next calendar year; Jan–Jul → this year.
+      const refYear = new Date(endDate);
+      const ncaaSeasonYear = (refYear.getMonth() + 1) >= 8
+        ? refYear.getFullYear() + 1
+        : refYear.getFullYear();
+      const schedUrl = `${ESPN_BASE}/${league.slug}/schedule?season=${ncaaSeasonYear}&seasontype=3`;
+      const schedData = await espnFetchWithRetry<ESPNScoreboardResponse>(schedUrl, 5_000);
+      if (schedData?.events?.length) {
+        const existingIds = new Set((data?.events ?? []).map(e => e.id));
+        const extra = schedData.events.filter(e => !existingIds.has(e.id));
+        if (data) {
+          data = { events: [...(data.events ?? []), ...extra], leagues: data.leagues ?? schedData.leagues };
+        } else {
+          // Both scoreboard and fallback returned nothing — bootstrap from schedule
+          data = { events: schedData.events, leagues: schedData.leagues };
+        }
+        console.log(`[ESPN-NCAA] schedule endpoint: ${schedData.events.length} tournament events, +${extra.length} added to pool`);
+      }
+    }
+
     // Diagnostic logging for combat sports (UFC/Bellator)
     if (isMMA) {
       const eventCount = data?.events?.length ?? 0;
@@ -578,6 +602,12 @@ async function fetchESPNLeague(
       parsed = mapTennisMatches(events, league, meta);
     } else {
       parsed = mapTeamSportEvents(events, league, meta, seasonTypeId);
+    }
+
+    // For NCAA, apply the date-range filter here: the schedule endpoint returns all 67
+    // tournament games; only surfacing the ones inside the user's requested window.
+    if (league.id === 'basketball-ncaam') {
+      parsed = parsed.filter(e => e.date >= startDate && e.date <= endDate);
     }
 
     if (parsed.length > 0) {
