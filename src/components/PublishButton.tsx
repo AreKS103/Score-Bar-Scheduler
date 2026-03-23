@@ -11,6 +11,7 @@ interface ScheduleSummary {
   id: string;
   week_label: string;
   published_at: string;
+  embed_target: string | null;
 }
 
 interface PendingSchedule {
@@ -36,7 +37,7 @@ interface PublishButtonProps {
     leagueOrder: string[];
     featuredLeagues: Record<string, string>;
   };
-  onRestoreSchedule?: (scheduleId: string) => void;
+  onRestoreSchedule?: (scheduleId: string, embedTarget?: string | null) => void;
   hasCurrentSelections?: boolean;
   /** Embed instances + publish target — lifted from parent */
   embedInstances?: { display_id: string; embed_id: string | null }[];
@@ -242,13 +243,14 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
   const handlePublishClick = () => {
     if (disabled || countdown !== null || status === 'pushing') return;
 
-    // Prefetch the previous schedule concurrently with the countdown
-    // so it's ready by the time publish succeeds (~6-8 seconds later).
+    // Prefetch the previous schedule for THIS embed so undo can restore it.
+    // Scope the query to the current publishTarget so we capture the right row.
     prevScheduleRef.current = null;
-    fetch('/api/schedule-history')
+    const targetParam = publishTarget ? `?target=${encodeURIComponent(publishTarget)}` : '?target=';
+    fetch(`/api/schedule-history${targetParam}`)
       .then(r => r.json())
       .then(async (data) => {
-        const latest = data.schedules?.[0];
+        const latest = data.schedule ?? data.schedules?.[0];
         if (latest?.id) {
           const r2 = await fetch(`/api/schedule-history/${latest.id}`);
           if (r2.ok) {
@@ -284,6 +286,7 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
           eventsSnapshot: prevSchedule.events_snapshot,
           leagueOrder: prevSchedule.league_order,
           featuredLeagues: prevSchedule.featured_leagues,
+          embedTarget: prevSchedule.embed_target ?? null,
         }),
       });
       if (!res.ok) throw new Error('Revert failed');
@@ -425,7 +428,7 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
                           </button>
                           <button
                             onClick={() => {
-                              onRestoreSchedule?.(item.id);
+                              onRestoreSchedule?.(item.id, item.embed_target);
                               setHistoryOpen(false);
                               setRestoreConfirm(null);
                             }}
@@ -441,6 +444,11 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
                         className="w-full relative text-left pl-3 pr-4 py-2.5 hover:bg-accent transition-colors flex items-start"
                       >
                         <div className="w-full min-w-0 pr-2">
+                          {item.embed_target && (
+                            <span className="inline-block text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 mb-1">
+                              {item.embed_target}
+                            </span>
+                          )}
                           <p className="text-sm text-foreground leading-snug wrap-break-word whitespace-normal">
                             {item.week_label}
                           </p>

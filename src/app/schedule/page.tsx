@@ -872,6 +872,10 @@ export default function SchedulePage() {
   // saved state with intermediate (unmerged) event data.
   useEffect(() => {
     if (events.length === 0 || isFetching) return;
+    // Don't save selections while the embed target is still unknown (embedInstances
+    // haven't loaded yet). Saving to '' would contaminate the global slot and could
+    // bleed into other embeds when they fallback-load from that slot.
+    if (!effectiveTargetRef.current && embedInstances.length === 0) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       const selections: SavedSelectionState['selections'] = {};
@@ -888,7 +892,7 @@ export default function SchedulePage() {
       }, effectiveTargetRef.current);
     }, 800);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [events, leagueOrder, featuredLeagues, isFetching]);
+  }, [events, leagueOrder, featuredLeagues, isFetching, embedInstances]);
 
   // ─── Flush selection state on page unload (prevents losing recent changes) ─
   // The debounced save above may not fire if the user refreshes within 800ms.
@@ -1286,7 +1290,15 @@ export default function SchedulePage() {
     featuredLeagues: Object.fromEntries(featuredLeagues),
   }), [dateRange, events, leagueOrder, featuredLeagues]);
 
-  const handleRestoreSchedule = useCallback(async (scheduleId: string) => {
+  const handleRestoreSchedule = useCallback(async (scheduleId: string, embedTarget?: string | null) => {
+    // If the schedule belongs to a different embed, switch to that embed pill first
+    // so the restored selections are associated with the correct target.
+    if (embedTarget && embedTarget !== publishTarget) {
+      setPublishTarget(embedTarget);
+      // Brief yield so the embed-switch effect runs and clears current selections
+      // before we overwrite them with the restored snapshot.
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
     setIsRestoringSchedule(true);
     try {
       const normalizeEvent = (e: MatchEvent): MatchEvent => {
@@ -1380,7 +1392,7 @@ export default function SchedulePage() {
     } finally {
       setIsRestoringSchedule(false);
     }
-  }, [dateRange.end, dateRange.start, setDateRange, setEvents]);
+  }, [dateRange.end, dateRange.start, publishTarget, setDateRange, setEvents]);
 
   return (
     <div className="flex h-screen bg-background text-foreground">

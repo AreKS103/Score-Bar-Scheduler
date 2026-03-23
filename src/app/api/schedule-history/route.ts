@@ -77,13 +77,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ schedule: data?.[0] ?? null });
     }
 
-    // No ?target → return history list (for PublishButton history drawer)
+    // No ?target → return history list (for PublishButton history drawer).
+    // Returns the most-recent published schedule for each embed_target so the
+    // drawer can show all embeds (e.g. "Homepage" + "Schedule Page") with labels.
+    // MAX_HISTORY=1 per embed means there are at most N rows total (N = number of embeds).
     const { data, error } = await supabase
       .from('published_schedules')
-      .select('id, week_label, date_range_start, date_range_end, published_at')
+      .select('id, week_label, date_range_start, date_range_end, published_at, embed_target')
       .eq('user_id', user.id)
-      .order('published_at', { ascending: false })
-      .limit(1);
+      .order('published_at', { ascending: false });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ schedules: data ?? [] });

@@ -276,13 +276,16 @@ export async function GET(
   const widgetId = (sp._wid    ?? '').replace(/[^\w-]/g, '').substring(0, 64);
 
   // Resolve the schedule target:
-  //  • Named embed    → use embedId directly  (e.g. "home", "main")
-  //  • Unnamed widget → look up its auto-assigned embed_id ("1", "2", …) via widget_id
+  //  • widgetId present → DB lookup is authoritative (catches stale/wrong Elementor Element IDs)
+  //  • Named embed only → use embedId directly  (e.g. "home", "main")
   //  • No id at all   → empty string → match against null embed_target (global publish)
-  //  • Widget present but not yet in DB (just added) → widgetNotRegistered=true → show empty
+  //  • Widget present but not yet in DB (just added) AND no embedId → show empty
   let scheduleTarget = embedId;
   let widgetNotRegistered = false;
-  if (!embedId && widgetId) {
+  if (widgetId) {
+    // When a widget ID is present the DB is the authoritative source for the embed name.
+    // This prevents cases where both Elementor widgets share the same "Element ID" field
+    // value, or where the user renamed the embed in the web app without updating Elementor.
     const { data: inst } = await supabase
       .from('embed_instances')
       .select('embed_id')
@@ -290,12 +293,14 @@ export async function GET(
       .eq('widget_id', widgetId)
       .maybeSingle();
     if (inst?.embed_id) {
-      scheduleTarget = inst.embed_id;
-    } else {
+      scheduleTarget = inst.embed_id; // DB name overrides URL param — always correct
+    } else if (!embedId) {
       // Widget exists in the page but hasn't been registered yet (or just added).
       // Do NOT fall through to the global schedule — show the empty state instead.
       widgetNotRegistered = true;
     }
+    // If widget not in DB but embedId IS set, fall through with the URL's embedId
+    // (backwards compat for embeds that haven't beaconed yet).
   }
 
   // Strict schedule resolution: match exactly on embed_target.
