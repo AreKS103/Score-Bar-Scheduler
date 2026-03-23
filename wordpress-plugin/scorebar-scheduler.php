@@ -3,7 +3,7 @@
  * Plugin Name: Scheduler
  * Plugin URI:
  * Description: A sports schedule widget for your website.
- * Version: 1.1.1
+ * Version: 1.1.2
  * Text Domain: scorebar-scheduler
  * Requires at least: 6.0
  * Tested up to: 6.7
@@ -137,7 +137,7 @@ if (!function_exists('schedule_enqueue_editor_sync')) {
         );
         wp_localize_script('schedule-editor-sync', '_sbEditorCfg', [
             'appUrl' => schedule_get_app_domain(),
-            'apiKey' => !empty($embed_token) ? $embed_token : $api_key,
+            'apiKey' => $api_key,
         ]);
     }
 }
