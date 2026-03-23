@@ -126,8 +126,8 @@ ${isCard ? `.league-block{background:var(--card-bg);border:1px solid var(--borde
 .mc-round{font-size:.82em;color:var(--muted,#888)}
 .hl-section{margin-bottom:22px}
 .hl-title{font-size:var(--sb-h3-size)!important;font-weight:800;color:var(--hl-title-color,#000);margin:0 0 4px;text-transform:uppercase}
-.hl-updated{font-size:12px;color:#4ade80;margin:0 0 12px;display:flex;align-items:center;gap:6px}
-.hl-updated-dot{width:8px;height:8px;border-radius:50%;background:#4ade80;flex-shrink:0;display:inline-block}
+.hl-updated{font-size:12px;color:#6b7280;margin:0 0 12px;display:flex;align-items:center;gap:6px}
+.hl-updated-dot{width:8px;height:8px;border-radius:50%;background:#ef4444;flex-shrink:0;display:inline-block}
 .hl-date-group{margin-bottom:10px}
 .hl-date-header{font-size:var(--sb-date-size)!important;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--heading,var(--text));padding:6px 0;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:8px}
 .hl-event{padding:7px 0}
@@ -215,8 +215,8 @@ body{padding:${paddingVal}px}
 .hl-teams{font-size:var(--sb-hl-size)!important}
 .hl-league-spotlight{font-size:var(--sb-hl-size)!important;display:flex;align-items:center;gap:8px}
 .hl-title{font-size:var(--sb-h3-size)!important;font-weight:800;color:var(--hl-title-color,#000);margin:0 0 4px;text-transform:uppercase}
-.hl-updated{font-size:12px;color:#4ade80;margin:0 0 12px;display:flex;align-items:center;gap:6px}
-.hl-updated-dot{width:8px;height:8px;border-radius:50%;background:#4ade80;flex-shrink:0;display:inline-block}
+.hl-updated{font-size:12px;color:#6b7280;margin:0 0 12px;display:flex;align-items:center;gap:6px}
+.hl-updated-dot{width:8px;height:8px;border-radius:50%;background:#ef4444;flex-shrink:0;display:inline-block}
 .hl-date-header{font-size:var(--sb-date-size)!important;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--heading,var(--text));padding:6px 0;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:8px}
 .hl-time{font-size:var(--sb-date-size)!important;font-weight:600;color:var(--accent,#3b82f6)}
 .hl-league-name{font-size:var(--sb-date-size)!important;font-weight:700;color:var(--heading,var(--text))}

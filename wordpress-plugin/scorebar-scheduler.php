@@ -3,7 +3,7 @@
  * Plugin Name: Scheduler
  * Plugin URI:
  * Description: A sports schedule widget for your website.
- * Version: 1.1.8
+ * Version: 1.1.9
  * Text Domain: scorebar-scheduler
  * Requires at least: 6.0
  * Tested up to: 6.7
@@ -12,7 +12,7 @@
 if (!defined('ABSPATH')) exit;
 
 // Plugin version — must match the "Version:" header above.
-define('SCHEDULE_PLUGIN_VERSION', '1.1.8');
+define('SCHEDULE_PLUGIN_VERSION', '1.1.9');
 
 // ── PHP version gate ────────────────────────────────────────────────────────
 if (version_compare(PHP_VERSION, '7.4', '<')) {
@@ -234,3 +234,31 @@ if (!function_exists('schedule_check_for_plugin_update')) {
         return $transient;
     }
 }
+
+// ── Force-clear update transients ─────────────────────────────────────────────
+// Visit /wp-admin/plugins.php?force-update-check=1 to immediately discard the
+// cached API response and make WordPress re-run the plugin update check.
+// This is essential when:
+//   - A new release was just pushed to GitHub and you don't want to wait an hour.
+//   - Debugging whether the update endpoint returns the expected version.
+add_action('admin_init', function () {
+    if (
+        isset($_GET['force-update-check']) &&
+        current_user_can('manage_options')
+    ) {
+        // 1. Delete our own API-response cache (key: scorebar_update_check, TTL: 1 hour).
+        //    Without this, the filter above just returns the stale cached version and
+        //    never re-fetches from /api/plugin/update.
+        delete_transient('scorebar_update_check');
+
+        // 2. Delete WordPress's own plugin-update transient (TTL: 12 hours by default).
+        //    Without this, WordPress won't re-run pre_set_site_transient_update_plugins
+        //    even if our API would now return a newer version.
+        delete_site_transient('update_plugins');
+
+        // Redirect back to the plugins page without the query param so a page refresh
+        // doesn't re-trigger the clear action.
+        wp_safe_redirect(admin_url('plugins.php?update-check-cleared=1'));
+        exit;
+    }
+});
