@@ -582,8 +582,9 @@ async function fetchESPNLeague(
     if (!data?.events) {
       const stale = pathCache.get(league.id);
       if (stale && Date.now() - stale.fetchedAt < PATH_STALE_MAX_MS) {
-        console.log(`[ESPN] ${league.id} failed → serving ${stale.events.length} stale events`);
-        return stale.events;
+        const filtered = stale.events.filter(e => e.date >= startDate && e.date <= endDate);
+        console.log(`[ESPN] ${league.id} failed → serving ${filtered.length}/${stale.events.length} stale events in range`);
+        return filtered;
       }
       console.warn(`[ESPN] ${league.id} returned no data`);
       return [];
@@ -604,11 +605,10 @@ async function fetchESPNLeague(
       parsed = mapTeamSportEvents(events, league, meta, seasonTypeId);
     }
 
-    // For NCAA, apply the date-range filter here: the schedule endpoint returns all 67
-    // tournament games; only surfacing the ones inside the user's requested window.
-    if (league.id === 'basketball-ncaam') {
-      parsed = parsed.filter(e => e.date >= startDate && e.date <= endDate);
-    }
+    // Apply date-range guard to all leagues: prevents the 404-fallback (which fetches
+    // without dates when ESPN returns 404 for off-season leagues like BBL in March) or
+    // the stale path-cache from leaking out-of-range events into the schedule view.
+    parsed = parsed.filter(e => e.date >= startDate && e.date <= endDate);
 
     if (parsed.length > 0) {
       pathCache.set(league.id, { events: parsed, fetchedAt: Date.now() });
@@ -618,8 +618,9 @@ async function fetchESPNLeague(
   } catch (err) {
     const stale = pathCache.get(league.id);
     if (stale && Date.now() - stale.fetchedAt < PATH_STALE_MAX_MS) {
-      console.log(`[ESPN] ${league.id} error → serving ${stale.events.length} stale events`);
-      return stale.events;
+      const filtered = stale.events.filter(e => e.date >= startDate && e.date <= endDate);
+      console.log(`[ESPN] ${league.id} error → serving ${filtered.length}/${stale.events.length} stale events in range`);
+      return filtered;
     }
     console.warn(`[ESPN] ${league.id} failed:`, (err as Error).message);
     return [];

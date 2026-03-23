@@ -12,6 +12,9 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.next({ request });
   }
 
+  // Wrap everything in try/catch so a Supabase outage or bad token never
+  // causes a 404/500 — worst case we fall through to the page as-is.
+  try {
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -85,4 +88,10 @@ export async function updateSession(request: NextRequest) {
   }
 
   return supabaseResponse;
+  } catch (err) {
+    // If anything goes wrong (network error, malformed token, etc.) just
+    // allow the request through instead of surfacing a 404/500.
+    console.error('[Middleware] updateSession error — falling through:', err);
+    return NextResponse.next({ request });
+  }
 }
