@@ -312,52 +312,57 @@ export async function GET(
     if (inst?.embed_id) {
       scheduleTarget = inst.embed_id; // DB name overrides URL param — always correct
     } else if (!embedId) {
-      // Widget exists in the page but hasn't been registered yet (or just added).
-      // Do NOT fall through to the global schedule — show the empty state instead.
-      widgetNotRegistered = true;
+      // embed_instances row missing but widget exists on page.
+      // Do NOT block — fall through to schedule lookup.
+      // Try resolving by embed name first, then fall back to
+      // global NULL schedule. This ensures the schedule ALWAYS
+      // shows as long as something is published, regardless of
+      // whether the registration row exists.
+      widgetNotRegistered = false;
+      scheduleTarget = embedId || '';
     }
     // If widget not in DB but embedId IS set, fall through with the URL's embedId
     // (backwards compat for embeds that haven't beaconed yet).
   }
 
-  // Strict schedule resolution: match exactly on embed_target.
-  // If scheduleTarget is set → only return a schedule published to that exact embed.
-  // If scheduleTarget is absent AND no widget context → global schedule (embed_target IS NULL).
-  // If widgetNotRegistered → skip DB query entirely (avoids leaking the global schedule).
+  // Schedule resolution: match on embed_target, with global fallback.
+  // Fallback chain:
+  //   1. Try exact embed_target match → found? show it
+  //   2. Not found? Try global schedule (NULL embed_target) → show it
+  //   3. Nothing published at all? Show empty state
+  // This ensures the schedule ALWAYS shows as long as something is published.
   let schedule: { events_snapshot: unknown; league_order: unknown; featured_leagues: unknown; published_at?: string } | null = null;
   let scheduleAt = '';
 
-  if (!widgetNotRegistered) {
-    const baseQuery = supabase
+  const baseQuery = supabase
+    .from('published_schedules')
+    .select('events_snapshot, league_order, featured_leagues, published_at')
+    .eq('user_id', keyData.user_id)
+    .order('published_at', { ascending: false })
+    .limit(1);
+
+  const { data } = scheduleTarget
+    ? await baseQuery.eq('embed_target', scheduleTarget).maybeSingle()
+    : await baseQuery.is('embed_target', null).maybeSingle();
+
+  schedule = data;
+  if (data) scheduleAt = data.published_at ?? '';
+
+  // Global fallback: if a targeted query found nothing, try the global schedule
+  // (embed_target IS NULL). This ensures the schedule never shows empty when
+  // the user has published any schedule, regardless of embed_instances state.
+  if (!schedule && scheduleTarget) {
+    const { data: globalData } = await supabase
       .from('published_schedules')
       .select('events_snapshot, league_order, featured_leagues, published_at')
       .eq('user_id', keyData.user_id)
+      .is('embed_target', null)
       .order('published_at', { ascending: false })
-      .limit(1);
-
-    const { data } = scheduleTarget
-      ? await baseQuery.eq('embed_target', scheduleTarget).maybeSingle()
-      : await baseQuery.is('embed_target', null).maybeSingle();
-
-    schedule = data;
-    if (data) scheduleAt = data.published_at ?? '';
-
-    // Global fallback: if a targeted query found nothing, try the global schedule
-    // (embed_target IS NULL). This prevents "No schedule published" when the user
-    // published via scheduled-publish/cron before embed_target support was added.
-    if (!schedule && scheduleTarget) {
-      const { data: globalData } = await supabase
-        .from('published_schedules')
-        .select('events_snapshot, league_order, featured_leagues, published_at')
-        .eq('user_id', keyData.user_id)
-        .is('embed_target', null)
-        .order('published_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (globalData) {
-        schedule = globalData;
-        scheduleAt = globalData.published_at ?? '';
-      }
+      .limit(1)
+      .maybeSingle();
+    if (globalData) {
+      schedule = globalData;
+      scheduleAt = globalData.published_at ?? '';
     }
   }
 
