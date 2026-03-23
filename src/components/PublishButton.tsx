@@ -19,6 +19,7 @@ interface PendingSchedule {
   scheduled_at: string;
   week_label: string;
   status: string;
+  embed_target: string | null;
 }
 
 const HISTORY_CACHE_MS = 60_000;
@@ -685,6 +686,11 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
             return (
               <div key={s.id} className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-orange-500/30 bg-orange-500/10 backdrop-blur-sm text-xs whitespace-nowrap shadow-sm">
                 <Clock className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                {s.embed_target && (
+                  <span className="inline-block text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 shrink-0">
+                    {s.embed_target}
+                  </span>
+                )}
                 <span className="text-foreground font-medium">
                   {dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: selectedTimezone })} at {dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: selectedTimezone })}
                 </span>

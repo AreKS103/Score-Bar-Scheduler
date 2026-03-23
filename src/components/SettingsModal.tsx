@@ -30,6 +30,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   // Account section state
   const [phone, setPhone] = useState('');
+  const [emailVerified, setEmailVerified] = useState(false);
   const [savingPhone, setSavingPhone] = useState(false);
   const [phoneSaved, setPhoneSaved] = useState(false);
   const [sendingReset, setSendingReset] = useState(false);
@@ -50,12 +51,13 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     return () => document.removeEventListener('keydown', handleKey);
   }, [isOpen, onClose]);
 
-  // Fetch User ID + email + phone
+  // Fetch User ID + email + phone + verified status
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       setUserId(data.user?.id || null);
       setUserEmail(data.user?.email || null);
       setPhone((data.user?.user_metadata?.phone as string) || data.user?.phone || '');
+      setEmailVerified(!!data.user?.email_confirmed_at);
     });
   }, [supabase.auth]);
 
@@ -186,8 +188,14 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <label className="text-sm font-medium text-muted-foreground flex items-center gap-1.5 mb-1.5">
                   <Mail className="w-3.5 h-3.5" /> Email Address
                 </label>
-                <div className="px-3 py-2 rounded-md bg-secondary/50 border border-border text-sm text-foreground select-all">
-                  {userEmail ?? '—'}
+                <div className="px-3 py-2 rounded-md bg-secondary/50 border border-border text-sm text-foreground select-all flex items-center gap-2">
+                  <span className="flex-1">{userEmail ?? '—'}</span>
+                  {emailVerified && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-500 bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.5 rounded-full shrink-0">
+                      <CheckCircle className="w-3 h-3" />
+                      Verified
+                    </span>
+                  )}
                 </div>
               </div>
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
-const MAX_HISTORY = 1; // per embed_target — keep only most recent
+const MAX_HISTORY = 50; // per embed_target — keep full history
 
 export async function POST(req: NextRequest) {
   try {

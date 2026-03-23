@@ -208,25 +208,22 @@ export default function SportFilter({
       {(businessLogoUrl || businessName) && (
         <div className="-mx-2 mb-3">
           {businessLogoUrl ? (
-            <div className="relative overflow-hidden">
+            <div>
               <img
                 src={businessLogoUrl}
                 alt={businessName ?? 'Business logo'}
                 className="w-full h-28 object-cover"
               />
-              {/* gradient overlay + name */}
               {businessName && (
-                <div className="absolute bottom-0 left-0 right-0 px-3 py-2 bg-gradient-to-t from-black/65 to-transparent">
-                  <span className="text-sm font-semibold text-white leading-tight block truncate">
-                    {businessName}
-                  </span>
-                </div>
+                <p className="text-sm font-semibold text-foreground text-center leading-snug mt-2.5 px-2 truncate">
+                  {businessName}
+                </p>
               )}
             </div>
           ) : (
             // Name-only fallback (no logo)
             <div className="px-2 pb-2 mb-1 border-b border-border/50">
-              <span className="text-xs font-semibold text-foreground/80 truncate leading-tight block">
+              <span className="text-xs font-semibold text-foreground/80 text-center truncate leading-tight block">
                 {businessName}
               </span>
             </div>

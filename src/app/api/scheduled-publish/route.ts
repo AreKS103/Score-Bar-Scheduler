@@ -58,7 +58,7 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from('scheduled_publishes')
-      .select('id, scheduled_at, week_label, status, created_at')
+      .select('id, scheduled_at, week_label, status, created_at, embed_target')
       .eq('user_id', user.id)
       .eq('status', 'pending')
       .order('scheduled_at', { ascending: true });
