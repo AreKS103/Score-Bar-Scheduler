@@ -48,6 +48,10 @@ export async function GET() {
       headers: dlHeaders,
       redirect: 'follow',
     });
+    console.log('[download] GitHub fetch status:', zipRes?.status);
+    console.log('[download] GitHub fetch ok:', zipRes?.ok);
+    console.log('[download] token present:', !!process.env.GITHUB_TOKEN);
+    console.log('[download] token prefix:', process.env.GITHUB_TOKEN?.substring(0, 4));
     if (!zipRes.ok || !zipRes.body) {
       return NextResponse.json({ error: 'Failed to fetch zip from GitHub' }, { status: 502 });
     }
