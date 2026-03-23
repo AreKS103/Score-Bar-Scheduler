@@ -11,6 +11,9 @@
  */
 if (!defined('ABSPATH')) exit;
 
+// Plugin version — must match the "Version:" header above.
+define('SCHEDULE_PLUGIN_VERSION', '1.1.6');
+
 // ── PHP version gate ────────────────────────────────────────────────────────
 if (version_compare(PHP_VERSION, '7.4', '<')) {
     add_action('admin_notices', function () {
@@ -184,3 +187,46 @@ if (!function_exists('schedule_enqueue_frontend_config')) {
     }
 }
 add_action('wp_enqueue_scripts', 'schedule_enqueue_frontend_config');
+
+// ── Auto-update checker ───────────────────────────────────────────────────────
+// Checks the Vercel endpoint every 6 hours. When a newer version is available,
+// WordPress admin shows the standard "Update Available" notice with one-click install.
+add_filter('pre_set_site_transient_update_plugins', 'schedule_check_for_plugin_update');
+if (!function_exists('schedule_check_for_plugin_update')) {
+    function schedule_check_for_plugin_update($transient) {
+        if (empty($transient->checked)) return $transient;
+
+        $plugin_file = plugin_basename(__FILE__);
+        $cached      = get_transient('scorebar_update_check');
+
+        if (false === $cached) {
+            $result = wp_remote_get(
+                schedule_get_app_domain() . '/api/plugin/update',
+                ['timeout' => 10, 'sslverify' => true]
+            );
+            if (!is_wp_error($result) && 200 === wp_remote_retrieve_response_code($result)) {
+                $cached = json_decode(wp_remote_retrieve_body($result), true);
+                set_transient('scorebar_update_check', $cached, 6 * HOUR_IN_SECONDS);
+            }
+        }
+
+        if (
+            !empty($cached['version']) &&
+            version_compare($cached['version'], SCHEDULE_PLUGIN_VERSION, '>')
+        ) {
+            $transient->response[$plugin_file] = (object) [
+                'id'           => 'scorebar-scheduler/scorebar-scheduler.php',
+                'slug'         => 'scorebar-scheduler',
+                'plugin'       => $plugin_file,
+                'new_version'  => $cached['version'],
+                'url'          => $cached['url'] ?? '',
+                'package'      => $cached['download_url'] ?? '',
+                'requires'     => '6.0',
+                'tested'       => '6.7',
+                'requires_php' => '7.4',
+            ];
+        }
+
+        return $transient;
+    }
+}

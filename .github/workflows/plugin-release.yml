@@ -1,0 +1,55 @@
+name: Build & Release WordPress Plugin
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'wordpress-plugin/**'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read plugin version
+        id: version
+        run: |
+          VERSION=$(grep -m1 "Version:" wordpress-plugin/scorebar-scheduler.php | sed 's/.*Version:[[:space:]]*//')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Plugin version: $VERSION"
+
+      - name: Build plugin zip
+        run: |
+          cd wordpress-plugin
+          zip -r ../scorebar-scheduler.zip . \
+            --exclude "*.DS_Store" \
+            --exclude "__MACOSX/*" \
+            --exclude "*.git*"
+          cd ..
+          echo "Built scorebar-scheduler.zip ($(du -sh scorebar-scheduler.zip | cut -f1))"
+
+      - name: Delete existing plugin-latest release (if any)
+        run: gh release delete plugin-latest --yes || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete existing plugin-latest tag (if any)
+        run: git push origin :refs/tags/plugin-latest || true
+
+      - name: Create plugin-latest release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: plugin-latest
+          name: "Score Bar Scheduler Plugin (Latest)"
+          files: scorebar-scheduler.zip
+          body: |
+            Auto-built from commit ${{ github.sha }}
+            Plugin version: ${{ steps.version.outputs.version }}
+            Built at: ${{ github.event.head_commit.timestamp }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
