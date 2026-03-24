@@ -1,5 +1,4 @@
 'use client';
-import DOMPurify from 'dompurify';
 import { useRef, useEffect } from 'react';
 import { Copy, CheckCircle } from 'lucide-react';
 import type { MouseEvent } from 'react';
@@ -191,7 +190,7 @@ export default function PreviewPanel({
           [&_.mc-round]:text-[0.82em] [&_.mc-round]:opacity-50
         "
         onContextMenu={handlePreviewContextMenu}
-        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html, { USE_PROFILES: { html: true } }) }}
+        dangerouslySetInnerHTML={{ __html: typeof window !== 'undefined' ? (require('dompurify') as typeof import('dompurify')).default.sanitize(html, { USE_PROFILES: { html: true } }) : html }}
       />
     </div>
   );
