@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { MatchEvent } from '@/types';
 import { createClient } from '@/lib/supabase/server';
-import { normalizeTournamentGame, MARCH_MADNESS_LOGO } from '@/lib/marchMadness';
+import { normalizeTournamentGame, MARCH_MADNESS_LOGO, MARCH_MADNESS_WOMEN_LOGO } from '@/lib/marchMadness';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SERVER-SIDE CACHE — Stores fetched events in memory with TTL
@@ -127,7 +127,7 @@ const LEAGUE_METADATA: Record<string, { label: string; category: string; logo: s
   'basketball-nba': { label: 'NBA', category: 'Basketball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/nba.png' },
   'basketball-wnba': { label: 'WNBA', category: 'Basketball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/wnba.png' },
   'basketball-ncaam': { label: "NCAA Men's Basketball", category: 'Basketball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/ncaa.png' },
-  'basketball-ncaaw': { label: "NCAA Women's Basketball", category: 'Basketball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/ncaa.png' },
+  'basketball-ncaaw': { label: "NCAA Women's Basketball", category: 'Basketball', logo: '/league-logos/basketball-ncaaw.svg' },
   'football-nfl': { label: 'NFL', category: 'American Football', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png' },
   'football-ncaaf': { label: 'NCAA Football', category: 'American Football', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/ncaa.png' },
   'baseball-mlb': { label: 'MLB', category: 'Baseball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/mlb.png' },
@@ -180,6 +180,66 @@ function utcToLocal(utcDateString: string): { date: string; time: string } {
 /** Build ESPN date range string */
 function espnDateRange(start: string, end: string): string {
   return `${start.replace(/-/g, '')}-${end.replace(/-/g, '')}`;
+}
+
+/** Enumerate every YYYY-MM-DD between start and end (inclusive) */
+function enumerateDates(start: string, end: string): string[] {
+  const dates: string[] = [];
+  const d = new Date(start + 'T00:00:00Z');
+  const last = new Date(end + 'T00:00:00Z');
+  while (d <= last) {
+    dates.push(d.toISOString().split('T')[0]);
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return dates;
+}
+
+/** NCAA basketball leagues use a whitelist calendar on ESPN — date-range
+ *  queries always 404. Instead we must query each date individually and
+ *  merge results. Returns null if nothing was fetched (so callers can
+ *  still fall through to other fallbacks). */
+async function fetchNCAASingleDayScoreboard(
+  slug: string,
+  startDate: string,
+  endDate: string,
+): Promise<ESPNScoreboardResponse | null> {
+  // Fetch one day before startDate so UTC games that shift forward
+  // via utcToLocal (+7h) into the requested range are not missed.
+  const dayBefore = new Date(startDate + 'T00:00:00Z');
+  dayBefore.setUTCDate(dayBefore.getUTCDate() - 1);
+  const extendedStart = dayBefore.toISOString().split('T')[0];
+  const dates = enumerateDates(extendedStart, endDate);
+  const CONCURRENCY = 3;            // max parallel per NCAA league
+  const seenIds = new Set<string>();
+  const allEvents: ESPNEvent[] = [];
+  let leagues: ESPNScoreboardResponse['leagues'];
+
+  let idx = 0;
+  const workers = Array(Math.min(CONCURRENCY, dates.length)).fill(null).map(async () => {
+    while (idx < dates.length) {
+      const date = dates[idx++];
+      if (!date) break;
+      const dateParam = date.replace(/-/g, '');       // YYYYMMDD (single day)
+      const url = `${ESPN_BASE}/${slug}/scoreboard?dates=${dateParam}&limit=1000`;
+      const data = await espnFetchWithRetry<ESPNScoreboardResponse>(url, 4_000);
+      if (data?.events?.length) {
+        if (!leagues) leagues = data.leagues;
+        for (const ev of data.events) {
+          if (!seenIds.has(ev.id)) {
+            seenIds.add(ev.id);
+            allEvents.push(ev);
+          }
+        }
+      }
+      await sleep(50);                                // gentle spacing between requests
+    }
+  });
+
+  await Promise.allSettled(workers);
+
+  if (allEvents.length === 0) return null;
+  console.log(`[ESPN-NCAA] single-day fetch for ${slug}: ${dates.length} days queried → ${allEvents.length} unique events`);
+  return { events: allEvents, leagues };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -533,7 +593,7 @@ function mapTeamSportEvents(
   seasonTypeId?: string | number
 ): MatchEvent[] {
   const isGolf = league.slug.startsWith('golf/');
-  const isNCAA = league.id === 'basketball-ncaam';
+  const isNCAA = league.id === 'basketball-ncaam' || league.id === 'basketball-ncaaw';
 
   return events.map((event): MatchEvent => {
     const comp = event.competitions?.[0];
@@ -559,11 +619,11 @@ function mapTeamSportEvents(
         seasonTypeId,
         notesHeadline: event.notes?.[0]?.headline,
         competitors: competitors.map(c => ({ curatedRank: c.curatedRank })),
-      });
+      }, meta.label);
       leagueLabel = info.leagueLabel;
       round = info.round;
       if (info.leagueLabel === 'March Madness') {
-        leagueLogo = MARCH_MADNESS_LOGO;
+        leagueLogo = league.id === 'basketball-ncaaw' ? MARCH_MADNESS_WOMEN_LOGO : MARCH_MADNESS_LOGO;
       }
     } else {
       // Round info from event name
@@ -609,27 +669,18 @@ async function fetchESPNLeague(
     const isMMA = league.slug.startsWith('mma/') || league.slug.startsWith('boxing/');
     const isMotorsport = league.slug.startsWith('racing/');
     const isTennis = league.slug.startsWith('tennis/');
+    const isNCAA_BB = league.id === 'basketball-ncaam' || league.id === 'basketball-ncaaw';
     const dateParam = espnDateRange(startDate, endDate);
-    const url = `${ESPN_BASE}/${league.slug}/scoreboard?dates=${dateParam}&limit=1000`;
 
-    let data = await espnFetchWithRetry<ESPNScoreboardResponse>(url, 3_500);
+    let data: ESPNScoreboardResponse | null = null;
 
-    // Fallback: if date-range fetch returned null (404 — common for NCAA tournament which uses a
-    // whitelist calendar and returns 404 for ranges spanning non-game days), retry without dates.
-    if (data === null) {
-      const fallbackUrl = `${ESPN_BASE}/${league.slug}/scoreboard?limit=1000`;
-      const fallbackData = await espnFetchWithRetry<ESPNScoreboardResponse>(fallbackUrl, 3_500);
-      if (fallbackData?.events?.length) {
-        data = fallbackData;
-        console.log(`[ESPN] ${league.id}: 404 with date range → fallback without dates returned ${fallbackData.events.length} events`);
-      }
-    }
+    // ── NCAA basketball: ESPN rejects date-range queries (404). Fetch each
+    //    day individually and merge to capture all tournament rounds. ──────────
+    if (isNCAA_BB) {
+      // 1) Try single-day iteration (most reliable)
+      data = await fetchNCAASingleDayScoreboard(league.slug, startDate, endDate);
 
-    // NCAA Tournament: augment with the full bracket from the schedule endpoint.
-    // The scoreboard only surfaces games on/near today; schedule?seasontype=3 returns
-    // all 67 tournament games so the full bracket is available for any date range.
-    if (league.id === 'basketball-ncaam') {
-      // NCAA academic year: Aug–Dec → season year = next calendar year; Jan–Jul → this year.
+      // 2) Augment with schedule endpoint (full bracket, if available)
       const refYear = new Date(endDate);
       const ncaaSeasonYear = (refYear.getMonth() + 1) >= 8
         ? refYear.getFullYear() + 1
@@ -642,18 +693,44 @@ async function fetchESPNLeague(
         if (data) {
           data = { events: [...(data.events ?? []), ...extra], leagues: data.leagues ?? schedData.leagues };
         } else {
-          // Both scoreboard and fallback returned nothing — bootstrap from schedule
           data = { events: schedData.events, leagues: schedData.leagues };
         }
-        console.log(`[ESPN-NCAA] schedule endpoint: ${schedData.events.length} tournament events, +${extra.length} added to pool`);
+        console.log(`[ESPN-NCAA] schedule endpoint for ${league.id}: ${schedData.events.length} tournament events, +${extra.length} new`);
+      }
+
+      // 3) Last resort: no-dates scoreboard (returns only near-future games)
+      if (!data) {
+        const fallbackUrl = `${ESPN_BASE}/${league.slug}/scoreboard?limit=1000`;
+        const fallbackData = await espnFetchWithRetry<ESPNScoreboardResponse>(fallbackUrl, 3_500);
+        if (fallbackData?.events?.length) {
+          data = fallbackData;
+          console.log(`[ESPN-NCAA] ${league.id}: single-day + schedule both empty → no-dates fallback returned ${fallbackData.events.length} events`);
+        }
+      }
+    } else {
+      // ── All other leagues: standard date-range query ───────────────────────
+      const url = `${ESPN_BASE}/${league.slug}/scoreboard?dates=${dateParam}&limit=1000`;
+      data = await espnFetchWithRetry<ESPNScoreboardResponse>(url, 3_500);
+
+      // Fallback: retry without dates if range query failed
+      if (data === null) {
+        const fallbackUrl = `${ESPN_BASE}/${league.slug}/scoreboard?limit=1000`;
+        const fallbackData = await espnFetchWithRetry<ESPNScoreboardResponse>(fallbackUrl, 3_500);
+        if (fallbackData?.events?.length) {
+          data = fallbackData;
+          console.log(`[ESPN] ${league.id}: 404 with date range → fallback without dates returned ${fallbackData.events.length} events`);
+        }
       }
     }
+
+    // NCAA Tournament: augment men's with the full bracket from the schedule endpoint
+    // (already handled above for both men's and women's in the isNCAA_BB block)
 
     // Diagnostic logging for combat sports (UFC/Bellator)
     if (isMMA) {
       const eventCount = data?.events?.length ?? 0;
       const fightCount = data?.events?.reduce((sum: number, e: ESPNEvent) => sum + (e.competitions?.length ?? 0), 0) ?? 0;
-      console.log(`[ESPN-MMA] ${league.id}: fetch ${data ? 'OK' : 'FAILED'}, ${eventCount} events, ${fightCount} fights, url=${url}`);
+      console.log(`[ESPN-MMA] ${league.id}: fetch ${data ? 'OK' : 'FAILED'}, ${eventCount} events, ${fightCount} fights`);
     }
 
     if (!data?.events) {
@@ -689,10 +766,10 @@ async function fetchESPNLeague(
     parsed = parsed.filter(e => e.date >= startDate && e.date <= endDate);
 
     if (isMMA) console.log(`[ESPN-MMA] ${league.id}: mapped ${parsed.length} fights from ${events.length} events`);
-    if (league.id === 'basketball-ncaam') {
-      console.log(`[ESPN-NCAA] fetchESPNLeague summary: ${events.length} raw ESPN events → ${beforeDateGuard} after mapping (TBD allowed) → ${parsed.length} in range [${startDate}, ${endDate}]`);
+    if (isNCAA_BB) {
+      console.log(`[ESPN-NCAA] ${league.id}: ${events.length} raw ESPN events → ${beforeDateGuard} after mapping (TBD allowed) → ${parsed.length} in range [${startDate}, ${endDate}]`);
       if (parsed.length === 0 && beforeDateGuard > 0) {
-        console.warn(`[ESPN-NCAA] ZERO in-range events — all ${beforeDateGuard} mapped games fell outside [${startDate}, ${endDate}]`);
+        console.warn(`[ESPN-NCAA] ${league.id}: ZERO in-range events — all ${beforeDateGuard} mapped games fell outside [${startDate}, ${endDate}]`);
       }
     }
 

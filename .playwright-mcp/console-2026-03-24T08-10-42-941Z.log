@@ -1,0 +1,12 @@
+[     403ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://www.ncaa.com/news/basketball-women/article/2026-03-23/womens-march-madness-bracket:0
+[    2733ms] [WARNING] [GPT] Using deprecated googletag.encryptedSignalProviders. Please use googletag.secureSignalProviders instead.
+https://goo.gle/gpt-message#155 @ https://www.ncaa.com/news/basketball-women/article/2026-03-23/womens-march-madness-bracket:5
+[    3009ms] [WARNING] An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing. @ https://cadmus.script.ac/d2wt7w75gg2vz/script.js:0
+[    3074ms] [WARNING] An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing. @ https://cadmus.script.ac/d2wt7w75gg2vz/script.js:0
+[    3565ms] [ERROR] Framing 'https://www.google.com/' violates the following report-only Content Security Policy directive: "frame-ancestors 'self'". The violation has been logged, but no further action has been taken.
+ @ :0
+[    3677ms] [ERROR] Attestation check for Shared Storage on https://www.googleadservices.com failed. @ https://www.googleadservices.com/pagead/managed/js/activeview/current/reach_worklet.html:0
+[    3807ms] [ERROR] Access to fetch at 'https://id5-sync.com/bounce' from origin 'https://www.ncaa.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ https://www.ncaa.com/news/basketball-women/article/2026-03-23/womens-march-madness-bracket:0
+[    3808ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://id5-sync.com/bounce:0
+[    3951ms] [ERROR] Access to XMLHttpRequest at 'https://id5-sync.com/gm/v3' from origin 'https://www.ncaa.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ https://www.ncaa.com/news/basketball-women/article/2026-03-23/womens-march-madness-bracket:0
+[    3952ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://id5-sync.com/gm/v3:0

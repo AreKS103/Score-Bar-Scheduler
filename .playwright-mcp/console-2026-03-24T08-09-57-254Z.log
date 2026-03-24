@@ -1,0 +1,19 @@
+[    1012ms] [WARNING] [GPT] Invalid arguments: SizeMappingBuilder.addSize([0, 0], [[0, 0]]). All zero-area slot sizes were removed.
+https://goo.gle/gpt-message#151 @ https://securepubads.g.doubleclick.net/pagead/managed/js/gpt/m202603180101/pubads_impl.js?cb=31097344:18
+[    3336ms] [ERROR] Attestation check for Shared Storage on https://www.googleadservices.com failed. @ https://www.googleadservices.com/pagead/managed/js/activeview/current/reach_worklet.html:0
+[    3451ms] [ERROR] Attestation check for Shared Storage on https://www.googleadservices.com failed. @ https://www.googleadservices.com/pagead/managed/js/activeview/current/reach_worklet.html:0
+[    4868ms] [ERROR] Attestation check for Attribution Reporting on https://ad.doubleclick.net failed. @ https://www.espn.com/womens-college-basketball/:0
+[    3336ms] [ERROR] Attestation check for Shared Storage on https://www.googleadservices.com failed. @ https://www.googleadservices.com/pagead/managed/js/activeview/current/reach_worklet.html:0
+[    3451ms] [ERROR] Attestation check for Shared Storage on https://www.googleadservices.com failed. @ https://www.googleadservices.com/pagead/managed/js/activeview/current/reach_worklet.html:0
+[    5086ms] [ERROR] Attestation check for Shared Storage on https://www.googleadservices.com failed. @ https://www.googleadservices.com/pagead/managed/js/activeview/current/reach_worklet.html:0
+[    5148ms] [ERROR] Attestation check for Attribution Reporting on https://ad.doubleclick.net failed. @ https://www.espn.com/womens-college-basketball/:0
+[    3336ms] [ERROR] Attestation check for Shared Storage on https://www.googleadservices.com failed. @ https://www.googleadservices.com/pagead/managed/js/activeview/current/reach_worklet.html:0
+[    3451ms] [ERROR] Attestation check for Shared Storage on https://www.googleadservices.com failed. @ https://www.googleadservices.com/pagead/managed/js/activeview/current/reach_worklet.html:0
+[    5086ms] [ERROR] Attestation check for Shared Storage on https://www.googleadservices.com failed. @ https://www.googleadservices.com/pagead/managed/js/activeview/current/reach_worklet.html:0
+[    5471ms] [ERROR] Attestation check for Shared Storage on https://www.googleadservices.com failed. @ https://www.googleadservices.com/pagead/managed/js/activeview/current/reach_worklet.html:0
+[    7811ms] [ERROR] [OneID] [%s]:  ERROR Session not established @ https://cdn.registerdisney.go.com/v4/OneID.js:1
+[    7811ms] [ERROR] [OneID] [%s]:  ERROR Session not established @ https://cdn.registerdisney.go.com/v4/OneID.js:1
+[    8368ms] [WARNING] [OneID] [%s]:  WARN `DisneyID` global object is soon to be deprecated. Use `OneID` instead. @ https://cdn.registerdisney.go.com/v4/OneID.js:1
+[   12381ms] [WARNING] The resource https://cdn.registerdisney.go.com/v4/asset/bundler/ESPN/v4/images/v2/espn-red-logo.svg was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally. @ https://cdn.registerdisney.go.com/v4/bundle/web/ESPN-ONESITE.WEB/en-US?cssOverride=https%3A%2F%2Fsecure.espncdn.com%2Fcombiner%2Fc%3Fcss%3Ddisneyid%2Fcorev4.css&logLevel=INFO:0
+[   39696ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ https://cpm.vistarsagency.com/user-sync?zone=262853&t=image&r=https%3A%2F%2Ftracker.rtb-oveeo.com%2Fsync%3Fid%3D189%26uid%3D%5BUID%5D:0
+[   40191ms] [WARNING] The resource https://cdn.registerdisney.go.com/v4/asset/bundler/ESPN/v4/images/v2/espn-red-logo.svg was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally. @ https://cdn.registerdisney.go.com/v4/bundle/web/ESPN-ONESITE.WEB/en-US?cssOverride=https%3A%2F%2Fsecure.espncdn.com%2Fcombiner%2Fc%3Fcss%3Ddisneyid%2Fcorev4.css&logLevel=INFO:0

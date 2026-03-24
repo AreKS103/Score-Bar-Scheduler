@@ -497,8 +497,12 @@ export default function SchedulePage() {
                 tags: snap ? (snap.tags ?? []) : [],
               };
             });
-            // Include published events that fall outside the current date range
-            const snapOnly = evts.filter((e: MatchEvent) => !currentIds.has(e.id));
+            // Include published events that fall within the current date range
+            // but aren't in the current API data (e.g. custom events).
+            const { dateRange: dr } = useScheduleStore.getState();
+            const snapOnly = evts.filter((e: MatchEvent) =>
+              !currentIds.has(e.id) && e.date >= dr.start && e.date <= dr.end
+            );
             setEvents([...updated, ...snapOnly]);
             if (lo.length > 0) setLeagueOrder(lo);
             if (fl.size > 0) setFeaturedLeagues(fl);
@@ -1412,7 +1416,8 @@ export default function SchedulePage() {
         const existing = byId.get(snap.id);
         if (existing) {
           byId.set(snap.id, { ...existing, ...snap, isSelected: true });
-        } else {
+        } else if (snap.date >= rangeStart && snap.date <= rangeEnd) {
+          // Only add snapshot-only events that fall within the restored date range.
           byId.set(snap.id, { ...snap, isSelected: true });
         }
       }

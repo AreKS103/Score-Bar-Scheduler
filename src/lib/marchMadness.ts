@@ -19,6 +19,9 @@ const TOURNAMENT_PREFIX = 'NCAA Tournament - ';
 /** Local path to the NCAA / March Madness logo (same branding). */
 export const MARCH_MADNESS_LOGO = '/league-logos/basketball-ncaam.png';
 
+/** Local path to the NCAA Women's Basketball / March Madness logo. */
+export const MARCH_MADNESS_WOMEN_LOGO = '/league-logos/basketball-ncaaw.svg';
+
 /** Maps the raw ESPN round value (after stripping the prefix) to a display label. */
 export const MARCH_MADNESS_ROUND_MAP: Record<string, string> = {
   'First Four':            'First Four',
@@ -72,12 +75,13 @@ function isTournamentGame(input: TournamentGameInput): boolean {
 }
 
 /**
- * Given raw ESPN data for a single `basketball-ncaam` game, returns the
+ * Given raw ESPN data for a single NCAA basketball game, returns the
  * correct league label and round string for display.
+ * @param fallbackLabel Label to use for non-tournament games (defaults to "NCAA Men's Basketball")
  */
-export function normalizeTournamentGame(input: TournamentGameInput): TournamentGameInfo {
+export function normalizeTournamentGame(input: TournamentGameInput, fallbackLabel?: string): TournamentGameInfo {
   if (!isTournamentGame(input)) {
-    return { leagueLabel: "NCAA Men's Basketball", round: '' };
+    return { leagueLabel: fallbackLabel || "NCAA Men's Basketball", round: '' };
   }
   const round = input.notesHeadline ? extractRoundLabel(input.notesHeadline) : '';
   return { leagueLabel: 'March Madness', round };

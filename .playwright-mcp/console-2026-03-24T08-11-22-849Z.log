@@ -1,0 +1,14 @@
+[    3356ms] [ERROR] Failed to load resource: net::ERR_NAME_NOT_RESOLVED @ https://stags.bluekai.com/site/24365?limit=1&phint=custom_audience%3Dcp_tippit-moo_houston-local-organizing-committee_tippit-moo_ncaa_men-s-final-four-2023_rtg-pixel:0
+[    3577ms] [ERROR] Hydration completed but contains mismatches. @ https://www.ncaa.com/march-madness-live/watch:64
+[    4495ms] [ERROR] %c !!! %c[ ]  background: red;color:white background: inherit;color: inherit Error in refresh TypeError: Cannot read properties of undefined (reading 'wrappedSlots')
+    at t (https://i.cdn.turner.com/ads/adfuel/adfuel-3.1.9.min.js:19:12996)
+    at a.refresh (https://i.cdn.turner.com/ads/adfuel/adfuel-3.1.9.min.js:19:13421)
+    at https://i.cdn.turner.com/ads/adfuel/adfuel-3.1.9.min.js:1:31319 @ https://www.ncaa.com/march-madness-live/watch:64
+[    6766ms] [ERROR] Refused to execute script from 'https://idsync.rlcdn.com/362358.gif?google_gid=CAESEOBFcBmV9tjK1Oqbq5Y6Gys&google_cver=1' because its MIME type ('image/gif') is not executable. @ https://www.ncaa.com/march-madness-live/watch:0
+[    7021ms] [WARNING] An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing. @ https://cadmus.script.ac/d2wt7w75gg2vz/script.js:0
+[    7033ms] [WARNING] An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing. @ https://cadmus.script.ac/d2wt7w75gg2vz/script.js:0
+[    7048ms] [WARNING] An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing. @ https://cadmus.script.ac/d2wt7w75gg2vz/script.js:0
+[    7059ms] [WARNING] An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing. @ https://cadmus.script.ac/d2wt7w75gg2vz/script.js:0
+[    8719ms] [ERROR] Framing 'https://www.google.com/' violates the following report-only Content Security Policy directive: "frame-ancestors 'self'". The violation has been logged, but no further action has been taken.
+ @ :0
+[    8953ms] [WARNING] It is recommended that a robustness level be specified. Not specifying the robustness level could result in unexpected behavior. @ https://www.ncaa.com/march-madness-live/usePlayer.B4ryYD43.js:217
