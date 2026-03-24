@@ -156,6 +156,7 @@ export default function SchedulePage() {
     selectAll,
     deselectAll,
     batchSetSelected,
+    batchClearAll,
     setFetchStatuses,
     setDateRange,
     setActiveSportFilter,
@@ -1213,9 +1214,9 @@ export default function SchedulePage() {
     const manualIds = checkedEvents.filter((e) => e.source === 'manual').map((e) => e.id);
     const nonManualIds = checkedEvents.filter((e) => e.source !== 'manual').map((e) => e.id);
 
-    // Non-manual items are deselected only.
+    // Non-manual items are cleared (isSelected, isFeatured, tags) only.
     if (nonManualIds.length > 0) {
-      batchSetSelected(nonManualIds, false);
+      batchClearAll(nonManualIds);
     }
 
     // Manual/custom items are removed locally only after Supabase confirms delete.
@@ -1226,15 +1227,15 @@ export default function SchedulePage() {
     }
 
     setPreviewCheckedIds(new Set(failedManualIds));
-  }, [previewCheckedIds, events, batchSetSelected, deleteManualEventsPermanently]);
+  }, [previewCheckedIds, events, batchClearAll, deleteManualEventsPermanently]);
 
   const handleDeleteAll = useCallback(async () => {
-    const selectedEvents = events.filter((e) => e.isSelected);
-    const manualIds = selectedEvents.filter((e) => e.source === 'manual').map((e) => e.id);
-    const nonManualIds = selectedEvents.filter((e) => e.source !== 'manual').map((e) => e.id);
+    const previewEvents = events.filter((e) => e.isSelected || e.isFeatured);
+    const manualIds = previewEvents.filter((e) => e.source === 'manual').map((e) => e.id);
+    const nonManualIds = previewEvents.filter((e) => e.source !== 'manual').map((e) => e.id);
 
     if (nonManualIds.length > 0) {
-      batchSetSelected(nonManualIds, false);
+      batchClearAll(nonManualIds);
     }
 
     let failedManualIds: string[] = [];
@@ -1245,7 +1246,7 @@ export default function SchedulePage() {
 
     setDeleteAllConfirm(false);
     setPreviewCheckedIds(new Set(failedManualIds));
-  }, [events, batchSetSelected, deleteManualEventsPermanently]);
+  }, [events, batchClearAll, deleteManualEventsPermanently]);
 
   // ─── HTML generation — recomputes whenever leagueOrder, events, or sortVersion changes ─
   const html = useMemo(
@@ -1716,21 +1717,19 @@ export default function SchedulePage() {
       </main>
 
       {/* ── Preview panel (custom resizable, no overlay) ────────────────────── */}
-      {(previewContentCount > 0 || previewOpen) && (
-        <button
-          ref={toggleBtnRef}
-          onClick={() => { setPreviewOpen((o) => !o); setDeleteAllConfirm(false); }}
-          title={previewOpen ? 'Close preview' : 'Open preview'}
-          style={{ right: previewOpen ? panelWidth : 0 }}
-          className={cn(
-            "fixed z-99 top-1/2 -translate-y-1/2 flex flex-col items-center justify-center bg-secondary border border-border border-r-0 rounded-l-md px-1 py-3 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors",
-            // On mobile, hide when preview open (panel is full-width, button would clip off-screen)
-            previewOpen && "max-md:hidden"
-          )}
-        >
-          {previewOpen ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
-        </button>
-      )}
+      <button
+        ref={toggleBtnRef}
+        onClick={() => { setPreviewOpen((o) => !o); setDeleteAllConfirm(false); }}
+        title={previewOpen ? 'Close preview' : 'Open preview'}
+        style={{ right: previewOpen ? panelWidth : 0 }}
+        className={cn(
+          "fixed z-99 top-1/2 -translate-y-1/2 flex flex-col items-center justify-center bg-secondary border border-border border-r-0 rounded-l-md px-1 py-3 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors",
+          // On mobile, hide when preview open (panel is full-width, button would clip off-screen)
+          previewOpen && "max-md:hidden"
+        )}
+      >
+        {previewOpen ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
+      </button>
 
       {/* Panel */}
       <div

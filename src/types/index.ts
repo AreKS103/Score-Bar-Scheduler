@@ -169,6 +169,7 @@ export interface ScheduleStore {
   selectAll: () => void;
   deselectAll: () => void;
   batchSetSelected: (ids: string[], selected: boolean) => void;
+  batchClearAll: (ids: string[]) => void;
   bulkSetTags: (ids: string[], tags: ScreenTag[]) => void;
   setFetchStatus: (key: string, status: FetchStatus) => void;
   setFetchStatuses: (statuses: Record<string, FetchStatus>) => void;

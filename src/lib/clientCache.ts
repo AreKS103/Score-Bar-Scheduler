@@ -328,6 +328,39 @@ export function clearSelectionState(embedTarget: string): void {
 }
 
 /**
+ * Tracks which user last wrote selection data into this browser's localStorage.
+ * When a different user is detected, all selection keys are purged before any
+ * data is read — preventing cross-account selection contamination.
+ */
+const USER_SCOPE_KEY = 'sportglobe_active_user';
+
+/**
+ * Compare the authenticated user ID against the one stored in localStorage.
+ * If they differ (different account logged in on the same browser), all
+ * `sportglobe_selections_v2*` keys are removed before any read or write so that
+ * User A's selections can never leak into User B's session.
+ */
+export function checkAndClearIfUserChanged(userId: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const stored = localStorage.getItem(USER_SCOPE_KEY);
+    if (stored === userId) return; // same user — nothing to do
+    // Different (or no) user — purge every selection key
+    const toRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith('sportglobe_selections_v2')) toRemove.push(key);
+    }
+    toRemove.forEach(k => localStorage.removeItem(k));
+    localStorage.setItem(USER_SCOPE_KEY, userId);
+    console.log(
+      `[Selections] Auth user changed (${stored?.slice(0, 8) ?? 'none'} → ${userId.slice(0, 8)}) —`,
+      `cleared ${toRemove.length} local selection key(s) to prevent cross-account contamination.`
+    );
+  } catch { /* ignore quota/security errors */ }
+}
+
+/**
  * Garbage-collect stale selection keys in localStorage.
  * Pass the set of embed IDs that currently exist. Any
  * `sportglobe_selections_v2:*` key not in that set is removed.
@@ -374,6 +407,8 @@ export function saveSelectionToSupabase(state: SavedSelectionState, embedTarget 
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+      // Guard: ensure localStorage is scoped to this user before writing
+      checkAndClearIfUserChanged(user.id);
 
       const selectedCount = Object.values(state.selections).filter(
         (v: any) => v?.isSelected === true
@@ -407,16 +442,24 @@ export function saveSelectionToSupabase(state: SavedSelectionState, embedTarget 
 
 /**
  * Load selection state from Supabase, scoped to embedTarget. Falls back to localStorage.
+ *
+ * IMPORTANT: We get the authenticated user ID FIRST, then call
+ * checkAndClearIfUserChanged BEFORE reading localStorage. This guarantees that
+ * if a different account is logged in on the same browser, the previous user's
+ * cached selections are wiped before they can contaminate the new session.
  */
 export async function loadSelectionFromSupabase(embedTarget = ''): Promise<SavedSelectionState | null> {
-  const localState = loadSelectionState(embedTarget);
-
-  // Try Supabase first
+  // Try Supabase first — must resolve user BEFORE reading localStorage
   if (isSupabaseConfigured()) {
     try {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+        // Guard: wipe cross-account contamination before ANY localStorage read
+        checkAndClearIfUserChanged(user.id);
+
+        const localState = loadSelectionState(embedTarget);
+
         const { data } = await supabase
           .from('user_selections')
           .select('selections, league_order, featured_leagues, updated_at')
@@ -459,14 +502,17 @@ export async function loadSelectionFromSupabase(embedTarget = ''): Promise<Saved
           saveSelectionState(merged, embedTarget);
           return merged;
         }
+
+        // Supabase has no row for this embed — return only the (already-user-scoped) local state
+        return localState;
       }
     } catch (e) {
       console.warn('[SelectionSync] Failed to load from Supabase, falling back to localStorage:', e);
     }
   }
 
-  // Fall back to localStorage
-  return localState;
+  // Supabase not configured — read localStorage directly (no user to verify against)
+  return loadSelectionState(embedTarget);
 }
 
 /** Get cache metadata without loading full data */

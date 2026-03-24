@@ -136,13 +136,16 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
         </style>
         <?php if (!empty($settings['show_view_toggle'])) :
             $is_cal = ($view_mode === 'calendar');
-            $btn_base = 'cursor:pointer;padding:5px 14px;border-radius:999px;border:1px solid;font-size:13px;font-family:inherit;font-weight:500;transition:all .15s;background:transparent';
-            $btn_active = 'background:#' . esc_attr($accent_hex) . '!important;color:#fff!important;border-color:#' . esc_attr($accent_hex) . '!important;font-weight:600!important';
-            $btn_inactive = 'background:rgba(128,128,128,0.08);color:#555;border-color:#d1d5db';
+            $ac = '#' . esc_attr($accent_hex);
+            $seg = 'cursor:pointer;padding:5px 14px;font-size:13px;font-family:inherit;transition:all .15s;border-radius:0';
+            $list_active   = $seg . ';border:1px solid ' . $ac . ';border-right:none;background:' . $ac . ';color:#fff;font-weight:600';
+            $list_inactive = $seg . ';border:1px solid #d1d5db;border-right:none;background:rgba(128,128,128,0.08);color:#555;font-weight:500';
+            $cal_active    = $seg . ';border:1px solid ' . $ac . ';background:' . $ac . ';color:#fff;font-weight:600';
+            $cal_inactive  = $seg . ';border:1px solid #d1d5db;background:rgba(128,128,128,0.08);color:#555;font-weight:500';
         ?>
-        <div id="<?php echo esc_attr($uid); ?>-toggle" style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:8px">
-            <button id="<?php echo esc_attr($uid); ?>-btn-list" onclick="sbToggle_<?php echo esc_js($uid); ?>(this,'list')" style="<?php echo $btn_base; ?>;<?php echo $is_cal ? $btn_inactive : $btn_active; ?>">List</button>
-            <button id="<?php echo esc_attr($uid); ?>-btn-cal" onclick="sbToggle_<?php echo esc_js($uid); ?>(this,'calendar')" style="<?php echo $btn_base; ?>;<?php echo $is_cal ? $btn_active : $btn_inactive; ?>">Calendar</button>
+        <div id="<?php echo esc_attr($uid); ?>-toggle" style="display:flex;justify-content:flex-start;gap:0;margin-bottom:8px">
+            <button id="<?php echo esc_attr($uid); ?>-btn-list" onclick="sbToggle_<?php echo esc_js($uid); ?>(this,'list')" style="<?php echo $is_cal ? $list_inactive : $list_active; ?>">List</button>
+            <button id="<?php echo esc_attr($uid); ?>-btn-cal" onclick="sbToggle_<?php echo esc_js($uid); ?>(this,'calendar')" style="<?php echo $is_cal ? $cal_active : $cal_inactive; ?>">Calendar</button>
         </div>
         <script>
         function sbToggle_<?php echo esc_js($uid); ?>(btn, layout) {
@@ -159,11 +162,17 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
                 frame.src = u.toString();
             } catch(e) {}
             var ac = '#<?php echo esc_js($accent_hex); ?>';
-            btn.parentNode.querySelectorAll('button').forEach(function(b) {
-                var a = b === btn;
-                b.style.cssText = '<?php echo esc_js($btn_base); ?>;' + (a
-                    ? 'background:' + ac + '!important;color:#fff!important;border-color:' + ac + '!important;font-weight:600!important'
-                    : 'background:rgba(128,128,128,0.08);color:#555;border-color:#d1d5db');
+            var seg = 'cursor:pointer;padding:5px 14px;font-size:13px;font-family:inherit;transition:all .15s;border-radius:0';
+            var btns = btn.parentNode.querySelectorAll('button');
+            btns.forEach(function(b, i) {
+                var isActive = b === btn;
+                var isLast = i === btns.length - 1;
+                var br = isLast ? '' : ';border-right:none';
+                if (isActive) {
+                    b.style.cssText = seg + ';border:1px solid ' + ac + br + ';background:' + ac + ';color:#fff;font-weight:600';
+                } else {
+                    b.style.cssText = seg + ';border:1px solid #d1d5db' + br + ';background:rgba(128,128,128,0.08);color:#555;font-weight:500';
+                }
             });
         }
         </script>

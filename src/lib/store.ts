@@ -85,6 +85,17 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
       };
     }),
 
+  /** Clear isSelected + isFeatured + tags in one render for the given IDs */
+  batchClearAll: (ids: string[]) =>
+    set((state) => {
+      const idSet = new Set(ids);
+      return {
+        events: state.events.map((e) =>
+          idSet.has(e.id) ? { ...e, isSelected: false, isFeatured: false, tags: [] } : e
+        ),
+      };
+    }),
+
   bulkSetTags: (ids: string[], tags: ScreenTag[]) =>
     set((state) => {
       const idSet = new Set(ids);
