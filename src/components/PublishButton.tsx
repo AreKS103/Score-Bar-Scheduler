@@ -218,7 +218,14 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
       // Notify all embed iframes to refresh immediately
       try {
         document.querySelectorAll('iframe').forEach(f => {
-          f.contentWindow?.postMessage({ sbRefresh: true }, '*');
+          try {
+            const src = f.getAttribute('src');
+            const targetOrigin = src ? new URL(src, window.location.href).origin : window.location.origin;
+            f.contentWindow?.postMessage({ sbRefresh: true }, targetOrigin);
+          } catch {
+            // Fallback to same origin only if src can't be parsed
+            f.contentWindow?.postMessage({ sbRefresh: true }, window.location.origin);
+          }
         });
       } catch {}
 

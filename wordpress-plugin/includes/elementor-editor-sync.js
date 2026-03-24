@@ -326,7 +326,8 @@
           win.addEventListener('message', function (ev) {
             try {
               if (!ev.data || typeof ev.data.sbHeight === 'undefined') return;
-              window.postMessage({ sbHeight: ev.data.sbHeight, sbFromWidget: true }, '*');
+              // Relay only to the editor window itself (same origin)
+              window.postMessage({ sbHeight: ev.data.sbHeight, sbFromWidget: true }, window.location.origin);
             } catch (e) {}
           });
         } catch (e) {
@@ -382,7 +383,14 @@
     // This is the most reliable signal that a Scheduler widget exists in the preview.
     window.addEventListener('message', function (ev) {
       try {
+        // Only accept messages from the same origin or from the configured app domain.
+        // Relayed internal messages (sbFromWidget) arrive from the same origin.
+        var isRelayed = ev.origin === window.location.origin;
+        // Validate message shape before acting
         if (!ev.data || typeof ev.data.sbHeight === 'undefined') return;
+        if (!isRelayed && !/^https?:\/\//.test(ev.origin)) return;
+        // Ensure the height value is a safe number
+        if (typeof ev.data.sbHeight !== 'number' || !isFinite(ev.data.sbHeight)) return;
 
         var previewIframe = document.getElementById('elementor-preview-iframe');
         if (!previewIframe) return;

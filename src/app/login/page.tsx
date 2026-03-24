@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 
@@ -9,6 +9,15 @@ type Mode = 'signin' | 'signup' | 'verify';
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('signin');
+
+  // Auto-redirect if session is still valid (client-side navigation bypass)
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) router.replace('/schedule');
+    });
+  }, [router]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');

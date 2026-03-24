@@ -141,7 +141,7 @@ export default function UserProfileMenu({ email, onLogout, onBusinessInfo, onSet
         aria-label="Open user menu"
         aria-expanded={open}
         className={cn(
-          'w-full flex items-center gap-2 px-2 py-2 rounded-lg transition-all',
+          'w-full flex items-center gap-2 px-2 py-2 rounded-lg transition-all overflow-hidden',
           'hover:bg-accent',
           open && 'bg-accent'
         )}
@@ -155,7 +155,7 @@ export default function UserProfileMenu({ email, onLogout, onBusinessInfo, onSet
         </div>
 
         {/* Email */}
-        <p className="flex-1 text-xs text-muted-foreground truncate min-w-0 leading-none text-left">
+        <p className="flex-1 text-xs text-muted-foreground truncate min-w-0 leading-none text-left overflow-hidden">
           {email ?? '—'}
         </p>
 

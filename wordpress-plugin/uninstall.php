@@ -61,17 +61,24 @@ if (is_multisite()) {
 // still have a running process with access to the files.
 // Note: deleting the folder we are currently running from is safe on Linux
 // because the OS keeps the inode alive until the process exits.
-function _sched_rmdir_recursive($dir) {
+function _sched_rmdir_recursive($dir, $allowed_base = null) {
+    if ($allowed_base === null) {
+        $allowed_base = realpath($dir);
+        if ($allowed_base === false) return; // non-existent or unresolvable
+    }
     if (!is_dir($dir)) return;
     $items = @scandir($dir);
     if ($items === false) return;
     foreach ($items as $item) {
         if ($item === '.' || $item === '..') continue;
         $path = $dir . '/' . $item;
+        // Guard against path traversal via symlinks or crafted filenames
+        $real_path = realpath($path);
+        if ($real_path === false || strpos($real_path, $allowed_base) !== 0) continue;
         if (is_dir($path) && !is_link($path)) {
-            _sched_rmdir_recursive($path);
+            _sched_rmdir_recursive($path, $allowed_base);
         } else {
-            @unlink($path);
+            @unlink($real_path);
         }
     }
     @rmdir($dir);
