@@ -1,6 +1,7 @@
 'use client';
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useMemo } from 'react';
 import { Copy, CheckCircle } from 'lucide-react';
+import type DOMPurifyType from 'dompurify';
 import type { MouseEvent } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -42,6 +43,13 @@ export default function PreviewPanel({
   scrollToMatchId,
 }: PreviewPanelProps) {
   const previewRef = useRef<HTMLDivElement>(null);
+  // DOMPurify requires a real DOM — initialize lazily on the client only.
+  const purify = useMemo<typeof DOMPurifyType | null>(() => {
+    if (typeof window === 'undefined') return null;
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('dompurify');
+    return (mod.default ?? mod) as typeof DOMPurifyType;
+  }, []);
 
   useEffect(() => {
     if (!scrollToMatchId || !previewRef.current) return;
@@ -190,7 +198,7 @@ export default function PreviewPanel({
           [&_.mc-round]:text-[0.82em] [&_.mc-round]:opacity-50
         "
         onContextMenu={handlePreviewContextMenu}
-        dangerouslySetInnerHTML={{ __html: typeof window !== 'undefined' ? (require('dompurify') as typeof import('dompurify')).default.sanitize(html, { USE_PROFILES: { html: true } }) : html }}
+        dangerouslySetInnerHTML={{ __html: purify ? purify.sanitize(html, { USE_PROFILES: { html: true } }) : html }}
       />
     </div>
   );
