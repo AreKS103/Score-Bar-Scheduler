@@ -1,3 +1,0 @@
-[     499ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://www.ncaa.com/womens-basketball:0
-[    2381ms] [ERROR] %c Consent was NOT granted, AdFuel will not load. background: red;color:white; @ https://www.ncaa.com/womens-basketball:5
-[    2383ms] [ERROR] Failed to load resource: net::ERR_NAME_NOT_RESOLVED @ https://stags.bluekai.com/site/24365?limit=1&phint=custom_audience%3Dcp_tippit-moo_houston-local-organizing-committee_tippit-moo_ncaa_men-s-final-four-2023_rtg-pixel:0

@@ -1,3 +1,0 @@
-[    1419ms] [ERROR] Failed to load resource: net::ERR_NAME_NOT_RESOLVED @ https://stags.bluekai.com/site/24365?limit=1&phint=custom_audience%3Dcp_tippit-moo_houston-local-organizing-committee_tippit-moo_ncaa_men-s-final-four-2023_rtg-pixel:0
-[    1918ms] [ERROR] %c Consent was NOT granted, AdFuel will not load. background: red;color:white; @ https://www.ncaa.com/march-madness-live/bracket:64
-[    4886ms] [WARNING] It is recommended that a robustness level be specified. Not specifying the robustness level could result in unexpected behavior. @ https://www.ncaa.com/march-madness-live/usePlayer.B4ryYD43.js:217

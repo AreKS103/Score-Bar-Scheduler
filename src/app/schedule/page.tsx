@@ -19,6 +19,7 @@ import {
   Pencil,
   Undo2,
   Redo2,
+  Star,
 } from 'lucide-react';
 import { useScheduleStore } from '@/lib/store';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
@@ -1840,13 +1841,13 @@ export default function SchedulePage() {
                 {featuredMatches.length > 0 && (
                   <div className="border border-yellow-500/40 bg-yellow-500/5 rounded-lg p-2">
                     <p className="text-[10px] font-semibold text-yellow-400 uppercase tracking-wide mb-1.5">
-                      ⭐ Highlighted Matches
+                      Highlighted Matches
                     </p>
                     <div className="space-y-1">
                       {featuredMatches.map((m) => (
                         <div
                           key={m.id}
-                          className="text-[10px] rounded-md px-1.5 py-1 bg-yellow-500/10 border border-yellow-500/20 cursor-pointer"
+                          className="group flex items-stretch text-[10px] rounded-md leading-snug select-none transition-all border overflow-hidden bg-amber-500/10 border-amber-500/40"
                           onContextMenu={(event) => {
                             event.preventDefault();
                             event.stopPropagation();
@@ -1860,12 +1861,24 @@ export default function SchedulePage() {
                             });
                           }}
                         >
-                          <div className="font-medium text-foreground truncate">
-                            {m.home}{m.away ? ' vs ' : ''}{m.away}
-                          </div>
-                          <div className="text-muted-foreground mt-0.5">
-                            {formatDisplayDate(m.date)} · {m.time}
-                            <span className="ml-1 text-muted-foreground/60">{m.leagueLabel ?? m.sportId}</span>
+                          {/* Star — click to un-highlight */}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleFeatured(m.id); }}
+                            className="shrink-0 w-6 flex items-center justify-center text-amber-400 hover:text-amber-300 hover:bg-amber-400/10 transition-colors"
+                            title="Remove from highlights"
+                          >
+                            <Star className="w-3 h-3" fill="currentColor" />
+                          </button>
+                          <div className="flex items-start gap-1.5 px-1.5 py-1 flex-1 min-w-0">
+                            <div className="min-w-0 flex-1">
+                              <div className="font-medium truncate text-foreground">
+                                {m.home}{m.away ? ' vs ' : ''}{m.away}
+                              </div>
+                              <div className="text-muted-foreground mt-0.5">
+                                {formatDisplayDate(m.date)} · {m.time}
+                                <span className="ml-1 text-muted-foreground/60">{m.leagueLabel ?? m.sportId}</span>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -1955,7 +1968,9 @@ export default function SchedulePage() {
                             'group flex items-stretch text-[10px] rounded-md leading-snug select-none transition-all border overflow-hidden',
                               checked
                                 ? 'bg-destructive/10 border-destructive/40'
-                                : 'bg-secondary/40 border-transparent hover:bg-secondary/70'
+                                : m.isFeatured
+                                  ? 'bg-amber-500/10 border-amber-500/40'
+                                  : 'bg-secondary/40 border-transparent hover:bg-secondary/70'
                             )}
                             onContextMenu={(event) => {
                               event.preventDefault();
@@ -1970,6 +1985,18 @@ export default function SchedulePage() {
                               });
                             }}
                           >
+                            {/* Star — toggle featured without triggering row selection */}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); toggleFeatured(m.id); }}
+                              data-no-league-menu="true"
+                              className={cn(
+                                'shrink-0 w-6 flex items-center justify-center transition-colors hover:bg-amber-400/10',
+                                m.isFeatured ? 'text-amber-400 hover:text-amber-300' : 'text-muted-foreground/30 hover:text-muted-foreground/60'
+                              )}
+                              title={m.isFeatured ? 'Remove from highlights' : 'Add to highlights'}
+                            >
+                              <Star className="w-3 h-3" fill={m.isFeatured ? 'currentColor' : 'none'} />
+                            </button>
                             <div
                               onClick={() => togglePreviewCheck(m.id)}
                               className="flex items-start gap-1.5 px-1.5 py-1 cursor-pointer flex-1 min-w-0"
@@ -1986,7 +2013,6 @@ export default function SchedulePage() {
                                 </div>
                                 <div className="text-muted-foreground mt-0.5">
                                   {formatDisplayDate(m.date)} · {m.time}
-                                  {m.isFeatured && <span className="ml-1 text-yellow-400">⭐</span>}
                                   {m.tags.length > 0 && (
                                     <span className="ml-1 text-primary/70">{m.tags.join(', ')}</span>
                                   )}
