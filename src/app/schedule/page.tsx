@@ -296,36 +296,25 @@ export default function SchedulePage() {
       // the selection key instead of the real embed ID. Re-apply the correct
       // embed's saved state now that we know the actual effectiveTarget.
       const target = effectiveTarget;
+      let initCancelled = false;
       const applyInitial = async () => {
-        const savedState = loadSelectionState(target);
-        if (savedState && Object.keys(savedState.selections).length > 0) {
-          if (savedState.leagueOrder.length > 0) setLeagueOrder(savedState.leagueOrder);
-          if (Object.keys(savedState.featuredLeagues).length > 0) {
-            setFeaturedLeagues(new Map(Object.entries(savedState.featuredLeagues)));
-          }
-          const currentEvents = useScheduleStore.getState().events;
-          if (currentEvents.length > 0) {
-            isSwitchingEmbedRef.current = true;
-            const merged = currentEvents.map(e => {
-              const sel = savedState.selections[e.id];
-              if (sel) return { ...e, ...sel };
-              return e;
-            });
-            setEvents(merged);
-          }
-        }
-        // Also apply from Supabase (cross-device sync)
-        const supaState = await loadSelectionFromSupabase(target);
-        if (!supaState) return;
-        if (supaState.leagueOrder.length > 0) setLeagueOrder(supaState.leagueOrder);
-        if (Object.keys(supaState.featuredLeagues).length > 0) {
-          setFeaturedLeagues(new Map(Object.entries(supaState.featuredLeagues)));
+        // Wait for Supabase (which already merges localStorage as fallback) so we
+        // only call setEvents once with the authoritative state — no stale flash.
+        const bestState = await loadSelectionFromSupabase(target);
+        if (initCancelled) return;
+        // If the snapshot effect already applied the published state, defer to it.
+        if (snapshotAppliedForTargetRef.current === target) return;
+        const stateToApply = bestState ?? loadSelectionState(target);
+        if (!stateToApply || Object.keys(stateToApply.selections).length === 0) return;
+        if (stateToApply.leagueOrder.length > 0) setLeagueOrder(stateToApply.leagueOrder);
+        if (Object.keys(stateToApply.featuredLeagues).length > 0) {
+          setFeaturedLeagues(new Map(Object.entries(stateToApply.featuredLeagues)));
         }
         const currentEvents = useScheduleStore.getState().events;
-        if (currentEvents.length > 0 && Object.keys(supaState.selections).length > 0) {
+        if (currentEvents.length > 0) {
           isSwitchingEmbedRef.current = true;
           const merged = currentEvents.map(e => {
-            const sel = supaState.selections[e.id];
+            const sel = stateToApply.selections[e.id];
             if (sel) return { ...e, ...sel };
             return e;
           });
@@ -333,7 +322,7 @@ export default function SchedulePage() {
         }
       };
       applyInitial();
-      return;
+      return () => { initCancelled = true; };
     }
 
     isSwitchingEmbedRef.current = true;
@@ -348,6 +337,7 @@ export default function SchedulePage() {
     snapshotAppliedForTargetRef.current = '';
 
     // Reset in-memory events to their unselected base, then overlay the new embed's state
+    let loadCancelled = false;
     const loadEmbedState = async () => {
       const savedState = loadSelectionState(target);
       const savedSel = savedState?.selections ?? {};
@@ -360,7 +350,7 @@ export default function SchedulePage() {
         tags: [] as ScreenTag[],
       }));
 
-      // Apply the new embed's saved selections
+      // Apply the new embed's saved selections (fast, synchronous from localStorage)
       const merged = cleared.map(e => {
         const sel = savedSel[e.id];
         if (sel) return { ...e, ...sel };
@@ -382,8 +372,9 @@ export default function SchedulePage() {
 
       // Also check Supabase for a fresher copy (cross-device sync)
       const supaState = await loadSelectionFromSupabase(target);
-      // If the snapshot effect already applied the published state while we were
-      // waiting for Supabase, don't overwrite it — the snapshot takes priority.
+      // Bail out if the embed switched while we were awaiting, or if the snapshot
+      // effect already applied the published state (snapshot takes priority).
+      if (loadCancelled) return;
       if (snapshotAppliedForTargetRef.current === target) return;
       const hasSelections =
         Object.keys(savedSel).length > 0 ||
@@ -412,7 +403,9 @@ export default function SchedulePage() {
       if (!hasSelections && publishTarget) {
         try {
           const r = await fetch(`/api/schedule-history?target=${encodeURIComponent(publishTarget)}`);
+          if (loadCancelled) return;
           const { schedule } = await r.json() as { schedule: { events_snapshot: MatchEvent[]; league_order: string[]; featured_leagues: Record<string, string> } | null };
+          if (loadCancelled) return;
           if (schedule?.events_snapshot?.length) {
             const snapshotIds = new Set(schedule.events_snapshot.map((e: MatchEvent) => e.id));
             const currentEvents = useScheduleStore.getState().events;
@@ -433,6 +426,9 @@ export default function SchedulePage() {
     };
 
     loadEmbedState();
+    // Cancel any in-flight async operations if the embed switches again before
+    // they complete — prevents stale data from a previous embed overwriting state.
+    return () => { loadCancelled = true; };
   }, [effectiveTarget, setEvents]);
 
   // ─── Fetch last published snapshot when a target pill is selected ─────────
@@ -441,11 +437,13 @@ export default function SchedulePage() {
       setPublishedSnapshot(null);
       return;
     }
+    let snapshotCancelled = false;
     const load = (isInitial = false) => {
       setSnapshotLoading(true);
       fetch(`/api/schedule-history?target=${encodeURIComponent(publishTarget)}`)
         .then((r) => r.json())
         .then(({ schedule }: { schedule: { events_snapshot: MatchEvent[]; league_order: string[]; featured_leagues: Record<string, string>; week_label: string } | null }) => {
+          if (snapshotCancelled) return;
           if (!schedule) { setPublishedSnapshot(null); return; }
           const evts = (schedule.events_snapshot ?? []) as MatchEvent[];
           const lo = (schedule.league_order ?? []) as string[];
@@ -484,12 +482,12 @@ export default function SchedulePage() {
             if (fl.size > 0) setFeaturedLeagues(fl);
           }
         })
-        .catch(() => setPublishedSnapshot(null))
-        .finally(() => setSnapshotLoading(false));
+        .catch(() => { if (!snapshotCancelled) setPublishedSnapshot(null); })
+        .finally(() => { if (!snapshotCancelled) setSnapshotLoading(false); });
     };
     load(true);
     const id = setInterval(() => load(false), 120_000);
-    return () => clearInterval(id);
+    return () => { snapshotCancelled = true; clearInterval(id); };
   }, [publishTarget]);
 
   // ─── Client-side auth guard ─────────────────────────────────────────────────
