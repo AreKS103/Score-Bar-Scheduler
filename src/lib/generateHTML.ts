@@ -128,11 +128,15 @@ function generateHighlights(
         return cfg ? resolvePublishLogoUrl(cfg.logo || e.leagueLogo || '', cfg.publishLogo) : '';
       })() : '';
       const leagueFallbackImg = leagueFallback ? `<img src="${escapeHTML(leagueFallback)}" alt="" loading="lazy" style="${s.teamLogo}" />` : '';
+      // For combat sports: homeLogo = flagcdn.com flag image; emoji flag falls back if image absent.
+      // For non-combat sports: homeImg is the team logo; emoji flags don't apply.
+      const homeBadge = isCombat ? (homeImg || homeFlag) : homeImg;
+      const awayBadge = isCombat ? (awayImg || awayFlag) : awayImg;
       const teamsHtml = e.away
-        ? `${homeImg}${homeFlag}<span>${escapeHTML(e.home)}</span><span style="${s.vs}">vs</span>${awayImg}${awayFlag}<span>${escapeHTML(e.away)}</span>`
+        ? `${homeBadge}<span>${escapeHTML(e.home)}</span><span style="${s.vs}">vs</span>${awayBadge}<span>${escapeHTML(e.away)}</span>`
         : `${leagueFallbackImg}${homeImg}<span>${escapeHTML(e.home)}</span>`;
       const roundStr = e.round ? `<div style="${s.round}">${escapeHTML(e.round)}</div>` : '';
-      parts.push(`<div style="${s.event}"><div style="${s.meta}">${e.time ? `<span style="${s.time}">${escapeHTML(e.time)}</span>` : ''}<span style="${s.league}">${escapeHTML(e.leagueLabel)}</span></div><div style="${s.teams}">${teamsHtml}</div>${roundStr}</div>`);
+      parts.push(`<div style="${s.event}"><div style="${s.meta}">${e.time ? `<span style="${s.time}">${escapeHTML(e.time)}</span>` : ''}<span style="${s.league}">${escapeHTML(cleanCombatLabel(e))}</span></div><div style="${s.teams}">${teamsHtml}</div>${roundStr}</div>`);
     }
     parts.push('</div>');
   }
@@ -157,6 +161,16 @@ function countryFlag(code: string): string {
   const c = (code || '').trim().toUpperCase().substring(0, 2);
   if (!/^[A-Z]{2}$/.test(c)) return '';
   return Array.from(c).map(ch => String.fromCodePoint(0x1F1E6 + ch.charCodeAt(0) - 65)).join('');
+}
+
+/** Strip "Fighter vs. Fighter" suffix from combat sport event labels. */
+function cleanCombatLabel(e: MatchEvent): string {
+  if (!['boxing', 'ufc', 'bellator'].includes(e.sportId) || !e.away) return e.leagueLabel;
+  const colon = e.leagueLabel.indexOf(':');
+  if (colon > 0 && /vs\.?\s/i.test(e.leagueLabel.slice(colon))) {
+    return e.leagueLabel.slice(0, colon).trim();
+  }
+  return e.leagueLabel;
 }
 
 function generateMatchLine(event: MatchEvent): string {

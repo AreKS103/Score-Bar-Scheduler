@@ -1,9 +1,9 @@
-﻿<?php
+<?php
 /**
  * Plugin Name: Scheduler
  * Plugin URI:
  * Description: A sports schedule widget for your website.
- * Version: 1.2.3
+ * Version: 1.2.4
  * Text Domain: scorebar-scheduler
  * Requires at least: 6.0
  * Tested up to: 6.7
@@ -12,7 +12,7 @@
 if (!defined('ABSPATH')) exit;
 
 // Plugin version — must match the "Version:" header above.
-define('SCHEDULE_PLUGIN_VERSION', '1.2.3');
+define('SCHEDULE_PLUGIN_VERSION', '1.2.4');
 
 // ── PHP version gate ────────────────────────────────────────────────────────
 if (version_compare(PHP_VERSION, '7.4', '<')) {
@@ -88,16 +88,14 @@ if (!function_exists('schedule_purge_ghost_entries')) {
     }
 }
 
-// Run on activation (handles the install-time cleanup)
-register_activation_hook(__FILE__, 'schedule_purge_ghost_entries');
-// Clear cached update check so the next admin page load fetches fresh version data
+// On activation: clear stale update transient so WP re-checks on next load.
 register_activation_hook(__FILE__, function() {
     delete_transient('scorebar_update_check');
 });
 
-// Run on every plugins_loaded — fires before admin notices are rendered, so the
-// "Plugin file does not exist" notice never appears even on the first load after a
-// broken/duplicate install. Priority 1 = as early as possible.
+// Ghost-entry cleanup runs on every plugins_loaded at priority 1 — this fires
+// before admin notices so the "plugin file does not exist" banner never appears.
+// Priority 1 = as early as possible, before other plugins or WP renders UI.
 add_action('plugins_loaded', 'schedule_purge_ghost_entries', 1);
 
 // ── Load plugin files defensively ─────────────────────────────────────────

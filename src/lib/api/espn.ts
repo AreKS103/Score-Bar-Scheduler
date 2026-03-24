@@ -124,6 +124,44 @@ function mapTeamEvents(
   });
 }
 
+// ── Country name → ISO-3166-1 alpha-2 lookup (for fighter flag emojis) ────────
+function countryNameToISO(name: string): string {
+  const m: Record<string, string> = {
+    'Afghanistan':'AF','Albania':'AL','Algeria':'DZ','American Samoa':'AS',
+    'Argentina':'AR','Armenia':'AM','Australia':'AU','Austria':'AT',
+    'Azerbaijan':'AZ','Bahrain':'BH','Belarus':'BY','Belgium':'BE',
+    'Bolivia':'BO','Bosnia and Herzegovina':'BA','Brazil':'BR','Bulgaria':'BG',
+    'Cameroon':'CM','Canada':'CA','Chile':'CL','China':'CN',
+    'Colombia':'CO','Costa Rica':'CR','Croatia':'HR','Cuba':'CU',
+    'Czech Republic':'CZ','Czechia':'CZ','Denmark':'DK','Dominican Republic':'DO',
+    'Ecuador':'EC','Egypt':'EG','El Salvador':'SV','Estonia':'EE',
+    'Ethiopia':'ET','Finland':'FI','France':'FR','Georgia':'GE',
+    'Germany':'DE','Ghana':'GH','Great Britain':'GB','Greece':'GR',
+    'Guatemala':'GT','Guyana':'GY','Honduras':'HN','Hungary':'HU',
+    'Iceland':'IS','India':'IN','Indonesia':'ID','Iran':'IR',
+    'Ireland':'IE','Israel':'IL','Italy':'IT','Jamaica':'JM',
+    'Japan':'JP','Jordan':'JO','Kazakhstan':'KZ','Kenya':'KE',
+    'Kosovo':'XK','Kyrgyzstan':'KG','Latvia':'LV','Lebanon':'LB',
+    'Lithuania':'LT','Malaysia':'MY','Mexico':'MX','Moldova':'MD',
+    'Montenegro':'ME','Morocco':'MA','Netherlands':'NL','New Zealand':'NZ',
+    'Nicaragua':'NI','Nigeria':'NG','North Macedonia':'MK','Norway':'NO',
+    'Pakistan':'PK','Panama':'PA','Paraguay':'PY','Peru':'PE',
+    'Philippines':'PH','Poland':'PL','Portugal':'PT','Puerto Rico':'PR',
+    'Romania':'RO','Russia':'RU','Saudi Arabia':'SA','Senegal':'SN',
+    'Serbia':'RS','Singapore':'SG','Slovakia':'SK','Slovenia':'SI',
+    'South Africa':'ZA','South Korea':'KR','Spain':'ES','Suriname':'SR',
+    'Sweden':'SE','Switzerland':'CH','Tajikistan':'TJ','Thailand':'TH',
+    'Trinidad and Tobago':'TT','Tunisia':'TN','Turkey':'TR','Turkiye':'TR',
+    'Uganda':'UG','Ukraine':'UA','United Arab Emirates':'AE',
+    'United Kingdom':'GB','United States':'US','Uruguay':'UY',
+    'USA':'US','UK':'GB','England':'GB','Scotland':'GB','Wales':'GB','Northern Ireland':'GB',
+    'Korea':'KR','DPR Korea':'KP','Chinese Taipei':'TW',
+    'Uzbekistan':'UZ','Venezuela':'VE','Vietnam':'VN',
+    'Zambia':'ZM','Zimbabwe':'ZW',
+  };
+  return m[name] || '';
+}
+
 // ── MMA mapper (UFC, Bellator, PFL) ──────────────────────────────────────────
 // ESPN MMA: one event = the card (e.g. "UFC 326"), many competitions = individual fights
 
@@ -135,9 +173,13 @@ function mapMMAEvents(
   const results: MatchEvent[] = [];
 
   for (const event of data.events) {
-    // Full event name includes the main event, e.g. "UFC 326: Max Holloway vs. Charles Oliveira 2"
-    // Fall back to shortName ("UFC 326") if name is not available
-    const cardName = event.name || event.shortName || sportConfig.label;
+    // Use shortName ("UFC Fight Night") to avoid redundancy — the full event.name
+    // often includes the main event fighters ("UFC Fight Night: Adesanya vs. Pyfer")
+    // which would double-render when the fighters are already shown as home/away.
+    const cardLabel = event.shortName ||
+      (event.name?.includes(':')
+        ? event.name.substring(0, event.name.indexOf(':')).trim()
+        : (event.name || sportConfig.label));
     const { date, time } = utcToLocal(event.date);
 
     const competitions = event.competitions ?? [];
@@ -159,19 +201,35 @@ function mapMMAEvents(
       // Weight class from competition type abbreviation
       const weightClass = comp.type?.abbreviation ?? '';
 
+      // Fighter flags: ESPN provides athlete.flag.href (image URL) and .alt (country name).
+      // We prefer flagcdn.com over ESPN's own flag CDN — flagcdn is more reliable and
+      // consistently returns a 40px webp flag for any ISO-3166-1 alpha-2 code.
+      const f1Flag = fighter1?.athlete?.flag;
+      const f2Flag = fighter2?.athlete?.flag;
+      const f1Country = f1Flag?.alt ? countryNameToISO(f1Flag.alt) : '';
+      const f2Country = f2Flag?.alt ? countryNameToISO(f2Flag.alt) : '';
+      const f1Logo = getCompetitorLogo(fighter1)
+        || (f1Country ? `https://flagcdn.com/w40/${f1Country.toLowerCase()}.webp` : '')
+        || f1Flag?.href || '';
+      const f2Logo = getCompetitorLogo(fighter2)
+        || (f2Country ? `https://flagcdn.com/w40/${f2Country.toLowerCase()}.webp` : '')
+        || f2Flag?.href || '';
+
       results.push({
         id: `espn-${sportConfig.id}-${event.id}-fight-${i}`,
         source: 'espn' as const,
         sportId: sportConfig.id,
         category: sportConfig.category,
-        leagueLabel: cardName,
+        leagueLabel: cardLabel,
         leagueLogo: sportConfig.logo,
         date: fightTime.date,
         time: fightTime.time,
         home: f1Name,
         away: f2Name,
-        homeLogo: getCompetitorLogo(fighter1),
-        awayLogo: getCompetitorLogo(fighter2),
+        homeLogo: f1Logo,
+        awayLogo: f2Logo,
+        homeCountry: f1Country,
+        awayCountry: f2Country,
         round: weightClass,
         tags: [],
         isFeatured: false,

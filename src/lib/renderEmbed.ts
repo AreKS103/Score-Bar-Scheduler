@@ -129,6 +129,17 @@ function countryFlag(code: string): string {
   return Array.from(c).map(ch => String.fromCodePoint(0x1F1E6 + ch.charCodeAt(0) - 65)).join('');
 }
 
+/** Strip "Fighter vs. Fighter" suffix from combat sport event labels so it doesn't
+ *  double-render alongside the home/away fighter names already shown in highlights. */
+function cleanCombatLabel(e: MatchEvent): string {
+  if (!['boxing', 'ufc', 'bellator'].includes(e.sportId) || !e.away) return e.leagueLabel;
+  const colon = e.leagueLabel.indexOf(':');
+  if (colon > 0 && /vs\.?\s/i.test(e.leagueLabel.slice(colon))) {
+    return e.leagueLabel.slice(0, colon).trim();
+  }
+  return e.leagueLabel;
+}
+
 function buildMatchLine(event: MatchEvent, showTime: boolean, sharedRound: string): string {
   const e = sharedRound ? { ...event, round: '' } : event;
   const isCombat = ['boxing', 'ufc', 'bellator'].includes(e.sportId);
@@ -199,11 +210,16 @@ function renderHighlights(
         return cfg ? resolvePublishLogoUrl(cfg.logo || e.leagueLogo || '', cfg.publishLogo) : '';
       })() : '';
       const leagueFallbackImg = leagueFallback ? `<img class="hl-team-logo" src="${esc(leagueFallback)}" alt="" onerror="this.onerror=null;this.style.display='none'" />` : '';
+      // For combat sports: homeLogo = flagcdn.com flag image (generated from ISO country code).
+      // Prefer the image; if absent (e.g. unknown fighter nationality), fall back to emoji flag.
+      // For non-combat sports: homeImg is the team logo; emoji flags don't apply.
+      const homeBadge = isCombat ? (homeImg || homeFlag) : homeImg;
+      const awayBadge = isCombat ? (awayImg || awayFlag) : awayImg;
       const teamsHtml = e.away
-        ? `<span class="hl-team">${homeImg}${homeFlag}${esc(e.home)}</span><span class="hl-vs">vs</span><span class="hl-team">${awayImg}${awayFlag}${esc(e.away)}</span>`
+        ? `<span class="hl-team">${homeBadge}${esc(e.home)}</span><span class="hl-vs">vs</span><span class="hl-team">${awayBadge}${esc(e.away)}</span>`
         : `<span class="hl-team">${leagueFallbackImg}${homeImg}${esc(e.home)}</span>`;
       const roundStr = e.round ? `<div class="hl-round">${esc(e.round)}</div>` : '';
-      parts.push(`<div class="hl-event"><div class="hl-event-meta">${e.time ? `<span class="hl-time">${esc(e.time)}</span>` : ''}<span class="hl-league-name">${esc(e.leagueLabel)}</span></div><div class="hl-teams">${teamsHtml}</div>${roundStr}</div>`);
+      parts.push(`<div class="hl-event"><div class="hl-event-meta">${e.time ? `<span class="hl-time">${esc(e.time)}</span>` : ''}<span class="hl-league-name">${esc(cleanCombatLabel(e))}</span></div><div class="hl-teams">${teamsHtml}</div>${roundStr}</div>`);
     }
     parts.push('</div>');
   }

@@ -262,6 +262,64 @@ function getCompName(c: ESPNCompetitorRaw | undefined): string {
   return c?.team?.displayName || c?.athlete?.displayName || c?.athlete?.fullName || '';
 }
 
+// ── Country name → ISO-3166-1 alpha-2 (for fighter flag images) ──────────────
+const NAME_TO_ISO: Record<string, string> = {
+  'Afghanistan':'AF','Albania':'AL','Algeria':'DZ','American Samoa':'AS',
+  'Argentina':'AR','Armenia':'AM','Australia':'AU','Austria':'AT',
+  'Azerbaijan':'AZ','Bahrain':'BH','Belarus':'BY','Belgium':'BE',
+  'Bolivia':'BO','Bosnia and Herzegovina':'BA','Brazil':'BR','Bulgaria':'BG',
+  'Cameroon':'CM','Canada':'CA','Chile':'CL','China':'CN',
+  'Colombia':'CO','Costa Rica':'CR','Croatia':'HR','Cuba':'CU',
+  'Czech Republic':'CZ','Czechia':'CZ','Denmark':'DK','Dominican Republic':'DO',
+  'Ecuador':'EC','Egypt':'EG','El Salvador':'SV','Estonia':'EE',
+  'Ethiopia':'ET','Finland':'FI','France':'FR','Georgia':'GE',
+  'Germany':'DE','Ghana':'GH','Great Britain':'GB','Greece':'GR',
+  'Guatemala':'GT','Guyana':'GY','Honduras':'HN','Hungary':'HU',
+  'Iceland':'IS','India':'IN','Indonesia':'ID','Iran':'IR',
+  'Ireland':'IE','Israel':'IL','Italy':'IT','Jamaica':'JM',
+  'Japan':'JP','Jordan':'JO','Kazakhstan':'KZ','Kenya':'KE',
+  'Kosovo':'XK','Kyrgyzstan':'KG','Latvia':'LV','Lebanon':'LB',
+  'Lithuania':'LT','Malaysia':'MY','Mexico':'MX','Moldova':'MD',
+  'Montenegro':'ME','Morocco':'MA','Netherlands':'NL','New Zealand':'NZ',
+  'Nicaragua':'NI','Nigeria':'NG','North Macedonia':'MK','Norway':'NO',
+  'Pakistan':'PK','Panama':'PA','Paraguay':'PY','Peru':'PE',
+  'Philippines':'PH','Poland':'PL','Portugal':'PT','Puerto Rico':'PR',
+  'Romania':'RO','Russia':'RU','Saudi Arabia':'SA','Senegal':'SN',
+  'Serbia':'RS','Singapore':'SG','Slovakia':'SK','Slovenia':'SI',
+  'South Africa':'ZA','South Korea':'KR','Spain':'ES','Suriname':'SR',
+  'Sweden':'SE','Switzerland':'CH','Tajikistan':'TJ','Thailand':'TH',
+  'Trinidad and Tobago':'TT','Tunisia':'TN','Turkey':'TR','Turkiye':'TR',
+  'Uganda':'UG','Ukraine':'UA','United Arab Emirates':'AE',
+  'United Kingdom':'GB','United States':'US','Uruguay':'UY',
+  'USA':'US','U.S.A.':'US','U.S.':'US','United States of America':'US',
+  'UK':'GB','England':'GB','Scotland':'GB','Wales':'GB','Northern Ireland':'GB',
+  'Britain':'GB',
+  'Korea':'KR','DPR Korea':'KP',
+  'Chinese Taipei':'TW','Taiwan':'TW',
+  'Ivory Coast':'CI',"Cote d'Ivoire":'CI',
+  'Uzbekistan':'UZ','Venezuela':'VE','Vietnam':'VN',
+  'Zambia':'ZM','Zimbabwe':'ZW',
+  'Congo':'CG','DR Congo':'CD','Democratic Republic of the Congo':'CD',
+  'Dominican Rep.':'DO','Czech Rep.':'CZ',
+  'Republic of Ireland':'IE','Rep. of Ireland':'IE',
+  'Bosnia':'BA',
+  'Myanmar':'MM','Burma':'MM',
+  'Samoa':'WS','Tonga':'TO','Fiji':'FJ','Papua New Guinea':'PG',
+  'Cape Verde':'CV','Cabo Verde':'CV',
+  'Guam':'GU','Haiti':'HT','Cambodia':'KH','Laos':'LA',
+  'Nepal':'NP','Sri Lanka':'LK','Bangladesh':'BD',
+  'Bahamas':'BS','Barbados':'BB','Bermuda':'BM',
+  'Curacao':'CW','Curaçao':'CW',
+};
+function countryNameToISO(name: string): string {
+  if (!name) return '';
+  return NAME_TO_ISO[name] || NAME_TO_ISO[name.trim()] || '';
+}
+function countryToFlagUrl(country: string): string {
+  const iso = countryNameToISO(country);
+  return iso ? `https://flagcdn.com/w40/${iso.toLowerCase()}.png` : '';
+}
+
 // ── MMA / Boxing mapper — one MatchEvent per fight (iterates ALL competitions) ──
 function mapMMAFights(
   events: ESPNEvent[],
@@ -312,6 +370,21 @@ function mapMMAFights(
       const fightTime = comp.date ? utcToLocal(comp.date) : { date, time };
       const weightClass = comp.type?.abbreviation ?? '';
 
+      // Fighter flags: ESPN provides athlete.flag.href (image) and .alt (country name).
+      // Prefer ESPN image → flagcdn.com fallback from country name → empty.
+      const f1Flag = f1?.athlete?.flag;
+      const f2Flag = f2?.athlete?.flag;
+      const f1Country = f1Flag?.alt ? countryNameToISO(f1Flag.alt) : '';
+      const f2Country = f2Flag?.alt ? countryNameToISO(f2Flag.alt) : '';
+      const f1Logo = f1?.team?.logo
+        || f1Flag?.href
+        || countryToFlagUrl(f1Flag?.alt ?? '')
+        || '';
+      const f2Logo = f2?.team?.logo
+        || f2Flag?.href
+        || countryToFlagUrl(f2Flag?.alt ?? '')
+        || '';
+
       fights.push({
         id: `espn-${league.id}-${event.id}-fight-${competitions.length - 1 - i}`,
         source: 'espn',
@@ -323,8 +396,10 @@ function mapMMAFights(
         time: fightTime.time,
         home: f1Name,
         away: f2 ? getCompName(f2) : '',
-        homeLogo: f1?.team?.logo || '',
-        awayLogo: f2?.team?.logo || '',
+        homeLogo: f1Logo,
+        awayLogo: f2Logo,
+        homeCountry: f1Country,
+        awayCountry: f2Country,
         round: weightClass,
         tags: [],
         isFeatured: false,

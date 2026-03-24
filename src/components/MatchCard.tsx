@@ -8,6 +8,15 @@ import { cn } from '@/lib/utils';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 
+/** Convert ISO-3166-1 alpha-2 country code to Unicode flag emoji */
+function isoToFlag(code: string): string {
+  const c = (code || '').trim().toUpperCase().substring(0, 2);
+  if (!/^[A-Z]{2}$/.test(c)) return '';
+  return Array.from(c)
+    .map((ch) => String.fromCodePoint(0x1f1e6 + ch.charCodeAt(0) - 65))
+    .join('');
+}
+
 interface MatchCardProps {
   event: MatchEvent;
   onToggleSelected: (id: string) => void;
@@ -21,6 +30,7 @@ const MatchCard = memo(function MatchCard({
   onToggleFeatured,
   onToggleTag,
 }: MatchCardProps) {
+  const isCombat = ['ufc', 'bellator', 'boxing'].includes(event.sportId);
   return (
     <div
       onClick={() => onToggleSelected(event.id)}
@@ -64,18 +74,36 @@ const MatchCard = memo(function MatchCard({
           </Badge>
         </div>
 
-        {/* Teams with logos */}
+        {/* Teams with logos / fighter flags */}
         <div className="flex items-center gap-1.5 text-[11px] font-medium text-foreground">
-          {event.homeLogo && (
-            <img src={event.homeLogo} alt="" className="h-4 w-4 object-contain flex-shrink-0" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-          )}
+          {event.homeLogo ? (
+            <img
+              src={event.homeLogo}
+              alt=""
+              className="h-4 w-4 object-contain flex-shrink-0"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            />
+          ) : (isCombat && event.homeCountry) ? (
+            <span className="leading-none text-sm" title={event.homeCountry}>
+              {isoToFlag(event.homeCountry)}
+            </span>
+          ) : null}
           <span>{event.home}</span>
           {event.away && (
             <>
               <span className="text-muted-foreground mx-0.5">vs</span>
-              {event.awayLogo && (
-                <img src={event.awayLogo} alt="" className="h-4 w-4 object-contain flex-shrink-0" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-              )}
+              {event.awayLogo ? (
+                <img
+                  src={event.awayLogo}
+                  alt=""
+                  className="h-4 w-4 object-contain flex-shrink-0"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                />
+              ) : (isCombat && event.awayCountry) ? (
+                <span className="leading-none text-sm" title={event.awayCountry}>
+                  {isoToFlag(event.awayCountry)}
+                </span>
+              ) : null}
               <span>{event.away}</span>
             </>
           )}

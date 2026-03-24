@@ -38,6 +38,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# plugin build temp folder
+__plugin_build/
+
 # supabase local CLI temp files (contain DB connection strings)
 supabase/.temp/
 
