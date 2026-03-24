@@ -23,7 +23,7 @@ import {
 import { useScheduleStore } from '@/lib/store';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { useFavoritesStore } from '@/lib/favoritesStore';
-import { getCachedEvents, setCachedEvents, appendCachedEvent, removeCachedEvent, saveLocalCustomEvent, loadLocalCustomEvents, removeLocalCustomEvent, syncLocalCustomEventsToSupabase, saveSelectionToSupabase, loadSelectionFromSupabase, loadSelectionState, saveSelectionState, loadCustomLeagueLogo, type SavedSelectionState } from '@/lib/clientCache';
+import { getCachedEvents, setCachedEvents, appendCachedEvent, removeCachedEvent, saveLocalCustomEvent, loadLocalCustomEvents, removeLocalCustomEvent, syncLocalCustomEventsToSupabase, saveSelectionToSupabase, loadSelectionFromSupabase, loadSelectionState, saveSelectionState, pruneStaleSelectionKeys, loadCustomLeagueLogo, type SavedSelectionState } from '@/lib/clientCache';
 import { generateHTML } from '@/lib/generateHTML';
 import { SPORTS_CONFIG, getCategories, ALL_SCREEN_TAGS } from '@/lib/config';
 import { formatDisplayDate } from '@/lib/timezone';
@@ -36,6 +36,7 @@ import PublishButton from '@/components/PublishButton';
 import DateRangeCalendar from '@/components/DateRangeCalendar';
 import SearchField from '@/components/SearchField';
 import PreviewPanel from '@/components/PreviewPanel';
+import DraggableEmbedPills from '@/components/DraggableEmbedPills';
 import SettingsModal from '@/components/SettingsModal';
 import UserProfileMenu from '@/components/UserProfileMenu';
 import BusinessInfoModal from '@/components/BusinessInfoModal';
@@ -245,8 +246,28 @@ export default function SchedulePage() {
       fetch('/api/embed-instances')
         .then((r) => r.json())
         .then((d) => {
-          const instances: { display_id: string; embed_id: string | null }[] = d.instances ?? [];
+          const fetched: { display_id: string; embed_id: string | null }[] = d.instances ?? [];
+          // Restore user-sorted order from localStorage
+          const savedOrder = (() => {
+            try {
+              const raw = typeof window !== 'undefined' && localStorage.getItem('sportglobe_embed_order_v1');
+              return raw ? (JSON.parse(raw) as string[]) : null;
+            } catch { return null; }
+          })();
+          const instances = savedOrder
+            ? [
+                ...savedOrder
+                  .map(id => fetched.find(f => (f.embed_id ?? f.display_id) === id))
+                  .filter((x): x is typeof fetched[number] => x !== undefined),
+                ...fetched.filter(f => !savedOrder.includes(f.embed_id ?? f.display_id)),
+              ]
+            : fetched;
           setEmbedInstances(instances);
+          // Prune localStorage selection keys for embeds that no longer exist.
+          // Sequential IDs ("1", "2", …) get recycled on delete+recreate, so stale
+          // keys would silently populate a brand-new embed with the old one's selections.
+          const liveIds = new Set(fetched.map(f => f.embed_id ?? f.display_id));
+          pruneStaleSelectionKeys(liveIds);
           // Auto-select first embed on first load (no "All" option).
           if (!didAutoSelectEmbed.current && instances.length > 0) {
             didAutoSelectEmbed.current = true;
@@ -690,6 +711,16 @@ export default function SchedulePage() {
         console.log(`[Schedule] Loaded ${allEvents.length} events from ${currentRange.start} to ${currentRange.end} (server cached, age: ${data.age}s${data.stale ? ', stale' : ''})`);
       } else {
         console.log(`[Schedule] Loaded ${allEvents.length} events from ${currentRange.start} to ${currentRange.end} (fresh)`);
+      }
+
+      // Per-sport diagnostic summary — helps diagnose missing leagues in the client
+      const bySport = new Map<string, number>();
+      for (const e of allEvents) bySport.set(e.sportId, (bySport.get(e.sportId) ?? 0) + 1);
+      const ncaamCount = bySport.get('basketball-ncaam') ?? 0;
+      if (ncaamCount > 0) {
+        console.log(`[Schedule] NCAA Men's Basketball: ${ncaamCount} events`);
+      } else {
+        console.warn(`[Schedule] NCAA Men's Basketball: 0 events for range ${currentRange.start}–${currentRange.end} (check server logs for [ESPN-NCAA] lines)`);
       }
     } catch (err) {
       console.error('Fetch failed:', err);
@@ -1723,43 +1754,28 @@ export default function SchedulePage() {
 
           {/* Publish-to instance pills */}
           {embedInstances.length > 0 && (
-            <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+            <div className="flex items-center gap-1.5 min-w-0">
               <span className="text-[11px] text-muted-foreground shrink-0">Publish to:</span>
-              {embedInstances.map((inst) => {
-                const value = inst.embed_id ?? inst.display_id;
-                const isRenaming = renamingId === value;
-                return (
-                  <div key={inst.display_id} className="inline-flex">
-                    {isRenaming ? (
-                      <input
-                        autoFocus
-                        className="text-[11px] px-2 py-0.5 rounded-full border border-primary bg-background text-foreground outline-none w-24"
-                        value={renameValue}
-                        onChange={e => setRenameValue(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') commitRename(value);
-                          if (e.key === 'Escape') setRenamingId(null);
-                        }}
-                        onBlur={() => commitRename(value)}
-                      />
-                    ) : (
-                      <button
-                        onClick={() => setPublishTarget(value)}
-                        onDoubleClick={() => { setRenamingId(value); setRenameValue(inst.display_id); }}
-                        title="Double-click to rename"
-                        className={cn(
-                          'text-[11px] px-2 py-0.5 rounded-full border transition-all',
-                          publishTarget === value
-                            ? 'bg-primary text-primary-foreground border-primary'
-                            : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/30'
-                        )}
-                      >
-                        {inst.display_id}
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
+              <DraggableEmbedPills
+                instances={embedInstances}
+                publishTarget={publishTarget}
+                renamingId={renamingId}
+                renameValue={renameValue}
+                onSelect={setPublishTarget}
+                onDoubleClick={(value, displayId) => { setRenamingId(value); setRenameValue(displayId); }}
+                onRenameChange={setRenameValue}
+                onRenameCommit={commitRename}
+                onRenameCancel={() => setRenamingId(null)}
+                onReorder={(next) => {
+                  setEmbedInstances(next);
+                  try {
+                    localStorage.setItem(
+                      'sportglobe_embed_order_v1',
+                      JSON.stringify(next.map(i => i.embed_id ?? i.display_id)),
+                    );
+                  } catch { /* quota — ignore */ }
+                }}
+              />
             </div>
           )}
 

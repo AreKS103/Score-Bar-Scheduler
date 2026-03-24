@@ -517,7 +517,9 @@ function mapTeamSportEvents(
       isFeatured: false,
       isSelected: false,
     };
-  }).filter(e => e.date && e.home !== 'TBD');
+  }).filter(e => e.date && (e.home !== 'TBD' || isNCAA));
+  // isNCAA: tournament bracket slots with TBD teams are valid and should be shown
+  // (e.g. "TBD vs Duke" before the Round of 32 winner is decided).
 }
 
 async function fetchESPNLeague(
@@ -608,12 +610,20 @@ async function fetchESPNLeague(
     // Apply date-range guard to all leagues: prevents the 404-fallback (which fetches
     // without dates when ESPN returns 404 for off-season leagues like BBL in March) or
     // the stale path-cache from leaking out-of-range events into the schedule view.
+    const beforeDateGuard = parsed.length;
     parsed = parsed.filter(e => e.date >= startDate && e.date <= endDate);
+
+    if (isMMA) console.log(`[ESPN-MMA] ${league.id}: mapped ${parsed.length} fights from ${events.length} events`);
+    if (league.id === 'basketball-ncaam') {
+      console.log(`[ESPN-NCAA] fetchESPNLeague summary: ${events.length} raw ESPN events → ${beforeDateGuard} after mapping (TBD allowed) → ${parsed.length} in range [${startDate}, ${endDate}]`);
+      if (parsed.length === 0 && beforeDateGuard > 0) {
+        console.warn(`[ESPN-NCAA] ZERO in-range events — all ${beforeDateGuard} mapped games fell outside [${startDate}, ${endDate}]`);
+      }
+    }
 
     if (parsed.length > 0) {
       pathCache.set(league.id, { events: parsed, fetchedAt: Date.now() });
     }
-    if (isMMA) console.log(`[ESPN-MMA] ${league.id}: mapped ${parsed.length} fights from ${events.length} events`);
     return parsed;
   } catch (err) {
     const stale = pathCache.get(league.id);

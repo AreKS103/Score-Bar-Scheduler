@@ -319,6 +319,37 @@ export function loadSelectionState(embedTarget = ''): SavedSelectionState | null
   }
 }
 
+/** Remove a single embed's selection state from localStorage. */
+export function clearSelectionState(embedTarget: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(selectionsKey(embedTarget));
+  } catch { /* ignore */ }
+}
+
+/**
+ * Garbage-collect stale selection keys in localStorage.
+ * Pass the set of embed IDs that currently exist. Any
+ * `sportglobe_selections_v2:*` key not in that set is removed.
+ * This prevents recycled sequential embed IDs ("1", "2", …) from
+ * inheriting selections left behind by a previously deleted embed.
+ */
+export function pruneStaleSelectionKeys(liveEmbedIds: Set<string>): void {
+  if (typeof window === 'undefined') return;
+  const PREFIX = 'sportglobe_selections_v2:';
+  const toRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key?.startsWith(PREFIX)) continue;
+    const embedId = key.slice(PREFIX.length);
+    if (!liveEmbedIds.has(embedId)) toRemove.push(key);
+  }
+  toRemove.forEach(k => localStorage.removeItem(k));
+  if (toRemove.length > 0) {
+    console.log(`[Selections] Pruned ${toRemove.length} stale localStorage selection key(s):`, toRemove);
+  }
+}
+
 // ─── Supabase Selection Sync ──────────────────────────────────────────────────
 // Mirrors selection state to Supabase `user_selections` table for cross-device persistence.
 
