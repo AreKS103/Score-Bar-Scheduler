@@ -51,3 +51,5 @@ supabase/.temp/
 .env.sentry-build-plugin
 
 .github/copilot-instructions.md
+
+.playwright-mcp
