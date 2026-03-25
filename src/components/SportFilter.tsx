@@ -12,6 +12,7 @@ import SmartLogo from '@/components/ui/SmartLogo';
 interface SportFilterProps {
   activeFilter: string;
   onFilterChange: (filter: string) => void;
+  onLeagueSelect?: () => void;
   events: MatchEvent[];
   businessName?: string | null;
   businessLogoUrl?: string | null;
@@ -37,6 +38,7 @@ function CategoryIcon({ category }: { category: string }) {
 export default function SportFilter({
   activeFilter,
   onFilterChange,
+  onLeagueSelect,
   events,
   businessName,
   businessLogoUrl,
@@ -352,10 +354,10 @@ export default function SportFilter({
                             onDrop={(e)      => onDrop(e, league.id)}
                             onDragEnd={onDragEnd}
                             onContextMenu={(e) => openContextMenu(e, league.id)}
-                            onClick={() => onFilterChange(league.id)}
+                            onClick={() => { onFilterChange(league.id); onLeagueSelect?.(); }}
                             role="button"
                             tabIndex={0}
-                            onKeyDown={(e) => { if (e.key === 'Enter') onFilterChange(league.id); }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { onFilterChange(league.id); onLeagueSelect?.(); } }}
                             className={cn(
                               'w-full flex items-center justify-between px-2 py-1.5 rounded text-xs group/fav',
                               'transition-all duration-150 cursor-grab active:cursor-grabbing select-none',
@@ -492,10 +494,10 @@ export default function SportFilter({
                         <div
                           key={league.id}
                           onContextMenu={(e) => openContextMenu(e, league.id)}
-                          onClick={() => onFilterChange(league.id)}
+                          onClick={() => { onFilterChange(league.id); onLeagueSelect?.(); }}
                           role="button"
                           tabIndex={0}
-                          onKeyDown={(e) => { if (e.key === 'Enter') onFilterChange(league.id); }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { onFilterChange(league.id); onLeagueSelect?.(); } }}
                           className={cn(
                             'w-full flex items-center justify-between px-2 py-1.5 rounded text-xs',
                             'transition-all cursor-default select-none',

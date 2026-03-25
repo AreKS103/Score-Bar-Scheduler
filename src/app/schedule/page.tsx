@@ -16,6 +16,7 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Menu,
   Pencil,
   Undo2,
@@ -180,21 +181,6 @@ export default function SchedulePage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [businessInfoOpen, setBusinessInfoOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  // ─── Temporary viewport debug (remove after diagnosing mobile issue) ─────
-  const [vpDebug, setVpDebug] = useState('');
-  useEffect(() => {
-    const update = () => {
-      const w = window.innerWidth;
-      const vw = document.documentElement.clientWidth;
-      const dpr = window.devicePixelRatio;
-      const ua = navigator.userAgent;
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(ua);
-      setVpDebug(`innerW:${w} clientW:${vw} dpr:${dpr.toFixed(1)} mobile:${isMobile}`);
-    };
-    update();
-    window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
-  }, []);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [businessName, setBusinessName] = useState<string | null>(null);
   const [businessLogoUrl, setBusinessLogoUrl] = useState<string | null>(null);
@@ -233,8 +219,12 @@ export default function SchedulePage() {
   const [publishTarget, setPublishTarget] = useState<string>('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [embedDropdownOpen, setEmbedDropdownOpen] = useState(false);
   const [noPluginBanner, setNoPluginBanner] = useState(false);
   const noPluginTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Swipe-to-close refs for preview panel
+  const swipeTouchStartX = useRef<number | null>(null);
+  const swipeTouchStartY = useRef<number | null>(null);
 
   // ─── Derived embed selection key ─────────────────────────────────────────
   // Always resolve to the first embed if publishTarget is empty.
@@ -435,33 +425,9 @@ export default function SchedulePage() {
         }
       }
 
-      // Fallback: if this embed has no saved selections at all, restore from the
-      // last published snapshot so the user sees what was pushed rather than an
-      // empty list. This covers the case where localStorage was cleared or the
-      // user is on a new device and hasn't explicitly saved selections yet.
-      if (!hasSelections && publishTarget) {
-        try {
-          const r = await fetch(`/api/schedule-history?target=${encodeURIComponent(publishTarget)}`);
-          if (loadCancelled) return;
-          const { schedule } = await r.json() as { schedule: { events_snapshot: MatchEvent[]; league_order: string[]; featured_leagues: Record<string, string> } | null };
-          if (loadCancelled) return;
-          if (schedule?.events_snapshot?.length) {
-            const snapshotIds = new Set(schedule.events_snapshot.map((e: MatchEvent) => e.id));
-            const currentEvents = useScheduleStore.getState().events;
-            const restored = currentEvents.map(e => ({
-              ...e,
-              isSelected: snapshotIds.has(e.id),
-            }));
-            setEvents(restored);
-            if (schedule.league_order?.length > 0) setLeagueOrder(schedule.league_order);
-            if (schedule.featured_leagues && Object.keys(schedule.featured_leagues).length > 0) {
-              setFeaturedLeagues(new Map(Object.entries(schedule.featured_leagues)));
-            }
-          }
-        } catch {
-          // Snapshot fetch failed — leave events in cleared state
-        }
-      }
+      // Note: when publishTarget is set, the snapshot effect (below) already fetches
+      // schedule-history with isInitial=true and syncs events more completely —
+      // no need to duplicate that request here.
     };
 
     loadEmbedState();
@@ -993,7 +959,10 @@ export default function SchedulePage() {
   // ─── Auto-show panel on first preview item; auto-hide when none ──────────
   useEffect(() => {
     if (previewContentCount > prevPreviewContentCountRef.current) {
-      setPreviewOpen(true);
+      // Don't auto-open on mobile — the panel is full-screen and annoying
+      if (window.innerWidth >= 768) {
+        setPreviewOpen(true);
+      }
     }
     // Only auto-close when the user deliberately removed all items, not during
     // an embed switch (which transiently drops the count to 0 while loading)
@@ -1010,6 +979,17 @@ export default function SchedulePage() {
   useEffect(() => {
     if (panelRef.current) panelRef.current.style.width = `${panelWidth}px`;
   }, [panelWidth]);
+
+  // Lock body scroll on mobile when preview panel is open (prevents background scroll leak)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (previewOpen && window.innerWidth < 768) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [previewOpen]);
 
   // Keep ref mirror of selectedByLeague up-to-date on every render
   selectedByLeagueRef.current = selectedByLeague;
@@ -1470,18 +1450,6 @@ export default function SchedulePage() {
 
   return (
     <div className="flex h-screen bg-background text-foreground">
-      {/* ── Temporary viewport debug badge (remove after diagnosing) ──────── */}
-      {vpDebug && (
-        <div style={{
-          position: 'fixed', bottom: 8, left: 8, zIndex: 99999,
-          background: 'rgba(255,0,0,0.85)', color: '#fff',
-          fontSize: 10, padding: '4px 8px', borderRadius: 6,
-          fontFamily: 'monospace', pointerEvents: 'none', lineHeight: 1.3,
-          maxWidth: '90vw', wordBreak: 'break-all',
-        }}>
-          {vpDebug}
-        </div>
-      )}
       {/* ── Mobile sidebar backdrop ───────────────────────────────────────────── */}
       {sidebarOpen && (
         <div
@@ -1508,7 +1476,8 @@ export default function SchedulePage() {
           <div className="px-2 pt-2">
             <SportFilter
               activeFilter={activeSportFilter}
-              onFilterChange={(f) => { setActiveSportFilter(f); setFlashKey(k => k + 1); setSidebarOpen(false); }}
+              onFilterChange={(f) => { setActiveSportFilter(f); setFlashKey(k => k + 1); }}
+              onLeagueSelect={() => setSidebarOpen(false)}
               events={events}
               businessName={businessName}
               businessLogoUrl={businessLogoUrl}
@@ -1775,6 +1744,50 @@ export default function SchedulePage() {
           willChange: 'transform',
         }}
         className="fixed bottom-0 right-0 bg-background border-l border-border z-50 flex flex-col overflow-hidden"
+        onTouchStart={(e) => {
+          swipeTouchStartX.current = e.touches[0].clientX;
+          swipeTouchStartY.current = e.touches[0].clientY;
+        }}
+        onTouchMove={(e) => {
+          if (swipeTouchStartX.current === null || swipeTouchStartY.current === null) return;
+          const dx = e.touches[0].clientX - swipeTouchStartX.current;
+          const dy = Math.abs(e.touches[0].clientY - swipeTouchStartY.current);
+          // Cancel swipe recognition if vertical movement is dominant
+          if (dy > 20 && dy > Math.abs(dx) * 1.5) {
+            swipeTouchStartX.current = null;
+            swipeTouchStartY.current = null;
+            if (panelRef.current) panelRef.current.style.transition = 'transform 150ms ease-in-out';
+            return;
+          }
+          // Only track rightward swipe (dismiss direction)
+          if (dx <= 0 || !panelRef.current) return;
+          // Kill CSS transition so the panel tracks the finger at 60fps
+          panelRef.current.style.transition = 'none';
+          panelRef.current.style.transform = `translateX(${dx}px)`;
+        }}
+        onTouchEnd={(e) => {
+          // Always restore transition before any state change
+          if (panelRef.current) panelRef.current.style.transition = 'transform 150ms ease-in-out';
+          if (swipeTouchStartX.current === null || swipeTouchStartY.current === null) return;
+          const dx = e.changedTouches[0].clientX - swipeTouchStartX.current;
+          swipeTouchStartX.current = null;
+          swipeTouchStartY.current = null;
+          // Dismiss if dragged past 35% of panel width
+          if (dx > panelWidth * 0.35) {
+            setPreviewOpen(false);
+          } else if (panelRef.current) {
+            // Spring back to original position
+            panelRef.current.style.transform = 'translateX(0)';
+          }
+        }}
+        onTouchCancel={() => {
+          swipeTouchStartX.current = null;
+          swipeTouchStartY.current = null;
+          if (panelRef.current) {
+            panelRef.current.style.transition = 'transform 150ms ease-in-out';
+            panelRef.current.style.transform = 'translateX(0)';
+          }
+        }}
       >
         {/* Resize handle */}
         <div
@@ -1785,30 +1798,48 @@ export default function SchedulePage() {
         <div className="shrink-0 flex items-center justify-between gap-3 px-4 py-2 border-b border-border">
           <h3 className="text-sm font-bold text-foreground shrink-0">Schedule Preview</h3>
 
-          {/* Publish-to instance pills */}
+          {/* Publish-to: compact dropdown */}
           {embedInstances.length > 0 && (
-            <div className="flex items-center gap-1.5 min-w-0">
+            <div className="relative flex items-center gap-1.5 min-w-0 flex-1">
               <span className="text-[11px] text-muted-foreground shrink-0">Publish to:</span>
-              <DraggableEmbedPills
-                instances={embedInstances}
-                publishTarget={publishTarget}
-                renamingId={renamingId}
-                renameValue={renameValue}
-                onSelect={setPublishTarget}
-                onDoubleClick={(value, displayId) => { setRenamingId(value); setRenameValue(displayId); }}
-                onRenameChange={setRenameValue}
-                onRenameCommit={commitRename}
-                onRenameCancel={() => setRenamingId(null)}
-                onReorder={(next) => {
-                  setEmbedInstances(next);
-                  try {
-                    localStorage.setItem(
-                      'sportglobe_embed_order_v1',
-                      JSON.stringify(next.map(i => i.embed_id ?? i.display_id)),
-                    );
-                  } catch { /* quota — ignore */ }
-                }}
-              />
+              <div className="relative min-w-0">
+                <button
+                  onClick={() => setEmbedDropdownOpen(o => !o)}
+                  className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-accent/60 hover:bg-accent border border-border/50 max-w-35"
+                >
+                  <span className="truncate">
+                    {embedInstances.find(i => (i.embed_id ?? i.display_id) === publishTarget)?.display_id
+                      ?? embedInstances[0]?.display_id}
+                  </span>
+                  <ChevronDown className="w-3 h-3 shrink-0" />
+                </button>
+                {embedDropdownOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setEmbedDropdownOpen(false)}
+                    />
+                    <div className="absolute top-full left-0 mt-1 bg-popover border border-border rounded-md shadow-lg z-20 min-w-40 py-1 overflow-hidden">
+                      {embedInstances.map((inst) => {
+                        const val = inst.embed_id ?? inst.display_id;
+                        const isActive = val === publishTarget || (!publishTarget && inst === embedInstances[0]);
+                        return (
+                          <button
+                            key={val}
+                            onClick={() => { setPublishTarget(val); setEmbedDropdownOpen(false); }}
+                            className={cn(
+                              'w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors truncate block',
+                              isActive && 'text-primary font-medium bg-primary/10',
+                            )}
+                          >
+                            {inst.display_id}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           )}
 
