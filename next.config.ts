@@ -3,21 +3,14 @@ import withBundleAnalyzer from '@next/bundle-analyzer';
 import type { NextConfig } from 'next';
 import path from 'path';
 
-// On local Windows/OneDrive dev: put build output in AppData to avoid EBUSY/EPERM
-// file-lock errors caused by OneDrive syncing .next files while Next.js writes them.
-// On Vercel/CI: LOCALAPPDATA is not set, so fall back to the default '.next'.
-// NOTE: Next.js resolves distDir relative to the project root, so we must provide
-// a relative path — but it CAN safely start with '..' to escape the project folder.
-// IMPORTANT: Only apply custom distDir during `next dev` (phase-development-server).
-// Production builds must use default '.next' — compiled files can't resolve next/*
-// modules when the output directory is outside the project tree on Windows.
+// On local Windows/OneDrive dev: redirect build output to AppData to prevent
+// OneDrive file-lock (EBUSY/EPERM) errors. NEXT_PHASE is a Next.js constant,
+// not an env var, so we cannot use it here — always redirect when LOCALAPPDATA
+// is present (i.e. local Windows). On Vercel/CI LOCALAPPDATA is undefined so
+// this is a no-op and the default '.next' inside the project is used.
 function resolveDistDir(): string | undefined {
   if (process.env.VERCEL || process.env.CI || !process.env.LOCALAPPDATA) {
-    return undefined; // use default '.next'
-  }
-  // Only use AppData distDir during dev server, not builds
-  if (process.env.NEXT_PHASE !== 'phase-development-server') {
-    return undefined;
+    return undefined; // Vercel / CI: use default '.next'
   }
   const target = path.join(process.env.LOCALAPPDATA, 'scorebarschedule-next');
   return path.relative(process.cwd(), target);
