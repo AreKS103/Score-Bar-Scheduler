@@ -540,7 +540,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     size="sm"
                     onClick={deleteAccount}
                     disabled={deleting}
-                    className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                    className="bg-destructive hover:bg-destructive/90 !text-white"
                   >
                     {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Confirm Delete'}
                   </Button>
@@ -549,7 +549,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <Button
                   size="sm"
                   onClick={() => setDeleteConfirm(true)}
-                  className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                  className="bg-destructive hover:bg-destructive/90 !text-white"
                 >
                   Delete Account
                 </Button>

@@ -225,6 +225,7 @@ export default function SchedulePage() {
   // Swipe-to-close refs for preview panel
   const swipeTouchStartX = useRef<number | null>(null);
   const swipeTouchStartY = useRef<number | null>(null);
+  const isActiveSwipeRef = useRef(false); // true once direction is confirmed horizontal
 
   // ─── Derived embed selection key ─────────────────────────────────────────
   // Always resolve to the first embed if publishTarget is empty.
@@ -980,16 +981,38 @@ export default function SchedulePage() {
     if (panelRef.current) panelRef.current.style.width = `${panelWidth}px`;
   }, [panelWidth]);
 
-  // Lock body scroll on mobile when preview panel is open (prevents background scroll leak)
+  // Clamp panel width to viewport on orientation/resize change (landscape → portrait fix)
+  useEffect(() => {
+    const onResize = () => {
+      const vw = window.innerWidth;
+      if (vw < 768 && panelWidth > vw) {
+        setPanelWidth(vw);
+        widthRef.current = vw;
+      }
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [panelWidth]);
+
+  // Lock body scroll on mobile when preview panel or sidebar is open
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (previewOpen && window.innerWidth < 768) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
+    const shouldLock = (previewOpen || sidebarOpen) && window.innerWidth < 768;
+    document.body.style.overflow = shouldLock ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
-  }, [previewOpen]);
+  }, [previewOpen, sidebarOpen]);
+
+  // Non-passive touchmove on the panel so we can call preventDefault() to block
+  // vertical scroll while a horizontal swipe gesture is in progress.
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    const blockScroll = (e: TouchEvent) => {
+      if (isActiveSwipeRef.current) e.preventDefault();
+    };
+    panel.addEventListener('touchmove', blockScroll, { passive: false });
+    return () => panel.removeEventListener('touchmove', blockScroll);
+  }, []); // panelRef.current is stable after mount (panel is always rendered)
 
   // Keep ref mirror of selectedByLeague up-to-date on every render
   selectedByLeagueRef.current = selectedByLeague;
@@ -1449,11 +1472,11 @@ export default function SchedulePage() {
   }, [dateRange.end, dateRange.start, publishTarget, setDateRange, setEvents]);
 
   return (
-    <div className="flex h-screen bg-background text-foreground">
+    <div className="flex h-dvh bg-background text-foreground">
       {/* ── Mobile sidebar backdrop ───────────────────────────────────────────── */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-150 bg-black/60 backdrop-blur-sm md:hidden"
+          className="fixed inset-0 z-150 bg-black/60 backdrop-blur-sm md:hidden phone-landscape-backdrop"
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -1466,6 +1489,7 @@ export default function SchedulePage() {
           'flex flex-col',
           // Mobile: slide-out drawer
           'fixed inset-y-0 left-0 z-160 transition-transform duration-200 ease-in-out md:static md:translate-x-0',
+          'phone-landscape-drawer',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
@@ -1494,13 +1518,13 @@ export default function SchedulePage() {
       {/* ── Main Area ─────────────────────────────────────────────────────────── */}
       <main className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
-        <header ref={headerRef} className="shrink-0 border-b border-border bg-background/95 backdrop-blur-sm px-3 sm:px-6 py-3 relative z-100">
+        <header ref={headerRef} className="shrink-0 border-b border-border bg-background/95 backdrop-blur-sm px-3 sm:px-6 py-3 relative z-100 phone-ls-header">
           <div className="flex items-center justify-between flex-wrap gap-2 sm:gap-3">
             <div className="flex items-center gap-2 sm:gap-3">
               {/* Mobile hamburger */}
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="md:hidden p-2.5 -ml-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                className="md:hidden phone-landscape-burger p-2.5 -ml-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
                 aria-label="Open sidebar"
               >
                 <Menu className="w-5 h-5" />
@@ -1574,7 +1598,7 @@ export default function SchedulePage() {
           </div>
 
           {/* Toolbar */}
-          <div className="flex items-center gap-2 sm:gap-3 mt-3 flex-wrap">
+          <div className="flex items-center gap-2 sm:gap-3 mt-3 flex-wrap phone-ls-toolbar">
             {/* Search */}
             <div className="w-full sm:w-64">
               <SearchField
@@ -1592,10 +1616,10 @@ export default function SchedulePage() {
             <Separator orientation="vertical" className="h-5 hidden sm:block" />
 
             <Button variant="ghost" size="sm" className="sm:text-xs sm:h-7 sm:px-2" onClick={selectAll}>
-              <CheckSquare className="w-3.5 h-3.5" /> Select All
+              <CheckSquare className="w-3.5 h-3.5" /> <span className="phone-ls-hide">Select All</span>
             </Button>
             <Button variant="ghost" size="sm" className="sm:text-xs sm:h-7 sm:px-2" onClick={deselectAll}>
-              <Square className="w-3.5 h-3.5" /> Deselect
+              <Square className="w-3.5 h-3.5" /> <span className="phone-ls-hide">Deselect</span>
             </Button>
 
             <Separator orientation="vertical" className="h-5 hidden sm:block" />
@@ -1608,7 +1632,7 @@ export default function SchedulePage() {
                 onClick={() => setBulkTagOpen(!bulkTagOpen)}
                 className={cn("sm:text-xs sm:h-7 sm:px-2", bulkTagOpen && 'bg-accent')}
               >
-                <Tag className="w-3.5 h-3.5" /> Bulk Tag
+                <Tag className="w-3.5 h-3.5" /> <span className="phone-ls-hide">Bulk Tag</span>
               </Button>
               {bulkTagOpen && (
                 <div className="absolute top-full left-0 mt-1 bg-popover border border-border rounded-lg shadow-xl z-20 p-3 min-w-57.5">
@@ -1654,7 +1678,7 @@ export default function SchedulePage() {
             <Separator orientation="vertical" className="h-5 hidden sm:block" />
 
             <Button variant="secondary" size="sm" className="sm:text-xs sm:h-7 sm:px-2" onClick={() => setIsAddModalOpen(true)}>
-              <Plus className="w-3.5 h-3.5" /> Add Custom Event
+              <Plus className="w-3.5 h-3.5" /> <span className="phone-ls-hide">Add Custom Event</span>
             </Button>
           </div>
         </header>
@@ -1726,7 +1750,7 @@ export default function SchedulePage() {
         title={previewOpen ? 'Close preview' : 'Open preview'}
         style={{ right: previewOpen ? panelWidth : 0 }}
         className={cn(
-          "fixed z-99 top-1/2 -translate-y-1/2 flex flex-col items-center justify-center bg-secondary border border-border border-r-0 rounded-l-md px-2.5 py-5 md:px-1 md:py-3 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors",
+          "fixed z-110 top-1/2 -translate-y-1/2 flex flex-col items-center justify-center bg-secondary border border-border border-r-0 rounded-l-md px-2.5 py-5 md:px-1 md:py-3 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors",
           // On mobile, hide when preview open (panel is full-width, button would clip off-screen)
           previewOpen && "max-md:hidden"
         )}
@@ -1747,28 +1771,43 @@ export default function SchedulePage() {
         onTouchStart={(e) => {
           swipeTouchStartX.current = e.touches[0].clientX;
           swipeTouchStartY.current = e.touches[0].clientY;
+          isActiveSwipeRef.current = false;
         }}
         onTouchMove={(e) => {
           if (swipeTouchStartX.current === null || swipeTouchStartY.current === null) return;
           const dx = e.touches[0].clientX - swipeTouchStartX.current;
           const dy = Math.abs(e.touches[0].clientY - swipeTouchStartY.current);
-          // Cancel swipe recognition if vertical movement is dominant
+          // If vertical movement clearly dominates, cancel this swipe gesture and
+          // spring the panel back so it doesn't stay stuck mid-screen.
           if (dy > 20 && dy > Math.abs(dx) * 1.5) {
+            isActiveSwipeRef.current = false;
             swipeTouchStartX.current = null;
             swipeTouchStartY.current = null;
-            if (panelRef.current) panelRef.current.style.transition = 'transform 150ms ease-in-out';
+            if (panelRef.current) {
+              panelRef.current.style.transition = 'transform 150ms ease-in-out';
+              panelRef.current.style.transform = 'translateX(0)'; // snap back, don't leave stuck
+            }
             return;
           }
           // Only track rightward swipe (dismiss direction)
           if (dx <= 0 || !panelRef.current) return;
+          // Once horizontal direction is confirmed, mark swipe active so the
+          // non-passive native listener can block vertical scroll
+          isActiveSwipeRef.current = true;
           // Kill CSS transition so the panel tracks the finger at 60fps
           panelRef.current.style.transition = 'none';
           panelRef.current.style.transform = `translateX(${dx}px)`;
         }}
         onTouchEnd={(e) => {
+          isActiveSwipeRef.current = false;
           // Always restore transition before any state change
           if (panelRef.current) panelRef.current.style.transition = 'transform 150ms ease-in-out';
-          if (swipeTouchStartX.current === null || swipeTouchStartY.current === null) return;
+          if (swipeTouchStartX.current === null || swipeTouchStartY.current === null) {
+            // Swipe was cancelled mid-gesture (vertical detection) — make sure panel
+            // is snapped to open position in case it was partially translated.
+            if (panelRef.current) panelRef.current.style.transform = 'translateX(0)';
+            return;
+          }
           const dx = e.changedTouches[0].clientX - swipeTouchStartX.current;
           swipeTouchStartX.current = null;
           swipeTouchStartY.current = null;
@@ -1781,6 +1820,7 @@ export default function SchedulePage() {
           }
         }}
         onTouchCancel={() => {
+          isActiveSwipeRef.current = false;
           swipeTouchStartX.current = null;
           swipeTouchStartY.current = null;
           if (panelRef.current) {

@@ -149,3 +149,36 @@ input[type='checkbox'] { accent-color: oklch(0.623 0.214 259); }
 .animate-league-flash {
   animation: league-flash 400ms ease-out;
 }
+
+/* ── Phone landscape overrides ───────────────────────────────────────────── */
+/* When a phone is rotated (landscape + short viewport), keep the sidebar in
+   burger/drawer mode and the hamburger visible, even though width > md (768). */
+@media (orientation: landscape) and (max-height: 500px) {
+  /* Force sidebar back to drawer mode */
+  aside.phone-landscape-drawer {
+    position: fixed !important;
+    z-index: 160 !important;
+  }
+  /* Force hamburger visible */
+  .phone-landscape-burger {
+    display: flex !important;
+  }
+  /* Force sidebar backdrop visible */
+  .phone-landscape-backdrop {
+    display: block !important;
+  }
+  /* Collapse toolbar row to a single compact line */
+  .phone-ls-toolbar {
+    margin-top: 0.25rem !important;
+    gap: 0.25rem !important;
+  }
+  /* Hide text labels in toolbar buttons on landscape phone */
+  .phone-ls-hide {
+    display: none !important;
+  }
+  /* Compact header padding */
+  .phone-ls-header {
+    padding-top: 0.35rem !important;
+    padding-bottom: 0.35rem !important;
+  }
+}
