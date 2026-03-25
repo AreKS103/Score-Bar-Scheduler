@@ -431,7 +431,7 @@ export async function GET(
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
         'X-Frame-Options': 'ALLOWALL',
-        'Cache-Control': 'no-store',
+        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
       },
     });
   }
@@ -467,7 +467,7 @@ export async function GET(
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
       'X-Frame-Options': 'ALLOWALL',
-      'Cache-Control': 'no-store',
+      'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
     },
   });
 }

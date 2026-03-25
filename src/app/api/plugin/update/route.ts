@@ -4,8 +4,8 @@ import { type NextRequest, NextResponse } from 'next/server';
 const GITHUB_REPO = 'AreKS103/Score-Bar-Scheduler';
 const RELEASE_TAG = 'plugin-latest';
 
-// No edge cache — always fetch fresh from GitHub so WordPress sees new versions immediately.
-export const revalidate = 0;
+// Cache for 5 minutes — plugin versions don't change frequently.
+export const revalidate = 300;
 
 export async function GET(req: NextRequest) {
   try {

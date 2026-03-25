@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import {
   Plus,
   CheckSquare,
@@ -31,16 +32,16 @@ import { formatDisplayDate } from '@/lib/timezone';
 import type { ScreenTag, MatchEvent } from '@/types';
 import SportFilter from '@/components/SportFilter';
 import LeagueSection from '@/components/LeagueSection';
-import AddMatchModal from '@/components/AddMatchModal';
-import EditMatchModal from '@/components/EditMatchModal';
+const AddMatchModal = dynamic(() => import('@/components/AddMatchModal'), { ssr: false });
+const EditMatchModal = dynamic(() => import('@/components/EditMatchModal'), { ssr: false });
 import PublishButton from '@/components/PublishButton';
-import DateRangeCalendar from '@/components/DateRangeCalendar';
+const DateRangeCalendar = dynamic(() => import('@/components/DateRangeCalendar'), { ssr: false });
 import SearchField from '@/components/SearchField';
-import PreviewPanel from '@/components/PreviewPanel';
+const PreviewPanel = dynamic(() => import('@/components/PreviewPanel'), { ssr: false });
 import DraggableEmbedPills from '@/components/DraggableEmbedPills';
-import SettingsModal from '@/components/SettingsModal';
+const SettingsModal = dynamic(() => import('@/components/SettingsModal'), { ssr: false });
 import UserProfileMenu from '@/components/UserProfileMenu';
-import BusinessInfoModal from '@/components/BusinessInfoModal';
+const BusinessInfoModal = dynamic(() => import('@/components/BusinessInfoModal'), { ssr: false });
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';

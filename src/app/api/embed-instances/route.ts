@@ -285,7 +285,12 @@ export async function GET(req: NextRequest) {
     display_id: inst.embed_id ?? `#${idx + 1}`,
   }));
 
-  return NextResponse.json({ instances: labeled }, { headers: corsHeaders });
+  return NextResponse.json({ instances: labeled }, {
+    headers: {
+      ...corsHeaders,
+      'Cache-Control': 'private, s-maxage=30, stale-while-revalidate=60',
+    },
+  });
 }
 
 /** DELETE /api/embed-instances?embedId=NAME
