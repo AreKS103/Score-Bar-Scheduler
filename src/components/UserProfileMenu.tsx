@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState, useEffect } from 'react';
-import { LogOut, Moon, Sun, MoreHorizontal, Building2, Settings } from 'lucide-react';
+import { LogOut, Moon, Sun, MoreHorizontal, Building2, Settings, Users } from 'lucide-react';
 import { useThemeStore } from '@/lib/themeStore';
 import { cn } from '@/lib/utils';
 
@@ -10,7 +10,9 @@ interface UserProfileMenuProps {
   onLogout: () => void;
   onBusinessInfo: () => void;
   onSettings: () => void;
+  onOrgManage?: () => void;
   businessLogoUrl?: string | null;
+  orgName?: string | null;
 }
 
 function getInitials(email: string | null): string {
@@ -20,7 +22,7 @@ function getInitials(email: string | null): string {
   return email.slice(0, 2).toUpperCase();
 }
 
-export default function UserProfileMenu({ email, onLogout, onBusinessInfo, onSettings, businessLogoUrl }: UserProfileMenuProps) {
+export default function UserProfileMenu({ email, onLogout, onBusinessInfo, onSettings, onOrgManage, businessLogoUrl, orgName }: UserProfileMenuProps) {
   const [open, setOpen] = useState(false);
   const { theme, toggleTheme } = useThemeStore();
   const isDark = theme === 'dark';
@@ -66,10 +68,12 @@ export default function UserProfileMenu({ email, onLogout, onBusinessInfo, onSet
               }
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold text-foreground truncate leading-tight">
+              <p className="text-xs font-semibold text-foreground truncate leading-normal">
                 {email ?? 'Unknown user'}
               </p>
-              <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">Your Account</p>
+              <p className="text-[10px] text-muted-foreground leading-normal mt-0.5">
+                {orgName ?? 'Your Account'}
+              </p>
             </div>
           </button>
 
@@ -118,6 +122,24 @@ export default function UserProfileMenu({ email, onLogout, onBusinessInfo, onSet
               <Building2 className="w-3.5 h-3.5" />
               Business Information
             </button>
+
+            {/* Organization quick-access row */}
+            <button
+              onClick={() => { setOpen(false); onOrgManage?.(); }}
+              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs hover:bg-accent transition-all group"
+            >
+              <Users className="w-3.5 h-3.5 text-muted-foreground group-hover:text-foreground" />
+              <span className="flex-1 text-left text-muted-foreground group-hover:text-foreground">
+                Organization
+              </span>
+              {orgName ? (
+                <span className="text-[11px] text-primary/80 font-semibold truncate max-w-27.5 leading-normal">
+                  {orgName}
+                </span>
+              ) : (
+                <span className="text-[11px] text-muted-foreground/60">Set up →</span>
+              )}
+            </button>
           </div>
 
           <div className="border-t border-border mx-2 mt-1.5" />
@@ -154,10 +176,17 @@ export default function UserProfileMenu({ email, onLogout, onBusinessInfo, onSet
           }
         </div>
 
-        {/* Email */}
-        <p className="flex-1 text-xs text-muted-foreground truncate min-w-0 leading-none text-left overflow-hidden">
-          {email ?? '—'}
-        </p>
+        {/* Email + Org */}
+        <div className="flex-1 min-w-0 text-left overflow-hidden">
+          <p className="text-xs text-muted-foreground truncate leading-normal">
+            {email ?? '—'}
+          </p>
+          {orgName && (
+            <p className="text-[10px] text-primary/70 font-medium truncate leading-normal">
+              {orgName}
+            </p>
+          )}
+        </div>
 
         {/* Three-dot icon (decorative — whole row is the click target) */}
         <MoreHorizontal className={cn('w-4 h-4 shrink-0 transition-colors', open ? 'text-foreground' : 'text-muted-foreground')} />

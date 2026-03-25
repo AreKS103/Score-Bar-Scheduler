@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createClient as createServerClient } from '@/lib/supabase/server';
+import { getUserOrgId } from '@/lib/supabase/org';
 import crypto from 'crypto';
 
 // CORS for public endpoints (POST beacon + GET by apiKey) — must allow any origin for WordPress embeds
@@ -70,6 +71,9 @@ export async function POST(req: NextRequest) {
     const safeUrl      = (pageUrl  || '').substring(0, 512);
     const now          = new Date().toISOString();
     const uid          = keyData.user_id;
+
+    // Resolve org_id for the user (best-effort, nullable)
+    const orgId = await getUserOrgId(uid);
 
     if (safeWidgetId) {
       // ── Widget-based path (Elementor / platform with a stable widget ID) ──────
@@ -154,7 +158,7 @@ export async function POST(req: NextRequest) {
 
         const { error: insertErr } = await supabase
           .from('embed_instances')
-          .insert({ user_id: uid, embed_id: newEmbedId, widget_id: safeWidgetId, page_url: safeUrl, last_seen: now });
+          .insert({ user_id: uid, embed_id: newEmbedId, widget_id: safeWidgetId, page_url: safeUrl, last_seen: now, organization_id: orgId });
         if (insertErr) return NextResponse.json({ error: insertErr.message }, { status: 500, headers: corsHeaders });
       }
     } else if (instanceId === null) {
@@ -177,13 +181,13 @@ export async function POST(req: NextRequest) {
       } else {
         const { error } = await supabase
           .from('embed_instances')
-          .insert({ user_id: uid, embed_id: null, page_url: safeUrl, last_seen: now });
+          .insert({ user_id: uid, embed_id: null, page_url: safeUrl, last_seen: now, organization_id: orgId });
         if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: corsHeaders });
       }
     } else {
       // ── Named shortcode with no widget ID — standard upsert ─────────────────
       const { error } = await supabase.from('embed_instances').upsert(
-        { user_id: uid, embed_id: instanceId, page_url: safeUrl, last_seen: now },
+        { user_id: uid, embed_id: instanceId, page_url: safeUrl, last_seen: now, organization_id: orgId },
         { onConflict: 'user_id,embed_id' },
       );
       if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: corsHeaders });

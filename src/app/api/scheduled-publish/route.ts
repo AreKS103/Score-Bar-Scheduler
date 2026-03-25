@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
+import { getUserOrgId } from '@/lib/supabase/org';
 
 /** Store a scheduled publish for later execution */
 export async function POST(req: NextRequest) {
@@ -8,6 +9,8 @@ export async function POST(req: NextRequest) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const orgId = await getUserOrgId(user.id);
 
     const { html, scheduledAt, weekLabel, dateRangeStart, dateRangeEnd, eventsSnapshot, leagueOrder, featuredLeagues, embedTarget } = await req.json();
 
@@ -25,6 +28,7 @@ export async function POST(req: NextRequest) {
 
     const { error } = await supabase.from('scheduled_publishes').insert({
       user_id: user.id,
+      organization_id: orgId,
       html_content: html,
       scheduled_at: scheduledAt,
       week_label: weekLabel || '',

@@ -18,6 +18,10 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     const { error } = await supabase.auth.verifyOtp({ type, token_hash });
     if (!error) {
+      // Invited users go to the welcome page to set their password
+      if (type === 'invite') {
+        return NextResponse.redirect(new URL('/welcome', origin));
+      }
       // Verification succeeded — redirect into the app
       return NextResponse.redirect(new URL(next, origin));
     }

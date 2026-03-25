@@ -41,6 +41,7 @@ import SearchField from '@/components/SearchField';
 const PreviewPanel = dynamic(() => import('@/components/PreviewPanel'), { ssr: false });
 import DraggableEmbedPills from '@/components/DraggableEmbedPills';
 const SettingsModal = dynamic(() => import('@/components/SettingsModal'), { ssr: false });
+const OrgModal = dynamic(() => import('@/components/OrgModal'), { ssr: false });
 import UserProfileMenu from '@/components/UserProfileMenu';
 const BusinessInfoModal = dynamic(() => import('@/components/BusinessInfoModal'), { ssr: false });
 import { cn } from '@/lib/utils';
@@ -180,10 +181,12 @@ export default function SchedulePage() {
   const [panelWidth, setPanelWidth] = useState(700);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [businessInfoOpen, setBusinessInfoOpen] = useState(false);
+  const [orgModalOpen, setOrgModalOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [businessName, setBusinessName] = useState<string | null>(null);
   const [businessLogoUrl, setBusinessLogoUrl] = useState<string | null>(null);
+  const [orgName, setOrgName] = useState<string | null>(null);
   const [featuredLeagues, setFeaturedLeagues] = useState<Map<string, string>>(new Map());
   const [highlightMenu, setHighlightMenu] = useState<
     | {
@@ -506,24 +509,38 @@ export default function SchedulePage() {
     if (!isSupabaseConfigured()) return;
     const supabase = createClient();
     // Check on mount and load user email
-    supabase.auth.getUser().then(({ data, error }) => {
-      if (error) router.push('/login');
-      else {
-        setUserEmail(data.user?.email ?? null);
-        // Load business info for sidebar header
-        if (data.user?.id) {
-          supabase
-            .from('business_info')
-            .select('business_name, logo_url')
-            .eq('user_id', data.user.id)
-            .single()
-            .then(({ data: biz }) => {
-              if (biz) {
-                setBusinessName(biz.business_name ?? null);
-                setBusinessLogoUrl(biz.logo_url ?? null);
-              }
-            });
+    supabase.auth.getUser().then(async ({ data, error }) => {
+      if (error) { router.push('/login'); return; }
+      setUserEmail(data.user?.email ?? null);
+
+      // Lazy-bootstrap org: ensure user has at least one organization
+      if (data.user?.id) {
+        try {
+          const orgRes = await fetch('/api/org?bootstrap=true');
+          if (orgRes.ok) {
+            const { organizations } = await orgRes.json();
+            if (organizations?.length > 0) {
+              setOrgName(organizations[0].name ?? null);
+            }
+            // Note: we no longer redirect to /onboarding automatically.
+            // Org creation is available in Settings → Organization.
+          }
+        } catch {
+          // Non-fatal: continue without org check
         }
+
+        // Load business info for sidebar header
+        supabase
+          .from('business_info')
+          .select('business_name, logo_url')
+          .eq('user_id', data.user.id)
+          .single()
+          .then(({ data: biz }) => {
+            if (biz) {
+              setBusinessName(biz.business_name ?? null);
+              setBusinessLogoUrl(biz.logo_url ?? null);
+            }
+          });
       }
     });
     // Listen for sign-out / token-refresh failures
@@ -1511,7 +1528,7 @@ export default function SchedulePage() {
 
         {/* Pinned user profile at bottom */}
         <div className="shrink-0 border-t border-border px-2 py-1.5">
-          <UserProfileMenu email={userEmail} onLogout={handleLogout} onBusinessInfo={() => setBusinessInfoOpen(true)} onSettings={() => setSettingsOpen(true)} businessLogoUrl={businessLogoUrl} />
+          <UserProfileMenu email={userEmail} onLogout={handleLogout} onBusinessInfo={() => setBusinessInfoOpen(true)} onSettings={() => setSettingsOpen(true)} onOrgManage={() => setOrgModalOpen(true)} businessLogoUrl={businessLogoUrl} orgName={orgName} />
         </div>
       </aside>
 
@@ -2275,6 +2292,7 @@ export default function SchedulePage() {
 
       {/* Settings lightbox */}
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <OrgModal isOpen={orgModalOpen} onClose={() => setOrgModalOpen(false)} onOrgNameChange={name => setOrgName(name)} />
       <BusinessInfoModal
         isOpen={businessInfoOpen}
         onClose={() => setBusinessInfoOpen(false)}

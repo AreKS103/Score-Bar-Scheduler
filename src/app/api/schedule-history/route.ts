@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getUserOrgId } from '@/lib/supabase/org';
 
 const MAX_HISTORY = 50; // per embed_target — keep full history
 
@@ -8,6 +9,8 @@ export async function POST(req: NextRequest) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const orgId = await getUserOrgId(user.id);
 
     const { weekLabel, dateRangeStart, dateRangeEnd, htmlContent, eventsSnapshot, leagueOrder, featuredLeagues, embedTarget } = await req.json();
     if (!htmlContent || !eventsSnapshot) {
@@ -18,6 +21,7 @@ export async function POST(req: NextRequest) {
 
     const { error: insertError } = await supabase.from('published_schedules').insert({
       user_id: user.id,
+      organization_id: orgId,
       week_label: weekLabel || `${dateRangeStart} – ${dateRangeEnd}`,
       date_range_start: dateRangeStart,
       date_range_end: dateRangeEnd,

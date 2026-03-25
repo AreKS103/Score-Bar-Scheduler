@@ -49,6 +49,27 @@ export interface WPConfig {
   appPassword: string;
 }
 
+// ─── Organization Types ──────────────────────────────────────────────────────
+
+export type OrgRole = 'owner';
+
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrganizationMember {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  role: OrgRole;
+  created_at: string;
+}
+
 // ─── API Response Types ──────────────────────────────────────────────────────
 
 export interface ESPNCompetitor {

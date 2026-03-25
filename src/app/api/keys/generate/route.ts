@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { ensureUserHasOrg } from '@/lib/supabase/org';
 import crypto from 'crypto';
 
 export async function POST() {
@@ -10,6 +11,9 @@ export async function POST() {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    // Ensure user has an org (lazy bootstrap)
+    const orgId = await ensureUserHasOrg(user.id, user.email ?? undefined);
 
     // Generate plain key
     const randomBytes = crypto.randomBytes(24).toString('hex');
@@ -26,7 +30,8 @@ export async function POST() {
           user_id: user.id, 
           key_hash: hash,
           key_preview: preview,
-          connected_site: null
+          connected_site: null,
+          organization_id: orgId
         }, 
         { onConflict: 'user_id' }
       );

@@ -69,6 +69,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // ── Organization state removed — managed by OrgModal ────────────────────
+
   // Handle modal close
   useEffect(() => {
     if (!isOpen) {

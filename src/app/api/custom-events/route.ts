@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getUserOrgId } from '@/lib/supabase/org';
 import type { MatchEvent } from '@/types';
 
 const BUCKET = 'custom-league-logos';
@@ -55,10 +56,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, rowId: existing.id, updated: true });
     }
 
+    const orgId = await getUserOrgId(user.id);
+
     const { data, error } = await supabase
       .from('custom_events')
       .insert({
         user_id: user.id,
+        organization_id: orgId,
         event_data: event,
         // expires_at defaults to now() + 14 days in the DB
       })
