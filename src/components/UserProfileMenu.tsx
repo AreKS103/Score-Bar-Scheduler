@@ -132,12 +132,10 @@ export default function UserProfileMenu({ email, onLogout, onBusinessInfo, onSet
               <span className="flex-1 text-left text-muted-foreground group-hover:text-foreground">
                 Organization
               </span>
-              {orgName ? (
+              {orgName && (
                 <span className="text-[11px] text-primary/80 font-semibold truncate max-w-27.5 leading-normal">
                   {orgName}
                 </span>
-              ) : (
-                <span className="text-[11px] text-muted-foreground/60">Set up →</span>
               )}
             </button>
           </div>

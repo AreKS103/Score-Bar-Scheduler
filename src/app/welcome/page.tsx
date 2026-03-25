@@ -1,20 +1,37 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Loader2, CheckCircle, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function WelcomePage() {
   const router = useRouter();
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [checking, setChecking] = useState(true);
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+
+  // Verify the user has an active session (established by the invite link)
+  useEffect(() => {
+    if (!isSupabaseConfigured()) { router.replace('/login'); return; }
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data, error: authErr }) => {
+      if (authErr || !data.user) {
+        // No session — invite link may be expired or invalid
+        router.replace('/login?error=invite_expired');
+        return;
+      }
+      setUserEmail(data.user.email ?? null);
+      setChecking(false);
+    });
+  }, [router]);
 
   const valid = password.length >= 8 && password === confirm;
 
@@ -37,13 +54,22 @@ export default function WelcomePage() {
     setTimeout(() => router.push('/schedule'), 1500);
   }
 
+  if (checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center space-y-2">
           <h1 className="text-xl font-bold text-foreground leading-normal">Welcome to Score Bar</h1>
           <p className="text-sm text-muted-foreground leading-normal">
-            You&apos;ve been invited to join an organization. Set a password to get started.
+            Create a password for{' '}
+            <span className="font-semibold text-foreground">{userEmail}</span>
           </p>
         </div>
 

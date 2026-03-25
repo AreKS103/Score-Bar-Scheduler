@@ -10,10 +10,41 @@ export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('signin');
 
-  // Auto-redirect if session is still valid (client-side navigation bypass)
+  // Handle invite hash fragment & auto-redirect for existing sessions
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
     const supabase = createClient();
+
+    // Supabase puts invite tokens in the URL hash: #access_token=...&type=invite
+    // The browser client auto-exchanges this for a session via onAuthStateChange.
+    // We listen for SIGNED_IN with type=invite to redirect to /welcome.
+    const hash = window.location.hash;
+    const isInviteHash = hash.includes('type=invite');
+
+    // Check for error in hash fragment (expired/invalid invite link)
+    if (hash.includes('error=')) {
+      const hashParams = new URLSearchParams(hash.substring(1));
+      const hashError = hashParams.get('error_description') || hashParams.get('error');
+      if (hashError) {
+        setError('This invite link has expired or was already used. Please ask your admin to send a new invite.');
+        // Clear the hash so it doesn't re-trigger
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+      return;
+    }
+
+    if (isInviteHash) {
+      // Let Supabase client process the hash and establish the session
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+        if (event === 'SIGNED_IN') {
+          subscription.unsubscribe();
+          router.replace('/welcome');
+        }
+      });
+      return () => subscription.unsubscribe();
+    }
+
+    // Normal flow: redirect to /schedule if already signed in
     supabase.auth.getUser().then(({ data }) => {
       if (data.user) router.replace('/schedule');
     });
@@ -23,6 +54,17 @@ export default function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Show error from URL params (e.g. expired invite, failed verification)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlError = params.get('error');
+    if (urlError === 'invite_expired') {
+      setError('This invite link has expired or was already used. Please ask your admin to send a new invite.');
+    } else if (urlError === 'verification_failed') {
+      setError('Email verification failed. The link may have expired — please try signing up again.');
+    }
+  }, []);
 
   async function handleSignIn(e: FormEvent) {
     e.preventDefault();
@@ -100,7 +142,7 @@ export default function LoginPage() {
           <p className="text-[13px] text-muted-foreground leading-relaxed mb-6">
             We sent a verification link to{' '}
             <span className="font-semibold text-foreground">{email}</span>.
-            Click the link in that email to activate your account — you&apos;ll be signed in automatically.
+            Click the link in that email to activate your account.
           </p>
           <button
             onClick={() => { setMode('signin'); setError(''); }}

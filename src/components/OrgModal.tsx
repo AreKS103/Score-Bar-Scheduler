@@ -65,34 +65,44 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
   const [orgCreateError, setOrgCreateError] = useState<string | null>(null);
 
   // ── Fetch data ─────────────────────────────────────────────────
+  const initialLoadedRef = useRef(false);
+
   const loadOrg = useCallback(async (showSpinner = false) => {
-    if (showSpinner) setOrgLoading(true);
+    if (showSpinner && !initialLoadedRef.current) setOrgLoading(true);
     try {
-      const [orgRes, membersRes] = await Promise.all([
-        fetch('/api/org'),
-        fetch('/api/org/members'),
-      ]);
-      if (orgRes.ok) {
-        const { organizations } = await orgRes.json();
-        const first = organizations?.[0] ?? null;
-        setOrg(first ? { id: first.id, name: first.name, slug: first.slug } : null);
-        if (!initialLoaded) setOrgNameDraft(first?.name ?? '');
-      }
-      if (membersRes.ok) {
-        const { members } = await membersRes.json();
-        setOrgMembers(members ?? []);
+      // Only fetch org info on first load; members are the dynamic part
+      if (!initialLoadedRef.current) {
+        const [orgRes, membersRes] = await Promise.all([
+          fetch('/api/org'),
+          fetch('/api/org/members'),
+        ]);
+        if (orgRes.ok) {
+          const { organizations } = await orgRes.json();
+          const first = organizations?.[0] ?? null;
+          setOrg(first ? { id: first.id, name: first.name, slug: first.slug } : null);
+          setOrgNameDraft(first?.name ?? '');
+        }
+        if (membersRes.ok) {
+          const { members } = await membersRes.json();
+          setOrgMembers(members ?? []);
+        }
+      } else {
+        // Subsequent loads: only refresh members
+        const membersRes = await fetch('/api/org/members');
+        if (membersRes.ok) {
+          const { members } = await membersRes.json();
+          setOrgMembers(members ?? []);
+        }
       }
     } finally {
       setOrgLoading(false);
+      initialLoadedRef.current = true;
       setInitialLoaded(true);
     }
-  }, [initialLoaded]);
+  }, []);
 
   useEffect(() => {
-    if (!isOpen) {
-      setInitialLoaded(false);
-      return;
-    }
+    if (!isOpen) return;
     loadOrg(true);
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
@@ -215,6 +225,8 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
     setLeavingOrg(false);
     setOrg(null);
     setOrgMembers([]);
+    initialLoadedRef.current = false;
+    setInitialLoaded(false);
     onOrgNameChange?.('');
     onClose();
   }
@@ -237,6 +249,7 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
       const createdName = orgCreateName.trim();
       setOrgCreateName('');
       onOrgNameChange?.(createdName);
+      initialLoadedRef.current = false;
       await loadOrg(true);
     }
   }

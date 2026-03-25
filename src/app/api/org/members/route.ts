@@ -169,7 +169,7 @@ export async function POST(req: NextRequest) {
       || req.headers.get('referer')?.replace(/\/[^/]*$/, '')
       || process.env.NEXT_PUBLIC_SITE_URL
       || 'http://localhost:3000';
-    const redirectTo = `${origin}/auth/confirm`;
+    const redirectTo = `${origin}/login`;
 
     try {
       const { data: inviteData, error: inviteErr } =
