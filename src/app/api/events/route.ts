@@ -69,6 +69,8 @@ const ESPN_SECONDARY_LEAGUES = [
   { id: 'soccer-saudipro', slug: 'soccer/ksa.1' },
   { id: 'soccer-jleague', slug: 'soccer/jpn.1' },
   { id: 'soccer-copam', slug: 'soccer/conmebol.libertadores' },
+  { id: 'soccer-afc', slug: 'soccer/afc.champions' },
+  { id: 'soccer-afc2', slug: 'soccer/afc.cup' },
   // Other US sports
   { id: 'basketball-wnba', slug: 'basketball/wnba' },
   { id: 'basketball-ncaam', slug: 'basketball/mens-college-basketball' },

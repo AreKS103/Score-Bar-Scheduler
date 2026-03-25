@@ -157,7 +157,7 @@ export default function DateRangeCalendar({
               selected={rangeDraft}
               onSelect={handleRangeSelect}
               numberOfMonths={2}
-              fixedWeeks
+              showOutsideDays={false}
               today={new Date()}
               modifiersStyles={{
                 today: {
@@ -171,7 +171,7 @@ export default function DateRangeCalendar({
               mode="single"
               selected={singleSelected}
               onSelect={handleSingleSelect}
-              fixedWeeks
+              showOutsideDays={false}
               today={new Date()}
               modifiersStyles={{
                 today: {

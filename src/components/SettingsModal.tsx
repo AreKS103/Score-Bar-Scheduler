@@ -1,7 +1,7 @@
 ﻿'use client';
 
-import { useState, useEffect } from 'react';
-import { X, Wifi, WifiOff, Loader2, ShieldCheck, Server, Navigation, Globe, Copy, CheckCircle, RefreshCw, EyeOff, User, Mail, Phone, KeyRound, Trash2 } from 'lucide-react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { X, Wifi, WifiOff, Loader2, ShieldCheck, Server, Navigation, Globe, Copy, CheckCircle, RefreshCw, EyeOff, User, Mail, Phone, KeyRound, Trash2, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -14,8 +14,39 @@ interface SettingsModalProps {
 }
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
-  const { timezone, useLocal, setUseLocal } = useTimezoneStore();
+  const { timezone, useLocal, setUseLocal, setTimezone } = useTimezoneStore();
   const [detectedTz] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'Unknown');
+  const [tzSearch, setTzSearch] = useState('');
+  const [tzOpen, setTzOpen] = useState(false);
+  const tzRef = useRef<HTMLDivElement>(null);
+
+  // All IANA timezones, built once
+  const allTimezones = useMemo<string[]>(() => {
+    try {
+      return Intl.supportedValuesOf('timeZone');
+    } catch {
+      return ['UTC', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Paris', 'Asia/Tokyo', 'Asia/Singapore', 'Australia/Sydney'];
+    }
+  }, []);
+
+  const filteredTz = useMemo(() => {
+    const q = tzSearch.toLowerCase();
+    return allTimezones.filter(tz =>
+      tz.toLowerCase().includes(q) || tz.replace(/_/g, ' ').toLowerCase().includes(q)
+    ).slice(0, 80);
+  }, [allTimezones, tzSearch]);
+
+  // Close timezone dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (tzRef.current && !tzRef.current.contains(e.target as Node)) {
+        setTzOpen(false);
+        setTzSearch('');
+      }
+    }
+    if (tzOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [tzOpen]);
 
   // API Key & User logic
   const [userId, setUserId] = useState<string | null>(null);
@@ -259,36 +290,134 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <CardTitle className="flex items-center gap-2 text-base">
                 <Globe className="w-4 h-4" /> Timezone
               </CardTitle>
-              <CardDescription>Events display in your detected timezone by default. Toggle to confirm.</CardDescription>
+              <CardDescription>Match times are displayed in your chosen timezone and remembered for next time.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+
+              {/* Active timezone display */}
               <div>
                 <label className="text-sm font-medium text-muted-foreground">Active Timezone</label>
                 <div className="mt-1 px-3 py-2 rounded-md bg-secondary/50 border border-border text-sm text-foreground flex items-center justify-between">
-                  <span>{formatTimezoneDisplay(timezone)}</span>
-                  <span className="text-xs text-muted-foreground">{useLocal ? 'Your location' : 'Default'}</span>
+                  <span className="font-medium">{formatTimezoneDisplay(timezone)}</span>
+                  <span className="text-xs text-muted-foreground font-mono">{timezone}</span>
                 </div>
               </div>
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/15">
-                <Navigation className="w-4 h-4 text-primary shrink-0" strokeLinecap="round" strokeLinejoin="round" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-foreground">Detected Location</div>
-                  <div className="text-xs text-muted-foreground truncate">{detectedTz ? formatTimezoneDisplay(detectedTz) : '—'}</div>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-medium text-foreground">Use my local time</div>
-                  <div className="text-xs text-muted-foreground">Switch all dates &amp; times to your browser timezone</div>
+
+              {/* Auto-detect toggle */}
+              <div className="flex items-center justify-between p-3 rounded-lg bg-primary/5 border border-primary/15">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Navigation className="w-4 h-4 text-primary shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-foreground">Use my location</div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {useLocal ? `Auto: ${formatTimezoneDisplay(detectedTz)}` : 'Auto-detect disabled — using custom timezone'}
+                    </div>
+                  </div>
                 </div>
                 <button
                   onClick={() => setUseLocal(!useLocal)}
-                  className={cn('relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-grab active:cursor-grabbing', useLocal ? 'bg-primary' : 'bg-secondary border border-border')}
-                  role="switch" aria-checked={useLocal}
+                  className={cn(
+                    'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ml-3',
+                    useLocal ? 'bg-primary' : 'bg-secondary border border-border'
+                  )}
+                  role="switch"
+                  aria-checked={useLocal}
                 >
-                  <span className={cn('inline-block h-4 w-4 rounded-full bg-white shadow transition-transform', useLocal ? 'translate-x-6' : 'translate-x-1')} />
+                  <span className={cn(
+                    'inline-block h-4 w-4 rounded-full bg-white shadow transition-transform',
+                    useLocal ? 'translate-x-6' : 'translate-x-1'
+                  )} />
                 </button>
               </div>
+
+              {/* Manual timezone picker — shown when auto-detect is off */}
+              {!useLocal && (
+                <div ref={tzRef} className="relative">
+                  <label className="text-sm font-medium text-muted-foreground mb-1.5 block">Choose Timezone</label>
+                  <button
+                    type="button"
+                    onClick={() => { setTzOpen(v => !v); setTzSearch(''); }}
+                    className={cn(
+                      'w-full flex items-center justify-between px-3 py-2 rounded-md border text-sm bg-secondary/40 text-foreground transition',
+                      tzOpen ? 'border-ring ring-2 ring-ring/30' : 'border-border hover:border-ring/50'
+                    )}
+                  >
+                    <span>{formatTimezoneDisplay(timezone)} <span className="text-muted-foreground font-mono text-xs ml-1">{timezone}</span></span>
+                    <svg className={cn('w-4 h-4 text-muted-foreground transition-transform', tzOpen && 'rotate-180')} viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+
+                  {tzOpen && (
+                    <div className="absolute z-50 mt-1 w-full rounded-xl border border-border bg-popover shadow-2xl shadow-black/30 animate-in fade-in-0 zoom-in-95 overflow-hidden">
+                      {/* Search input */}
+                      <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
+                        <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        <input
+                          autoFocus
+                          type="text"
+                          placeholder="Search timezone…"
+                          value={tzSearch}
+                          onChange={e => setTzSearch(e.target.value)}
+                          className="flex-1 bg-transparent text-sm outline-none text-foreground placeholder:text-muted-foreground/60"
+                        />
+                        {tzSearch && (
+                          <button onClick={() => setTzSearch('')} className="text-muted-foreground hover:text-foreground">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Results list */}
+                      <ul className="max-h-56 overflow-y-auto py-1" role="listbox">
+                        {/* Browser detected TZ always at top */}
+                        {!tzSearch && (
+                          <li>
+                            <button
+                              type="button"
+                              role="option"
+                              aria-selected={timezone === detectedTz}
+                              onClick={() => { setTimezone(detectedTz); setTzOpen(false); setTzSearch(''); }}
+                              className={cn(
+                                'w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-accent transition-colors',
+                                timezone === detectedTz && 'bg-primary/10 text-primary'
+                              )}
+                            >
+                              <span className="flex items-center gap-2">
+                                <Navigation className="w-3 h-3 text-primary shrink-0" />
+                                {formatTimezoneDisplay(detectedTz)}
+                              </span>
+                              <span className="text-xs text-muted-foreground font-mono">{detectedTz}</span>
+                            </button>
+                          </li>
+                        )}
+                        {filteredTz.length === 0 ? (
+                          <li className="px-3 py-4 text-sm text-muted-foreground text-center">No timezones found</li>
+                        ) : (
+                          filteredTz.map(tz => (
+                            <li key={tz}>
+                              <button
+                                type="button"
+                                role="option"
+                                aria-selected={timezone === tz}
+                                onClick={() => { setTimezone(tz); setTzOpen(false); setTzSearch(''); }}
+                                className={cn(
+                                  'w-full flex items-center justify-between px-3 py-1.5 text-sm hover:bg-accent transition-colors',
+                                  timezone === tz && 'bg-primary/10 text-primary'
+                                )}
+                              >
+                                <span>{formatTimezoneDisplay(tz)}</span>
+                                <span className="text-xs text-muted-foreground font-mono">{tz}</span>
+                              </button>
+                            </li>
+                          ))
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
             </CardContent>
           </Card>
 

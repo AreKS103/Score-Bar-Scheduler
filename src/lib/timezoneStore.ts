@@ -16,18 +16,19 @@ export interface TimezoneState {
 }
 
 function loadFromStorage(): { timezone: string; useLocal: boolean } {
-  if (typeof window === 'undefined') return { timezone: DEFAULT_TIMEZONE, useLocal: false };
+  if (typeof window === 'undefined') return { timezone: DEFAULT_TIMEZONE, useLocal: true };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       return {
         timezone: parsed.timezone || DEFAULT_TIMEZONE,
-        useLocal: !!parsed.useLocal,
+        useLocal: parsed.useLocal !== undefined ? !!parsed.useLocal : true,
       };
     }
   } catch { /* ignore */ }
-  return { timezone: DEFAULT_TIMEZONE, useLocal: false };
+  // No saved preference — default to user's browser timezone
+  return { timezone: DEFAULT_TIMEZONE, useLocal: true };
 }
 
 function saveToStorage(state: { timezone: string; useLocal: boolean }) {
