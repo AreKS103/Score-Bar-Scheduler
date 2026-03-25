@@ -53,14 +53,14 @@ const MatchCard = memo(function MatchCard({
       <button
         onClick={(e) => { e.stopPropagation(); onToggleFeatured(event.id); }}
         className={cn(
-          'mt-0.5 transition-colors',
+          'mt-0.5 transition-colors p-1.5 -m-1 rounded-md sm:p-0 sm:m-0',
           event.isFeatured
             ? 'text-amber-400 hover:text-amber-300'
             : 'text-muted-foreground/40 hover:text-muted-foreground'
         )}
         title={event.isFeatured ? 'Remove from highlights' : 'Add to highlights'}
       >
-        <Star className="w-3.5 h-3.5" fill={event.isFeatured ? 'currentColor' : 'none'} />
+        <Star className="w-4 h-4 sm:w-3.5 sm:h-3.5" fill={event.isFeatured ? 'currentColor' : 'none'} />
       </button>
 
       {/* Main content */}
@@ -126,7 +126,7 @@ const MatchCard = memo(function MatchCard({
                   if (!event.isSelected) onToggleSelected(event.id);
                 }}
                 className={cn(
-                  'text-[10px] px-1.5 py-0 rounded-full border transition-all',
+                  'text-[11px] sm:text-[10px] px-2.5 sm:px-1.5 py-1 sm:py-0.5 rounded-full border transition-all',
                   isActive
                     ? 'bg-primary/15 border-primary/40 text-primary'
                     : 'bg-transparent border-border text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground/70'

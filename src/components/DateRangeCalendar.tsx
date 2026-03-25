@@ -10,6 +10,18 @@ import type { DateRange } from 'react-day-picker';
 
 type CalendarMode = 'range' | 'single';
 
+function useIsMobile(breakpoint = 640) {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mql = window.matchMedia(`(max-width: ${breakpoint - 1}px)`);
+    setIsMobile(mql.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, [breakpoint]);
+  return isMobile;
+}
+
 interface DateRangeCalendarProps {
   startDate: string;   // YYYY-MM-DD
   endDate: string;     // YYYY-MM-DD
@@ -27,6 +39,7 @@ export default function DateRangeCalendar({
   const [mode, setMode] = useState<CalendarMode>('range');
   const [rangeDraft, setRangeDraft] = useState<DateRange>({ from: undefined, to: undefined });
   const ref = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
 
   const from = parse(startDate, 'yyyy-MM-dd', new Date());
   const to = parse(endDate, 'yyyy-MM-dd', new Date());
@@ -116,7 +129,10 @@ export default function DateRangeCalendar({
       </Button>
 
       {open && (
-        <div className="absolute top-full left-0 mt-2 z-50 rounded-xl border border-border bg-popover p-3 shadow-2xl shadow-black/30 animate-in fade-in-0 zoom-in-95">
+        <div className={cn(
+          "absolute top-full mt-2 z-50 rounded-xl border border-border bg-popover p-3 shadow-2xl shadow-black/30 animate-in fade-in-0 zoom-in-95",
+          isMobile ? "left-0 right-0 fixed mx-3" : "left-0"
+        )}>
           {/* Mode toggle */}
           <div className="flex items-center gap-1 mb-2 px-1">
             <button
@@ -156,7 +172,7 @@ export default function DateRangeCalendar({
               mode="range"
               selected={rangeDraft}
               onSelect={handleRangeSelect}
-              numberOfMonths={2}
+              numberOfMonths={isMobile ? 1 : 2}
               showOutsideDays={false}
               today={new Date()}
               modifiersStyles={{

@@ -221,7 +221,7 @@ const LeagueSection = memo(function LeagueSection({
               onBulkSelectLeague(sportId, !allSelected);
             }}
             className={cn(
-              'transition-colors shrink-0',
+              'transition-colors shrink-0 p-1.5 -m-0.5 rounded-md sm:p-0 sm:m-0',
               allSelected
                 ? 'text-primary hover:text-primary/80'
                 : someSelected
@@ -248,14 +248,14 @@ const LeagueSection = memo(function LeagueSection({
           <button
             onClick={(e) => { e.stopPropagation(); onToggleFeaturedLeague(sportId); }}
             className={cn(
-              'transition-colors shrink-0',
+              'transition-colors shrink-0 p-1.5 -m-0.5 rounded-md sm:p-0 sm:m-0',
               isFeaturedLeague
                 ? 'text-yellow-400 hover:text-yellow-300'
                 : 'text-muted-foreground/30 hover:text-yellow-400'
             )}
             title={isFeaturedLeague ? 'Remove league spotlight' : 'Spotlight this league in highlights (starred matches only)'}
           >
-            <Star className="w-3.5 h-3.5" fill={isFeaturedLeague ? 'currentColor' : 'none'} />
+            <Star className="w-4 h-4 sm:w-3.5 sm:h-3.5" fill={isFeaturedLeague ? 'currentColor' : 'none'} />
           </button>
         )}
         <h3 className="text-sm font-bold text-foreground">{config.label}</h3>

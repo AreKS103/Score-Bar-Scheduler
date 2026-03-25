@@ -180,6 +180,21 @@ export default function SchedulePage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [businessInfoOpen, setBusinessInfoOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // ─── Temporary viewport debug (remove after diagnosing mobile issue) ─────
+  const [vpDebug, setVpDebug] = useState('');
+  useEffect(() => {
+    const update = () => {
+      const w = window.innerWidth;
+      const vw = document.documentElement.clientWidth;
+      const dpr = window.devicePixelRatio;
+      const ua = navigator.userAgent;
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(ua);
+      setVpDebug(`innerW:${w} clientW:${vw} dpr:${dpr.toFixed(1)} mobile:${isMobile}`);
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [businessName, setBusinessName] = useState<string | null>(null);
   const [businessLogoUrl, setBusinessLogoUrl] = useState<string | null>(null);
@@ -1455,6 +1470,18 @@ export default function SchedulePage() {
 
   return (
     <div className="flex h-screen bg-background text-foreground">
+      {/* ── Temporary viewport debug badge (remove after diagnosing) ──────── */}
+      {vpDebug && (
+        <div style={{
+          position: 'fixed', bottom: 8, left: 8, zIndex: 99999,
+          background: 'rgba(255,0,0,0.85)', color: '#fff',
+          fontSize: 10, padding: '4px 8px', borderRadius: 6,
+          fontFamily: 'monospace', pointerEvents: 'none', lineHeight: 1.3,
+          maxWidth: '90vw', wordBreak: 'break-all',
+        }}>
+          {vpDebug}
+        </div>
+      )}
       {/* ── Mobile sidebar backdrop ───────────────────────────────────────────── */}
       {sidebarOpen && (
         <div
@@ -1504,7 +1531,7 @@ export default function SchedulePage() {
               {/* Mobile hamburger */}
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="md:hidden p-2 -ml-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                className="md:hidden p-2.5 -ml-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
                 aria-label="Open sidebar"
               >
                 <Menu className="w-5 h-5" />
@@ -1595,10 +1622,10 @@ export default function SchedulePage() {
 
             <Separator orientation="vertical" className="h-5 hidden sm:block" />
 
-            <Button variant="ghost" size="xs" onClick={selectAll}>
+            <Button variant="ghost" size="sm" className="sm:text-xs sm:h-7 sm:px-2" onClick={selectAll}>
               <CheckSquare className="w-3.5 h-3.5" /> Select All
             </Button>
-            <Button variant="ghost" size="xs" onClick={deselectAll}>
+            <Button variant="ghost" size="sm" className="sm:text-xs sm:h-7 sm:px-2" onClick={deselectAll}>
               <Square className="w-3.5 h-3.5" /> Deselect
             </Button>
 
@@ -1608,9 +1635,9 @@ export default function SchedulePage() {
             <div className="relative">
               <Button
                 variant="ghost"
-                size="xs"
+                size="sm"
                 onClick={() => setBulkTagOpen(!bulkTagOpen)}
-                className={cn(bulkTagOpen && 'bg-accent')}
+                className={cn("sm:text-xs sm:h-7 sm:px-2", bulkTagOpen && 'bg-accent')}
               >
                 <Tag className="w-3.5 h-3.5" /> Bulk Tag
               </Button>
@@ -1657,7 +1684,7 @@ export default function SchedulePage() {
 
             <Separator orientation="vertical" className="h-5 hidden sm:block" />
 
-            <Button variant="secondary" size="xs" onClick={() => setIsAddModalOpen(true)}>
+            <Button variant="secondary" size="sm" className="sm:text-xs sm:h-7 sm:px-2" onClick={() => setIsAddModalOpen(true)}>
               <Plus className="w-3.5 h-3.5" /> Add Custom Event
             </Button>
           </div>
@@ -1730,12 +1757,12 @@ export default function SchedulePage() {
         title={previewOpen ? 'Close preview' : 'Open preview'}
         style={{ right: previewOpen ? panelWidth : 0 }}
         className={cn(
-          "fixed z-99 top-1/2 -translate-y-1/2 flex flex-col items-center justify-center bg-secondary border border-border border-r-0 rounded-l-md px-1 py-3 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors",
+          "fixed z-99 top-1/2 -translate-y-1/2 flex flex-col items-center justify-center bg-secondary border border-border border-r-0 rounded-l-md px-2.5 py-5 md:px-1 md:py-3 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors",
           // On mobile, hide when preview open (panel is full-width, button would clip off-screen)
           previewOpen && "max-md:hidden"
         )}
       >
-        {previewOpen ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
+        {previewOpen ? <ChevronRight className="w-4 h-4 md:w-3.5 md:h-3.5" /> : <ChevronLeft className="w-4 h-4 md:w-3.5 md:h-3.5" />}
       </button>
 
       {/* Panel */}
