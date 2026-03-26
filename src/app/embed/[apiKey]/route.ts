@@ -4,6 +4,7 @@ import { type NextRequest } from 'next/server';
 import type { MatchEvent } from '@/types';
 import { renderEmbedContent } from '@/lib/renderEmbed';
 import { renderCalendarContent, getCalendarCSS, getCalendarNavJS } from '@/lib/renderCalendar';
+import { getOrgMemberIds } from '@/lib/supabase/org';
 
 export const dynamic = 'force-dynamic';
 
@@ -303,11 +304,12 @@ export async function GET(
   // the embed_instances row is missing — no global fallback needed.
   let scheduleTarget = embedId;
   let widgetNotRegistered = false;
+  const orgMemberIdsForWidget = await getOrgMemberIds(keyData.user_id);
   if (!embedId && widgetId) {
     const { data: inst } = await supabase
       .from('embed_instances')
       .select('embed_id')
-      .eq('user_id', keyData.user_id)
+      .in('user_id', orgMemberIdsForWidget)
       .eq('widget_id', widgetId)
       .maybeSingle();
     if (inst?.embed_id) {
@@ -333,10 +335,11 @@ export async function GET(
     if (!scheduleTarget) {
       schedule = null; // No target = show empty
     } else {
+      const orgMemberIds = orgMemberIdsForWidget;
       const { data } = await supabase
         .from('published_schedules')
         .select('events_snapshot, league_order, featured_leagues, published_at')
-        .eq('user_id', keyData.user_id)
+        .in('user_id', orgMemberIds)
         .eq('embed_target', scheduleTarget)
         .order('published_at', { ascending: false })
         .limit(1)

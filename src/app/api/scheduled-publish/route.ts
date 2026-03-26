@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
-import { getUserOrgId } from '@/lib/supabase/org';
+import { getUserOrgId, getOrgMemberIds } from '@/lib/supabase/org';
 
 /** Store a scheduled publish for later execution */
 export async function POST(req: NextRequest) {
@@ -60,10 +60,12 @@ export async function GET() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+    const orgMemberIds = await getOrgMemberIds(user.id);
+
     const { data, error } = await supabase
       .from('scheduled_publishes')
       .select('id, scheduled_at, week_label, status, created_at, embed_target')
-      .eq('user_id', user.id)
+      .in('user_id', orgMemberIds)
       .eq('status', 'pending')
       .order('scheduled_at', { ascending: true });
 
@@ -90,11 +92,13 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'Missing schedule ID' }, { status: 400 });
     }
 
+    const orgMemberIds = await getOrgMemberIds(user.id);
+
     const { error } = await supabase
       .from('scheduled_publishes')
       .update({ status: 'cancelled' })
       .eq('id', id)
-      .eq('user_id', user.id)
+      .in('user_id', orgMemberIds)
       .eq('status', 'pending');
 
     if (error) {
@@ -127,11 +131,12 @@ export async function PATCH() {
       ? createServiceClient(supabaseUrl, serviceKey)
       : supabase;
 
-    // Find past-due pending publishes for this user only
+    // Find past-due pending publishes for all org members
+    const orgMemberIds = await getOrgMemberIds(user.id);
     const { data: pending, error } = await db
       .from('scheduled_publishes')
       .select('*')
-      .eq('user_id', user.id)
+      .in('user_id', orgMemberIds)
       .eq('status', 'pending')
       .lte('scheduled_at', new Date().toISOString())
       .order('scheduled_at', { ascending: true });

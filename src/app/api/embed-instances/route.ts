@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createClient as createServerClient } from '@/lib/supabase/server';
-import { getUserOrgId } from '@/lib/supabase/org';
+import { getUserOrgId, getOrgMemberIds } from '@/lib/supabase/org';
 import crypto from 'crypto';
 
 // CORS for public endpoints (POST beacon + GET by apiKey) — must allow any origin for WordPress embeds
@@ -213,11 +213,13 @@ export async function PATCH(req: NextRequest) {
   if (!safeName) return NextResponse.json({ error: 'Name cannot be empty' }, { status: 400 });
   if (safeName === embedId) return NextResponse.json({ ok: true });
 
+  const orgMemberIds = await getOrgMemberIds(user.id);
+
   // Reject if the new name is already in use by another instance
   const { data: conflict } = await supabase
     .from('embed_instances')
     .select('id')
-    .eq('user_id', user.id)
+    .in('user_id', orgMemberIds)
     .eq('embed_id', safeName)
     .maybeSingle();
   if (conflict) return NextResponse.json({ error: 'Name already in use' }, { status: 409 });
@@ -225,7 +227,7 @@ export async function PATCH(req: NextRequest) {
   const { error } = await supabase
     .from('embed_instances')
     .update({ embed_id: safeName })
-    .eq('user_id', user.id)
+    .in('user_id', orgMemberIds)
     .eq('embed_id', embedId);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -233,11 +235,11 @@ export async function PATCH(req: NextRequest) {
   await Promise.all([
     supabase.from('published_schedules')
       .update({ embed_target: safeName })
-      .eq('user_id', user.id)
+      .in('user_id', orgMemberIds)
       .eq('embed_target', embedId),
     supabase.from('user_selections')
       .update({ embed_target: safeName })
-      .eq('user_id', user.id)
+      .in('user_id', orgMemberIds)
       .eq('embed_target', embedId),
   ]);
 
@@ -344,11 +346,12 @@ export async function DELETE(req: NextRequest) {
   let rawId = req.nextUrl.searchParams.get('embedId');
 
   // If widgetId is provided without embedId, resolve the embed_id from the DB.
+  const orgMemberIds = await getOrgMemberIds(userId);
   if (rawWidgetId && !rawId) {
     const { data: inst } = await supabase
       .from('embed_instances')
       .select('embed_id')
-      .eq('user_id', userId)
+      .in('user_id', orgMemberIds)
       .eq('widget_id', rawWidgetId)
       .maybeSingle();
     if (!inst) {
@@ -364,11 +367,11 @@ export async function DELETE(req: NextRequest) {
 
   const headers = apiKey ? corsHeaders : sessionCors;
 
-  // '__all__' sentinel: delete ALL embed instances + related data for this user
+  // '__all__' sentinel: delete ALL embed instances + related data for this org/user
   if (rawId === '__all__') {
-    await supabase.from('embed_instances').delete().eq('user_id', userId);
-    await supabase.from('published_schedules').delete().eq('user_id', userId);
-    await supabase.from('user_selections').delete().eq('user_id', userId);
+    await supabase.from('embed_instances').delete().in('user_id', orgMemberIds);
+    await supabase.from('published_schedules').delete().in('user_id', orgMemberIds);
+    await supabase.from('user_selections').delete().in('user_id', orgMemberIds);
     return NextResponse.json({ ok: true }, { headers });
   }
 
@@ -379,7 +382,7 @@ export async function DELETE(req: NextRequest) {
   const query = supabase
     .from('embed_instances')
     .delete()
-    .eq('user_id', userId);
+    .in('user_id', orgMemberIds);
 
   if (instanceId === null) {
     await query.is('embed_id', null);
@@ -400,7 +403,7 @@ export async function DELETE(req: NextRequest) {
   const selDeleteQuery = supabase
     .from('user_selections')
     .delete()
-    .eq('user_id', userId);
+    .in('user_id', orgMemberIds);
 
   if (instanceId === null) {
     await selDeleteQuery.is('embed_target', null);

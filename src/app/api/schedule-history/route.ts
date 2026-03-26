@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getUserOrgId } from '@/lib/supabase/org';
+import { getUserOrgId, getOrgMemberIds } from '@/lib/supabase/org';
 
 const MAX_HISTORY = 50; // per embed_target — keep full history
 
@@ -34,11 +34,12 @@ export async function POST(req: NextRequest) {
 
     if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
 
-    // Prune old snapshots beyond MAX_HISTORY — pruning is scoped per embed_target
+    // Prune old snapshots beyond MAX_HISTORY — pruning is org-scoped per embed_target
+    const orgMemberIds = await getOrgMemberIds(user.id);
     const pruneQuery = supabase
       .from('published_schedules')
       .select('id')
-      .eq('user_id', user.id)
+      .in('user_id', orgMemberIds)
       .order('published_at', { ascending: false });
 
     const { data: all } = targetValue
@@ -63,13 +64,14 @@ export async function GET(req: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const target = req.nextUrl.searchParams.get('target');
+    const orgMemberIds = await getOrgMemberIds(user.id);
 
     // ?target=xxx  → latest schedule for that embed_target (used by preview panel)
     if (target !== null) {
       const query = supabase
         .from('published_schedules')
         .select('id, week_label, date_range_start, date_range_end, published_at, events_snapshot, league_order, featured_leagues')
-        .eq('user_id', user.id)
+        .in('user_id', orgMemberIds)
         .order('published_at', { ascending: false })
         .limit(1);
 
@@ -88,7 +90,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await supabase
       .from('published_schedules')
       .select('id, week_label, date_range_start, date_range_end, published_at, embed_target')
-      .eq('user_id', user.id)
+      .in('user_id', orgMemberIds)
       .order('published_at', { ascending: false });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

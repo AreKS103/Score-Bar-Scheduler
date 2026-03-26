@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getUserOrgId } from '@/lib/supabase/org';
+import { getUserOrgId, getOrgMemberIds } from '@/lib/supabase/org';
 import type { MatchEvent } from '@/types';
 
 const BUCKET = 'custom-league-logos';
@@ -87,11 +87,13 @@ export async function GET() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+    const orgMemberIds = await getOrgMemberIds(user.id);
+
     // Cleanup expired rows (+ stored logos) opportunistically.
     const { data: expiredRows } = await supabase
       .from('custom_events')
       .select('id, event_data')
-      .eq('user_id', user.id)
+      .in('user_id', orgMemberIds)
       .lte('expires_at', new Date().toISOString());
 
     if (expiredRows && expiredRows.length > 0) {
@@ -109,7 +111,7 @@ export async function GET() {
     const { data, error } = await supabase
       .from('custom_events')
       .select('id, event_data, expires_at')
-      .eq('user_id', user.id)
+      .in('user_id', orgMemberIds)
       .gt('expires_at', new Date().toISOString())
       .order('created_at', { ascending: true });
 
@@ -145,10 +147,12 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'Missing eventId/eventIds' }, { status: 400 });
     }
 
+    const orgMemberIds = await getOrgMemberIds(user.id);
+
     const { data: rows } = await supabase
       .from('custom_events')
       .select('id, event_data')
-      .eq('user_id', user.id)
+      .in('user_id', orgMemberIds)
       .in('event_data->>id', ids);
 
     const matchedEventIds = (rows ?? [])
@@ -163,7 +167,7 @@ export async function DELETE(req: NextRequest) {
     const { error } = await supabase
       .from('custom_events')
       .delete()
-      .eq('user_id', user.id)
+      .in('user_id', orgMemberIds)
       .in('event_data->>id', matchedEventIds);
 
     if (error) {

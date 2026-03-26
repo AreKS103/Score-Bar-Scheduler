@@ -139,3 +139,22 @@ export async function getUserOrgId(userId: string): Promise<string | null> {
     .single();
   return data?.organization_id ?? null;
 }
+
+/**
+ * Get all active member user_ids for the user's org (including the user themselves).
+ * Returns `[userId]` if the user has no org. Used for org-scoped queries across
+ * published_schedules, scheduled_publishes, custom_events, etc.
+ */
+export async function getOrgMemberIds(userId: string): Promise<string[]> {
+  const orgId = await getUserOrgId(userId);
+  if (!orgId) return [userId];
+
+  const { data: members } = await supabase
+    .from('organization_members')
+    .select('user_id')
+    .eq('organization_id', orgId)
+    .eq('status', 'active');
+
+  if (!members?.length) return [userId];
+  return [...new Set([userId, ...members.map(m => m.user_id)])];
+}

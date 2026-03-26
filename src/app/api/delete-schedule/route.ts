@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getOrgMemberIds } from '@/lib/supabase/org';
 
 /**
  * Clears the published schedule for a given embed target:
@@ -27,11 +28,12 @@ export async function POST(req: NextRequest) {
       // No body / malformed body → treat as global (null) target
     }
 
-    // ── Delete from published_schedules ──────────────────────────────────────
+    // ── Delete from published_schedules (org-scoped) ─────────────────────────
+    const orgMemberIds = await getOrgMemberIds(user.id);
     const deleteQuery = supabase
       .from('published_schedules')
       .delete()
-      .eq('user_id', user.id);
+      .in('user_id', orgMemberIds);
 
     if (embedTarget) {
       await deleteQuery.eq('embed_target', embedTarget);
