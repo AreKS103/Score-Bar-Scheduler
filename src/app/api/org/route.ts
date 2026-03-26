@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getUserOrgs, createOrg, activateUserInvites, slugify } from '@/lib/supabase/org';
+import { getUserOrgs, createOrg, slugify } from '@/lib/supabase/org';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 
 const adminClient = createAdminClient(
@@ -8,22 +8,12 @@ const adminClient = createAdminClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
-/** GET /api/org — list user's organizations. ?bootstrap=true to activate pending invites. */
+/** GET /api/org — list user's organizations */
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const bootstrap = req.nextUrl.searchParams.get('bootstrap') === 'true';
-
-    if (bootstrap) {
-      try {
-        await activateUserInvites(user.id);
-      } catch {
-        // Non-fatal: continue without invite activation
-      }
-    }
 
     try {
       const orgs = await getUserOrgs(user.id);

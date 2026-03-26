@@ -531,7 +531,7 @@ export default function SchedulePage() {
       // Lazy-bootstrap org: ensure user has at least one organization
       if (data.user?.id) {
         try {
-          const orgRes = await fetch('/api/org?bootstrap=true');
+          const orgRes = await fetch('/api/org');
           if (orgRes.ok) {
             const { organizations } = await orgRes.json();
             if (organizations?.length > 0) {

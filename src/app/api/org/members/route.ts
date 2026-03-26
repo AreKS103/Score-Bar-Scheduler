@@ -58,35 +58,18 @@ export async function GET() {
     const userIds = (members ?? []).map(m => m.user_id);
     const emails = await resolveEmails(userIds);
 
-    // Auto-activate invited members whose email has been resolved (user confirmed)
-    const toActivate: string[] = [];
     const enriched = (members ?? []).map(m => {
       const email = emails[m.user_id] ?? m.invited_email ?? null;
-      let status = m.status ?? 'active';
-      // If the member was invited but now has a resolved email (user confirmed), activate them
-      if (status === 'invited' && emails[m.user_id]) {
-        status = 'active';
-        toActivate.push(m.id);
-      }
       return {
         id: m.id,
         userId: m.user_id,
         role: m.role,
-        status,
+        status: m.status ?? 'active',
         email,
         joinedAt: m.created_at,
         isYou: m.user_id === user.id,
       };
     });
-
-    // Batch-update newly activated members in the background
-    if (toActivate.length > 0) {
-      adminClient
-        .from('organization_members')
-        .update({ status: 'active' })
-        .in('id', toActivate)
-        .then(() => {});
-    }
 
     return NextResponse.json({ members: enriched, orgId });
   } catch (err) {
@@ -130,20 +113,20 @@ export async function POST(req: NextRequest) {
     let invited = false;
 
     if (targetUserId) {
-      // ── User exists — add them immediately ──────────────────────
-      // Check not already a member
+      // ── User exists — create a pending invite (not auto-add) ────
+      // Check not already a member or already invited
       const { data: existing } = await adminClient
         .from('organization_members')
-        .select('id')
+        .select('id, status')
         .eq('organization_id', orgId)
         .eq('user_id', targetUserId)
         .maybeSingle();
 
       if (existing) {
-        return NextResponse.json(
-          { error: 'This user is already a member of your organization' },
-          { status: 409 },
-        );
+        const msg = existing.status === 'invited'
+          ? 'This user already has a pending invite to your organization'
+          : 'This user is already a member of your organization';
+        return NextResponse.json({ error: msg }, { status: 409 });
       }
 
       const { error: insertErr } = await adminClient
@@ -152,15 +135,16 @@ export async function POST(req: NextRequest) {
           organization_id: orgId,
           user_id: targetUserId,
           role: 'member',
-          status: 'active',
+          status: 'invited',
           invited_by: user.id,
+          invited_email: trimmedEmail,
         });
 
       if (insertErr) {
         return NextResponse.json({ error: insertErr.message }, { status: 500 });
       }
 
-      return NextResponse.json({ ok: true, invited: false });
+      return NextResponse.json({ ok: true, invited: true });
     }
 
     // ── Step 2: User doesn't exist — try Supabase invite ──────────

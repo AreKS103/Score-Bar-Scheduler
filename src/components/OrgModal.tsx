@@ -51,15 +51,13 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
   const [orgNameSaved, setOrgNameSaved] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadOrgInitialRef = useRef<() => Promise<void>>(() => Promise.resolve());
 
   // Invite
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
-  const [inviteSuccess, setInviteSuccess] = useState<false | 'added' | 'invited'>(false);
-
-  // Remove
-  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
+  const [inviteSuccess, setInviteSuccess] = useState(false);
 
   // Role dropdown
   const [roleDropdownId, setRoleDropdownId] = useState<string | null>(null);
@@ -86,62 +84,132 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
   const [refreshingInvites, setRefreshingInvites] = useState(false);
 
   // ── Fetch data ─────────────────────────────────────────────────
-  const initialLoadedRef = useRef(false);
 
-  const loadOrg = useCallback(async (showSpinner = false) => {
-    if (showSpinner && !initialLoadedRef.current) setOrgLoading(true);
+  /** Silent background refresh of just the members list. No spinner, no flicker. */
+  const refreshMembers = useCallback(async () => {
     try {
-      // Only fetch org info on first load; members are the dynamic part
-      if (!initialLoadedRef.current) {
-        const [orgRes, membersRes] = await Promise.all([
-          fetch('/api/org'),
-          fetch('/api/org/members'),
-        ]);
-        let hasOrg = false;
-        if (orgRes.ok) {
-          const { organizations } = await orgRes.json();
-          const first = organizations?.[0] ?? null;
-          hasOrg = !!first;
-          setOrg(first ? { id: first.id, name: first.name, slug: first.slug } : null);
-          setOrgNameDraft(first?.name ?? '');
+      const res = await fetch('/api/org/members');
+      if (!res.ok) return;
+      const { members } = await res.json();
+      setOrgMembers(members ?? []);
+    } catch { /* silent */ }
+  }, []);
+
+  /** Silent background refresh of org + members. No spinner, no flicker.
+   *  If user was removed from org, transitions to no-org view. */
+  const refreshOrgAndMembers = useCallback(async () => {
+    try {
+      const [orgRes, membersRes] = await Promise.all([
+        fetch('/api/org'),
+        fetch('/api/org/members'),
+      ]);
+      let hasOrg = false;
+      if (orgRes.ok) {
+        const { organizations } = await orgRes.json();
+        const first = organizations?.[0] ?? null;
+        hasOrg = !!first;
+        setOrg(prev => {
+          if (!first) return null;
+          // Don't overwrite name if same org — avoids resetting mid-edit
+          if (prev && prev.id === first.id) {
+            return { id: prev.id, name: prev.name, slug: first.slug };
+          }
+          return { id: first.id, name: first.name, slug: first.slug };
+        });
+        if (first) setOrgNameDraft(first.name);
+      }
+      if (membersRes.ok) {
+        const { members } = await membersRes.json();
+        setOrgMembers(members ?? []);
+        // Detect user removal
+        if (hasOrg && !(members ?? []).some((m: OrgMember) => m.isYou)) {
+          setOrg(null);
+          setOrgMembers([]);
+          onOrgNameChange?.('');
+          hasOrg = false;
         }
-        if (membersRes.ok) {
-          const { members } = await membersRes.json();
-          setOrgMembers(members ?? []);
+      }
+      // If no org, also refresh invites
+      if (!hasOrg) {
+        try {
+          const invitesRes = await fetch('/api/org/invites');
+          if (invitesRes.ok) {
+            const { invites } = await invitesRes.json();
+            setPendingInvites(invites ?? []);
+          }
+        } catch { /* ignore */ }
+      }
+    } catch { /* silent */ }
+  }, [onOrgNameChange]);
+
+  /** Full load with spinner — only for initial modal open */
+  const loadOrgInitial = useCallback(async () => {
+    setOrgLoading(true);
+    try {
+      const [orgRes, membersRes] = await Promise.all([
+        fetch('/api/org'),
+        fetch('/api/org/members'),
+      ]);
+      let hasOrg = false;
+      if (orgRes.ok) {
+        const { organizations } = await orgRes.json();
+        const first = organizations?.[0] ?? null;
+        hasOrg = !!first;
+        setOrg(first ? { id: first.id, name: first.name, slug: first.slug } : null);
+        setOrgNameDraft(first?.name ?? '');
+      }
+      if (membersRes.ok) {
+        const { members } = await membersRes.json();
+        setOrgMembers(members ?? []);
+        if (hasOrg && !(members ?? []).some((m: OrgMember) => m.isYou)) {
+          setOrg(null);
+          setOrgMembers([]);
+          onOrgNameChange?.('');
+          hasOrg = false;
         }
-        // If no org, also fetch pending invites
-        if (!hasOrg) {
-          try {
-            const invitesRes = await fetch('/api/org/invites');
-            if (invitesRes.ok) {
-              const { invites } = await invitesRes.json();
-              setPendingInvites(invites ?? []);
-            }
-          } catch { /* ignore */ }
-        }
-      } else {
-        // Subsequent loads: only refresh members
-        const membersRes = await fetch('/api/org/members');
-        if (membersRes.ok) {
-          const { members } = await membersRes.json();
-          setOrgMembers(members ?? []);
-        }
+      }
+      if (!hasOrg) {
+        try {
+          const invitesRes = await fetch('/api/org/invites');
+          if (invitesRes.ok) {
+            const { invites } = await invitesRes.json();
+            setPendingInvites(invites ?? []);
+          }
+        } catch { /* ignore */ }
       }
     } finally {
       setOrgLoading(false);
-      initialLoadedRef.current = true;
       setInitialLoaded(true);
     }
-  }, []);
+  }, [onOrgNameChange]);
+
+  /** Transition to no-org view and load invites in background */
+  const transitionToNoOrg = useCallback(async () => {
+    setOrg(null);
+    setOrgMembers([]);
+    onOrgNameChange?.('');
+    // Load invites in background
+    try {
+      const res = await fetch('/api/org/invites');
+      if (res.ok) {
+        const { invites } = await res.json();
+        setPendingInvites(invites ?? []);
+      }
+    } catch { /* ignore */ }
+  }, [onOrgNameChange]);
+
+  // Keep ref in sync so the open-effect can always call the latest version
+  // without adding loadOrgInitial to the effect's dependency array
+  loadOrgInitialRef.current = loadOrgInitial;
 
   useEffect(() => {
     if (!isOpen) return;
     setInitialLoaded(false);
-    loadOrg(true);
+    loadOrgInitialRef.current();
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose, loadOrg]);
+  }, [isOpen, onClose]);
 
   // Close role dropdown on outside click
   useEffect(() => {
@@ -218,12 +286,13 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
     const data = await res.json();
     setInviting(false);
     if (!res.ok) {
-      setInviteError(data.error ?? 'Failed to add member');
+      setInviteError(data.error ?? 'Failed to invite member');
     } else {
-      setInviteSuccess(data.invited ? 'invited' : 'added');
+      setInviteSuccess(true);
       setInviteEmail('');
       setTimeout(() => setInviteSuccess(false), 5000);
-      await loadOrg();
+      // Background refresh to show new pending member
+      refreshMembers();
     }
   }
 
@@ -247,15 +316,14 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
     }
     // If the removed member was the current user, transition to no-org view
     if (removedMember?.isYou) {
-      setOrg(null);
-      setOrgMembers([]);
-      onOrgNameChange?.('');
-      await loadOrg(true);
+      await transitionToNoOrg();
     }
   }
 
   // ── Change role ────────────────────────────────────────────────
   async function changeRole(memberId: string, newRole: 'owner' | 'member') {
+    // Optimistic: update role instantly
+    setOrgMembers(prev => prev.map(m => m.id === memberId ? { ...m, role: newRole } : m));
     setChangingRoleId(memberId);
     setRoleDropdownId(null);
     const res = await fetch('/api/org/members', {
@@ -263,12 +331,13 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ memberId, role: newRole }),
     });
+    setChangingRoleId(null);
     if (!res.ok) {
       const data = await res.json();
       alert(data.error ?? 'Failed to change role');
+      // Revert on failure
+      refreshMembers();
     }
-    setChangingRoleId(null);
-    await loadOrg();
   }
 
   // ── Leave org ──────────────────────────────────────────────────
@@ -289,11 +358,8 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
       return;
     }
     setLeavingOrg(false);
-    setOrg(null);
-    setOrgMembers([]);
-    onOrgNameChange?.('');
-    // Stay open and show create/join view
-    await loadOrg(true);
+    // Transition to no-org view instantly, load invites in background
+    await transitionToNoOrg();
   }
 
   // ── Delete org (owner only) ─────────────────────────────────
@@ -313,12 +379,9 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
       return;
     }
     setDeletingOrg(false);
-    setOrg(null);
-    setOrgMembers([]);
     setDeleteOrgConfirm('');
-    onOrgNameChange?.('');
-    // Reload to show create/join view
-    await loadOrg(true);
+    // Transition to no-org view instantly, load invites in background
+    await transitionToNoOrg();
   }
 
   // ── Create org ─────────────────────────────────────────────────
@@ -336,10 +399,24 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
     if (!res.ok) {
       setOrgCreateError(data.error ?? 'Failed to create organization');
     } else {
-      const createdName = orgCreateName.trim();
+      const created = data.organization;
+      const createdName = created?.name ?? orgCreateName.trim();
+      // Optimistic: immediately show the org view
+      setOrg({ id: created.id, name: createdName, slug: created.slug ?? '' });
+      setOrgNameDraft(createdName);
+      setOrgMembers([{
+        id: 'self-owner',
+        userId: '',
+        email: null,
+        role: 'owner',
+        status: 'active',
+        isYou: true,
+        joinedAt: new Date().toISOString(),
+      }]);
       setOrgCreateName('');
       onOrgNameChange?.(createdName);
-      await loadOrg(true);
+      // Refresh in background to get real member data
+      refreshMembers();
     }
   }
 
@@ -357,11 +434,15 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
     if (!res.ok) {
       setInviteAcceptError(data.error ?? 'Failed to join organization');
     } else {
-      // Successfully joined — reload org data
+      // Successfully joined — set org optimistically from invite data, refresh in background
       const accepted = pendingInvites.find(i => i.id === inviteId);
-      onOrgNameChange?.(accepted?.orgName ?? '');
+      if (accepted) {
+        setOrg({ id: accepted.orgId, name: accepted.orgName, slug: '' });
+        setOrgNameDraft(accepted.orgName);
+        onOrgNameChange?.(accepted.orgName);
+      }
       setPendingInvites([]);
-      await loadOrg(true);
+      refreshOrgAndMembers();
     }
   }
 
@@ -505,7 +586,12 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
 
                       {/* Role badge with dropdown for owners */}
                       <div className="relative shrink-0" ref={roleDropdownId === m.id ? dropdownRef : undefined}>
-                        {isOwner && !m.isYou ? (
+                        {m.status === 'invited' ? (
+                          /* Pending invite badge */
+                          <span className="text-[11px] px-2 py-1 rounded-full border font-medium flex items-center gap-1 leading-normal text-yellow-500 bg-yellow-500/10 border-yellow-500/20">
+                            <Loader2 className="w-2.5 h-2.5" /> Pending
+                          </span>
+                        ) : isOwner && !m.isYou ? (
                           <button
                             onClick={() => setRoleDropdownId(v => v === m.id ? null : m.id)}
                             disabled={changingRoleId === m.id}
@@ -571,26 +657,6 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
                           </div>
                         )}
                       </div>
-
-                      {/* Remove/spacer — always rendered in non-owner view to keep badge aligned */}
-                      {!isOwner && (
-                        m.isYou ? (
-                          <button
-                            onClick={() => removeMember(m.id)}
-                            disabled={removingMemberId === m.id}
-                            className="text-muted-foreground hover:text-destructive transition-colors p-1 rounded-md opacity-0 group-hover:opacity-100 focus:opacity-100"
-                            aria-label="Leave organization"
-                            title="Leave organization"
-                          >
-                            {removingMemberId === m.id
-                              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              : <UserMinus className="w-3.5 h-3.5" />
-                            }
-                          </button>
-                        ) : (
-                          <div className="w-7.5 shrink-0" aria-hidden="true" />
-                        )
-                      )}
                     </div>
                   ))}
                 </div>
@@ -627,7 +693,7 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
                       {inviting ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       ) : inviteSuccess ? (
-                        <><CheckCircle className="w-3.5 h-3.5 text-emerald-500" /> {inviteSuccess === 'invited' ? 'Sent!' : 'Added!'}</>
+                        <><CheckCircle className="w-3.5 h-3.5 text-emerald-500" /> Sent!</>
                       ) : (
                         <><Mail className="w-3.5 h-3.5" /> Invite</>
                       )}
@@ -636,16 +702,10 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
                   {inviteError && (
                     <p className="text-xs text-destructive mt-1.5 leading-normal">{inviteError}</p>
                   )}
-                  {inviteSuccess === 'invited' && (
+                  {inviteSuccess && (
                     <p className="text-xs text-emerald-500 mt-1.5 flex items-center gap-1 leading-normal">
                       <CheckCircle className="w-3 h-3" />
-                      Invite sent
-                    </p>
-                  )}
-                  {inviteSuccess === 'added' && (
-                    <p className="text-xs text-emerald-500 mt-1.5 flex items-center gap-1 leading-normal">
-                      <CheckCircle className="w-3 h-3" />
-                      Member added to your organization.
+                      Invite sent — waiting for them to accept.
                     </p>
                   )}
                 </section>

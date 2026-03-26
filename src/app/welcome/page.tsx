@@ -71,10 +71,10 @@ export default function WelcomePage() {
       return;
     }
 
-    // Activate any pending org invites now that the user has confirmed
+    // Fetch org data now that the user has confirmed
     try {
-      await fetch('/api/org?bootstrap=true');
-      console.log('[welcome] bootstrap org completed');
+      await fetch('/api/org');
+      console.log('[welcome] org fetch completed');
     } catch { /* non-fatal */ }
 
     setDone(true);

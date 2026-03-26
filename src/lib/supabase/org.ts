@@ -16,24 +16,26 @@ export function slugify(name: string): string {
   return `${base}-${suffix}`;
 }
 
-/** Get the user's primary (first) organization */
+/** Get the user's primary (first) organization (active memberships only) */
 export async function getUserOrg(userId: string) {
   const { data } = await supabase
     .from('organization_members')
     .select('organization_id, role, organizations(id, name, slug, created_by, created_at, updated_at)')
     .eq('user_id', userId)
+    .eq('status', 'active')
     .order('created_at', { ascending: true })
     .limit(1)
     .single();
   return data?.organizations ?? null;
 }
 
-/** Get all organizations a user belongs to */
+/** Get all organizations a user belongs to (active memberships only) */
 export async function getUserOrgs(userId: string) {
   const { data } = await supabase
     .from('organization_members')
     .select('organization_id, role, organizations(id, name, slug, created_by, created_at, updated_at)')
     .eq('user_id', userId)
+    .eq('status', 'active')
     .order('created_at', { ascending: true });
   return (data ?? []).map(m => ({ ...m.organizations, role: m.role }));
 }
@@ -59,81 +61,13 @@ export async function createOrg(userId: string, name: string) {
   return org;
 }
 
-/**
- * Activate any pending invites for a user (status: 'invited' → 'active').
- * Called on bootstrap to auto-activate invites once the user has confirmed.
- */
-export async function activateUserInvites(userId: string): Promise<void> {
-  await supabase
-    .from('organization_members')
-    .update({ status: 'active' })
-    .eq('user_id', userId)
-    .eq('status', 'invited');
-}
-
-/**
- * Lazy bootstrap: ensure the user has at least one org.
- * If not, create a default org named from their email prefix, then backfill
- * organization_id on all their existing data.
- * Also activates any pending invites (status: 'invited' → 'active').
- */
-export async function ensureUserHasOrg(userId: string, email?: string): Promise<string> {
-  await activateUserInvites(userId);
-
-  const existing = await getUserOrg(userId);
-  if (existing) return (existing as any).id;
-
-  // Derive a default org name from the email prefix
-  const prefix = (email ?? 'my').split('@')[0];
-  const orgName = prefix.charAt(0).toUpperCase() + prefix.slice(1) + "'s Organization";
-
-  const org = await createOrg(userId, orgName);
-  await backfillOrgId(userId, org.id);
-  return org.id;
-}
-
-/**
- * Backfill organization_id on all rows owned by this user that don't have one yet.
- */
-export async function backfillOrgId(userId: string, orgId: string) {
-  const tables = [
-    'user_api_keys',
-    'embed_instances',
-    'published_schedules',
-    'user_selections',
-    'scheduled_publishes',
-    'custom_events',
-    'business_info',
-  ] as const;
-
-  await Promise.allSettled(
-    tables.map(table =>
-      supabase
-        .from(table)
-        .update({ organization_id: orgId })
-        .eq('user_id', userId)
-        .is('organization_id', null)
-    )
-  );
-}
-
-/** Check if a user is a member of a given organization */
-export async function isOrgMember(userId: string, orgId: string): Promise<boolean> {
-  const { data } = await supabase
-    .from('organization_members')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('organization_id', orgId)
-    .maybeSingle();
-  return !!data;
-}
-
-/** Get the user's primary org ID (simple helper for route handlers) */
+/** Get the user's primary org ID (active memberships only) */
 export async function getUserOrgId(userId: string): Promise<string | null> {
   const { data } = await supabase
     .from('organization_members')
     .select('organization_id')
     .eq('user_id', userId)
+    .eq('status', 'active')
     .order('created_at', { ascending: true })
     .limit(1)
     .single();
