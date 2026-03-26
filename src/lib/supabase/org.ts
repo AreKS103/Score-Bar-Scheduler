@@ -6,7 +6,7 @@ const supabase = createClient(
 );
 
 /** Kebab-case + 6-char random suffix for slug uniqueness */
-function slugify(name: string): string {
+export function slugify(name: string): string {
   const base = name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')

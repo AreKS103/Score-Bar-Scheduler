@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getUserOrgs, createOrg, activateUserInvites } from '@/lib/supabase/org';
+import { getUserOrgs, createOrg, activateUserInvites, slugify } from '@/lib/supabase/org';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 
 const adminClient = createAdminClient(
@@ -83,13 +83,14 @@ export async function PATCH(req: NextRequest) {
 
     if (!membership) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
+    const newSlug = slugify(name.trim());
     const { error } = await adminClient
       .from('organizations')
-      .update({ name: name.trim() })
+      .update({ name: name.trim(), slug: newSlug })
       .eq('id', orgId);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, slug: newSlug });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Unknown error' },

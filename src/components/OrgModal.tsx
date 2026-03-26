@@ -136,6 +136,7 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
 
   useEffect(() => {
     if (!isOpen) return;
+    setInitialLoaded(false);
     loadOrg(true);
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
@@ -191,6 +192,8 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
     });
     setOrgNameSaving(false);
     if (res.ok) {
+      const data = await res.json();
+      if (data.slug) setOrg(o => o ? { ...o, slug: data.slug } : o);
       setOrgNameSaved(true);
       setTimeout(() => setOrgNameSaved(false), 2000);
     } else {
@@ -226,9 +229,8 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
 
   // ── Remove member (optimistic — immediate UI update) ─────────
   async function removeMember(memberId: string) {
-    // Snapshot for rollback
+    const removedMember = orgMembers.find(m => m.id === memberId);
     const prevMembers = orgMembers;
-    // Optimistic: remove from UI immediately
     setOrgMembers(prev => prev.filter(m => m.id !== memberId));
     setRoleDropdownId(null);
 
@@ -238,10 +240,17 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
       body: JSON.stringify({ memberId }),
     });
     if (!res.ok) {
-      // Rollback on failure
       const data = await res.json();
       setOrgMembers(prevMembers);
       alert(data.error ?? 'Failed to remove member');
+      return;
+    }
+    // If the removed member was the current user, transition to no-org view
+    if (removedMember?.isYou) {
+      setOrg(null);
+      setOrgMembers([]);
+      onOrgNameChange?.('');
+      await loadOrg(true);
     }
   }
 
@@ -282,10 +291,9 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
     setLeavingOrg(false);
     setOrg(null);
     setOrgMembers([]);
-    initialLoadedRef.current = false;
-    setInitialLoaded(false);
     onOrgNameChange?.('');
-    onClose();
+    // Stay open and show create/join view
+    await loadOrg(true);
   }
 
   // ── Delete org (owner only) ─────────────────────────────────
@@ -308,8 +316,6 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
     setOrg(null);
     setOrgMembers([]);
     setDeleteOrgConfirm('');
-    initialLoadedRef.current = false;
-    setInitialLoaded(false);
     onOrgNameChange?.('');
     // Reload to show create/join view
     await loadOrg(true);
@@ -333,7 +339,6 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
       const createdName = orgCreateName.trim();
       setOrgCreateName('');
       onOrgNameChange?.(createdName);
-      initialLoadedRef.current = false;
       await loadOrg(true);
     }
   }
@@ -355,7 +360,6 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
       // Successfully joined — reload org data
       const accepted = pendingInvites.find(i => i.id === inviteId);
       onOrgNameChange?.(accepted?.orgName ?? '');
-      initialLoadedRef.current = false;
       setPendingInvites([]);
       await loadOrg(true);
     }
