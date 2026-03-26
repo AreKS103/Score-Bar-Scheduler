@@ -54,3 +54,5 @@ supabase/.temp/
 .github/copilot-instructions.md
 
 .playwright-mcp
+
+.github/wordpress-plugin-framework.md
