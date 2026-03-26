@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "eslint",
     "download:league-logos": "node scripts/download-league-logos.mjs",
-    "build:plugin": "node scripts/build-plugin.js"
+    "build:plugin": "node scripts/build-plugin.js",
+    "release:plugin": "node scripts/release-plugin.js"
   },
   "dependencies": {
     "@next/bundle-analyzer": "^16.2.1",

@@ -238,6 +238,12 @@ export default function SchedulePage() {
   const swipeTouchStartX = useRef<number | null>(null);
   const swipeTouchStartY = useRef<number | null>(null);
   const isActiveSwipeRef = useRef(false); // true once direction is confirmed horizontal
+  // Mirror refs for global swipe handler — updated each render so the once-registered
+  // document listeners always read the latest state without re-registering.
+  const sidebarOpenRef = useRef(false);
+  sidebarOpenRef.current = sidebarOpen;
+  const previewOpenRef = useRef(false);
+  previewOpenRef.current = previewOpen;
 
   // ─── Derived embed selection key ─────────────────────────────────────────
   // Always resolve to the first embed if publishTarget is empty.
@@ -1085,6 +1091,73 @@ export default function SchedulePage() {
     panel.addEventListener('touchmove', blockScroll, { passive: false });
     return () => panel.removeEventListener('touchmove', blockScroll);
   }, []); // panelRef.current is stable after mount (panel is always rendered)
+
+  // ─── Global swipe: open/close sidebar + open preview ──────────────────────
+  // State machine (mobile drawer mode only — when hamburger bar is visible):
+  //   Sidebar open   + swipe left  anywhere → close sidebar
+  //   Nothing open   + swipe right           → open left sidebar
+  //   Nothing open   + swipe left            → open preview panel
+  //   Preview open   → handled exclusively by the panel's own touch handlers
+  useEffect(() => {
+    // Plain objects are captured once in the closure and remain stable.
+    const gs = { x: null as number | null, y: null as number | null, dir: null as 'h' | 'v' | null };
+
+    const inDrawerMode = () =>
+      typeof window !== 'undefined' &&
+      (window.innerWidth < 1024 ||
+        (window.innerHeight <= 500 && window.innerWidth > window.innerHeight));
+
+    const onStart = (e: TouchEvent) => {
+      if (!inDrawerMode()) { gs.x = null; return; }
+      gs.x = e.touches[0].clientX;
+      gs.y = e.touches[0].clientY;
+      gs.dir = null;
+    };
+
+    const onMove = (e: TouchEvent) => {
+      if (gs.x === null || gs.y === null || gs.dir !== null) return;
+      const dx = Math.abs(e.touches[0].clientX - gs.x);
+      const dy = Math.abs(e.touches[0].clientY - gs.y);
+      if (dx > 8 || dy > 8) {
+        gs.dir = dx >= dy ? 'h' : 'v';
+        // Vertical: cancel this gesture entirely
+        if (gs.dir === 'v') { gs.x = null; gs.y = null; }
+      }
+    };
+
+    const onEnd = (e: TouchEvent) => {
+      if (gs.x === null || gs.dir !== 'h') {
+        gs.x = null; gs.y = null; gs.dir = null;
+        return;
+      }
+      const dx = e.changedTouches[0].clientX - gs.x;
+      gs.x = null; gs.y = null; gs.dir = null;
+      if (!inDrawerMode()) return;
+
+      const THRESHOLD = 40;
+      const soOpen = sidebarOpenRef.current;
+      const pvOpen = previewOpenRef.current;
+
+      if (soOpen) {
+        // Sidebar is open — left swipe anywhere (including backdrop) closes it
+        if (dx < -THRESHOLD) setSidebarOpen(false);
+      } else if (!pvOpen) {
+        // Neither panel open — right opens sidebar, left opens preview
+        if (dx > THRESHOLD) setSidebarOpen(true);
+        else if (dx < -THRESHOLD) setPreviewOpen(true);
+      }
+      // Preview open: the panel's own onTouchEnd handles close — nothing to do here.
+    };
+
+    document.addEventListener('touchstart', onStart, { passive: true });
+    document.addEventListener('touchmove', onMove, { passive: true });
+    document.addEventListener('touchend', onEnd);
+    return () => {
+      document.removeEventListener('touchstart', onStart);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onEnd);
+    };
+  }, []); // stable — reads live state via sidebarOpenRef / previewOpenRef
 
   // Keep ref mirror of selectedByLeague up-to-date on every render
   selectedByLeagueRef.current = selectedByLeague;
