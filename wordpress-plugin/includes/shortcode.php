@@ -178,7 +178,7 @@ function schedule_shortcode_render($atts) {
         window.addEventListener('message', function(e){
             if (e.data && typeof e.data.sbHeight === 'number') {
                 var f = document.getElementById(fid);
-                try { if (f && new URL(f.src).origin === e.origin) { f.style.height = e.data.sbHeight + 'px'; } } catch(err) {}
+                try { if (f && e.source === f.contentWindow) { f.style.height = e.data.sbHeight + 'px'; } } catch(err) {}
             }
         });
         // MutationObserver: fire DELETE to clean up Supabase when this embed is removed from the DOM.
