@@ -1508,7 +1508,7 @@ export default function SchedulePage() {
       {/* ── Mobile sidebar backdrop ───────────────────────────────────────────── */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-150 bg-black/60 backdrop-blur-sm md:hidden phone-landscape-backdrop"
+          className="fixed inset-0 z-150 bg-black/60 backdrop-blur-sm lg:hidden phone-landscape-backdrop"
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -1520,7 +1520,7 @@ export default function SchedulePage() {
           'w-64 shrink-0 border-r border-border bg-sidebar overflow-x-hidden',
           'flex flex-col',
           // Mobile: slide-out drawer
-          'fixed inset-y-0 left-0 z-160 transition-transform duration-200 ease-in-out md:static md:translate-x-0',
+          'fixed inset-y-0 left-0 z-160 transition-transform duration-200 ease-in-out lg:static lg:translate-x-0',
           'phone-landscape-drawer',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
@@ -1556,7 +1556,7 @@ export default function SchedulePage() {
               {/* Mobile hamburger */}
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="md:hidden phone-landscape-burger p-2.5 -ml-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                className="lg:hidden phone-landscape-burger p-2.5 -ml-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
                 aria-label="Open sidebar"
               >
                 <Menu className="w-5 h-5" />

@@ -516,20 +516,24 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
                         )}
                       </div>
 
-                      {/* Remove button (self only, non-owner) */}
-                      {!isOwner && m.isYou && (
-                        <button
-                          onClick={() => removeMember(m.id)}
-                          disabled={removingMemberId === m.id}
-                          className="text-muted-foreground hover:text-destructive transition-colors p-1 rounded-md opacity-0 group-hover:opacity-100 focus:opacity-100"
-                          aria-label="Leave organization"
-                          title="Leave organization"
-                        >
-                          {removingMemberId === m.id
-                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            : <UserMinus className="w-3.5 h-3.5" />
-                          }
-                        </button>
+                      {/* Remove/spacer — always rendered in non-owner view to keep badge aligned */}
+                      {!isOwner && (
+                        m.isYou ? (
+                          <button
+                            onClick={() => removeMember(m.id)}
+                            disabled={removingMemberId === m.id}
+                            className="text-muted-foreground hover:text-destructive transition-colors p-1 rounded-md opacity-0 group-hover:opacity-100 focus:opacity-100"
+                            aria-label="Leave organization"
+                            title="Leave organization"
+                          >
+                            {removingMemberId === m.id
+                              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              : <UserMinus className="w-3.5 h-3.5" />
+                            }
+                          </button>
+                        ) : (
+                          <div className="w-7.5 shrink-0" aria-hidden="true" />
+                        )
                       )}
                     </div>
                   ))}

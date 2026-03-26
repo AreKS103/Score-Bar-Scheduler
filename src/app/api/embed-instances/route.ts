@@ -268,10 +268,25 @@ export async function GET(req: NextRequest) {
     userId = user.id;
   }
 
+  // If the user belongs to an org, also return embed instances from all active
+  // org members so that invited/member users can see the org owner's embeds.
+  const orgId = await getUserOrgId(userId);
+  let userIds: string[] = [userId];
+  if (orgId) {
+    const { data: members } = await supabase
+      .from('organization_members')
+      .select('user_id')
+      .eq('organization_id', orgId)
+      .eq('status', 'active');
+    if (members?.length) {
+      userIds = [...new Set([userId, ...members.map((m: { user_id: string }) => m.user_id)])];
+    }
+  }
+
   const { data: instances } = await supabase
     .from('embed_instances')
     .select('embed_id, widget_id, page_url, last_seen, created_at')
-    .eq('user_id', userId)
+    .in('user_id', userIds)
     .order('created_at', { ascending: true });
 
   // NOTE: No TTL / orphan auto-cleanup here.
