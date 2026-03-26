@@ -193,13 +193,6 @@ input[type='checkbox'] { accent-color: oklch(0.623 0.214 259); }
     border-bottom: 1px solid var(--border) !important;
   }
 
-  /* Preview panel header: force dropdown instead of pills on phone landscape */
-  .phone-ls-pills-desktop {
-    display: none !important;
-  }
-  .phone-ls-pills-mobile {
-    display: block !important;
-  }
 }
 
 /* ── Tablet portrait overrides (e.g. iPad Pro vertical 1024×1366) ──────── */

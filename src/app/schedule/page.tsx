@@ -180,18 +180,9 @@ export default function SchedulePage() {
   const [previewCheckedIds, setPreviewCheckedIds] = useState<Set<string>>(new Set());
   const [leagueOrder, setLeagueOrder] = useState<string[]>([]);
   const [deleteAllConfirm, setDeleteAllConfirm] = useState(false);
-  const [panelWidth, setPanelWidth] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const vw = window.innerWidth;
-      if (vw < 768) return vw;
-      // Tablet portrait (e.g. iPad Pro vertical 1024×1366): full-width panel
-      const isPortraitTablet = vw >= 768 && vw <= 1100 && window.innerHeight > vw;
-      if (isPortraitTablet) return vw;
-      if (vw >= 1200) return Math.min(900, Math.round(vw * 0.65));
-      return 700;
-    }
-    return 700;
-  });
+  // Note: useState lazy initializer is ignored during SSR hydration in Next.js — we use
+  // a plain default and set the real viewport-aware width in a useEffect after mount.
+  const [panelWidth, setPanelWidth] = useState(700);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [businessInfoOpen, setBusinessInfoOpen] = useState(false);
   const [orgModalOpen, setOrgModalOpen] = useState(false);
@@ -1028,10 +1019,35 @@ export default function SchedulePage() {
     prevPreviewContentCountRef.current = previewContentCount;
   }, [previewContentCount]);
 
+  // Set viewport-aware initial panel width once after mount (lazy initializer is skipped during hydration)
+  useEffect(() => {
+    const vw = window.innerWidth;
+    if (vw < 768) { setPanelWidth(vw); widthRef.current = vw; return; }
+    const isPortraitTablet = vw >= 768 && vw <= 1100 && window.innerHeight > vw;
+    if (isPortraitTablet) { setPanelWidth(vw); widthRef.current = vw; return; }
+    if (vw >= 1200) {
+      const w = Math.min(1000, Math.round(vw * 0.7));
+      setPanelWidth(w); widthRef.current = w; return;
+    }
+    // Tablets 768–1199 (landscape), e.g. iPad mini
+    const w = Math.max(500, Math.round(vw * 0.55));
+    setPanelWidth(w); widthRef.current = w;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Sync panel DOM width on state change (width is managed outside React for resize perf)
   useEffect(() => {
     if (panelRef.current) panelRef.current.style.width = `${panelWidth}px`;
   }, [panelWidth]);
+
+  // Sync toggle button position whenever open state or width changes.
+  // We use a ref-based effect (not an inline style prop) so that direct DOM mutations
+  // during pointer-drag in startResize() are not overwritten by React re-renders.
+  useEffect(() => {
+    const btn = toggleBtnRef.current;
+    if (!btn) return;
+    btn.style.right = previewOpen ? `${panelWidth}px` : '0px';
+  }, [previewOpen, panelWidth]);
 
   // Clamp panel width to viewport on orientation/resize change (landscape → portrait fix)
   useEffect(() => {
@@ -1905,9 +1921,9 @@ export default function SchedulePage() {
         ref={toggleBtnRef}
         onClick={() => { setPreviewOpen((o) => !o); setDeleteAllConfirm(false); }}
         title={previewOpen ? 'Close preview' : 'Open preview'}
-        style={{ right: previewOpen ? panelWidth : 0 }}
         className={cn(
-          "fixed z-110 top-1/2 -translate-y-1/2 flex flex-col items-center justify-center bg-secondary border border-border border-r-0 rounded-l-md px-2.5 py-5 md:px-1 md:py-3 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors",
+          // z-90 keeps this below the header (z-100) so header dropdowns render above it
+          "fixed z-90 top-1/2 -translate-y-1/2 flex flex-col items-center justify-center bg-secondary border border-border border-r-0 rounded-l-md px-2.5 py-5 md:px-1 md:py-3 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors",
           // On mobile, hide when preview open (panel is full-width, button would clip off-screen)
           previewOpen && "max-md:hidden"
         )}
@@ -2000,8 +2016,8 @@ export default function SchedulePage() {
             <div className="flex items-center gap-1.5 min-w-0 flex-1">
               <span className="text-[11px] text-muted-foreground shrink-0">Publish to:</span>
 
-              {/* Desktop: draggable pills — double-click to rename, drag to reorder */}
-              <div className="hidden sm:block min-w-0 flex-1 overflow-hidden phone-ls-pills-desktop">
+              {/* Desktop (≥1536px): draggable pills — double-click to rename, drag to reorder */}
+              <div className="hidden 2xl:block min-w-0 flex-1 overflow-hidden">
                 <DraggableEmbedPills
                   instances={embedInstances}
                   publishTarget={publishTarget}
@@ -2016,8 +2032,8 @@ export default function SchedulePage() {
                 />
               </div>
 
-              {/* Mobile: compact dropdown */}
-              <div className="sm:hidden relative min-w-0 phone-ls-pills-mobile">
+              {/* Phone / tablet compact dropdown (hidden only on very-large desktop ≥1536px) */}
+              <div className="2xl:hidden relative min-w-0">
                 <button
                   onClick={() => setEmbedDropdownOpen(o => !o)}
                   className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-accent/60 hover:bg-accent border border-border/50 max-w-35"
