@@ -60,18 +60,25 @@ export async function createOrg(userId: string, name: string) {
 }
 
 /**
+ * Activate any pending invites for a user (status: 'invited' → 'active').
+ * Called on bootstrap to auto-activate invites once the user has confirmed.
+ */
+export async function activateUserInvites(userId: string): Promise<void> {
+  await supabase
+    .from('organization_members')
+    .update({ status: 'active' })
+    .eq('user_id', userId)
+    .eq('status', 'invited');
+}
+
+/**
  * Lazy bootstrap: ensure the user has at least one org.
  * If not, create a default org named from their email prefix, then backfill
  * organization_id on all their existing data.
  * Also activates any pending invites (status: 'invited' → 'active').
  */
 export async function ensureUserHasOrg(userId: string, email?: string): Promise<string> {
-  // Activate any pending invites for this user
-  await supabase
-    .from('organization_members')
-    .update({ status: 'active' })
-    .eq('user_id', userId)
-    .eq('status', 'invited');
+  await activateUserInvites(userId);
 
   const existing = await getUserOrg(userId);
   if (existing) return (existing as any).id;

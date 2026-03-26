@@ -22,6 +22,10 @@ export async function GET(request: NextRequest) {
       if (type === 'invite') {
         return NextResponse.redirect(new URL('/welcome', origin));
       }
+      // Recovery (password reset) goes to the reset page
+      if (type === 'recovery') {
+        return NextResponse.redirect(new URL('/reset-password', origin));
+      }
       // Verification succeeded — redirect into the app
       return NextResponse.redirect(new URL(next, origin));
     }

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   X, Building2, Users, UserPlus, Crown, UserMinus,
-  CheckCircle, Loader2, Mail, LogOut, ShieldCheck,
+  CheckCircle, Loader2, Mail, LogOut, ShieldCheck, Inbox, Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -22,6 +22,15 @@ interface Org {
   id: string;
   name: string;
   slug: string;
+}
+
+interface PendingInvite {
+  id: string;
+  orgId: string;
+  orgName: string;
+  orgSlug: string;
+  invitedBy: string;
+  invitedAt: string;
 }
 
 interface OrgModalProps {
@@ -59,10 +68,19 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
   // Leave org
   const [leavingOrg, setLeavingOrg] = useState(false);
 
+  // Delete org
+  const [deletingOrg, setDeletingOrg] = useState(false);
+  const [deleteOrgConfirm, setDeleteOrgConfirm] = useState('');
+
   // Create org
   const [orgCreateName, setOrgCreateName] = useState('');
   const [orgCreating, setOrgCreating] = useState(false);
   const [orgCreateError, setOrgCreateError] = useState<string | null>(null);
+
+  // Pending invites (join section)
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
+  const [acceptingInviteId, setAcceptingInviteId] = useState<string | null>(null);
+  const [inviteAcceptError, setInviteAcceptError] = useState<string | null>(null);
 
   // ── Fetch data ─────────────────────────────────────────────────
   const initialLoadedRef = useRef(false);
@@ -76,15 +94,27 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
           fetch('/api/org'),
           fetch('/api/org/members'),
         ]);
+        let hasOrg = false;
         if (orgRes.ok) {
           const { organizations } = await orgRes.json();
           const first = organizations?.[0] ?? null;
+          hasOrg = !!first;
           setOrg(first ? { id: first.id, name: first.name, slug: first.slug } : null);
           setOrgNameDraft(first?.name ?? '');
         }
         if (membersRes.ok) {
           const { members } = await membersRes.json();
           setOrgMembers(members ?? []);
+        }
+        // If no org, also fetch pending invites
+        if (!hasOrg) {
+          try {
+            const invitesRes = await fetch('/api/org/invites');
+            if (invitesRes.ok) {
+              const { invites } = await invitesRes.json();
+              setPendingInvites(invites ?? []);
+            }
+          } catch { /* ignore */ }
         }
       } else {
         // Subsequent loads: only refresh members
@@ -172,20 +202,25 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
     }
   }
 
-  // ── Remove member ──────────────────────────────────────────────
+  // ── Remove member (optimistic — immediate UI update) ─────────
   async function removeMember(memberId: string) {
-    setRemovingMemberId(memberId);
+    // Snapshot for rollback
+    const prevMembers = orgMembers;
+    // Optimistic: remove from UI immediately
+    setOrgMembers(prev => prev.filter(m => m.id !== memberId));
+    setRoleDropdownId(null);
+
     const res = await fetch('/api/org/members', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ memberId }),
     });
     if (!res.ok) {
+      // Rollback on failure
       const data = await res.json();
+      setOrgMembers(prevMembers);
       alert(data.error ?? 'Failed to remove member');
     }
-    setRemovingMemberId(null);
-    await loadOrg();
   }
 
   // ── Change role ────────────────────────────────────────────────
@@ -231,6 +266,33 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
     onClose();
   }
 
+  // ── Delete org (owner only) ─────────────────────────────────
+  async function deleteOrg() {
+    if (!org) return;
+    if (deleteOrgConfirm !== org.name) return;
+    setDeletingOrg(true);
+    const res = await fetch('/api/org', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orgId: org.id }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data.error ?? 'Failed to delete organization');
+      setDeletingOrg(false);
+      return;
+    }
+    setDeletingOrg(false);
+    setOrg(null);
+    setOrgMembers([]);
+    setDeleteOrgConfirm('');
+    initialLoadedRef.current = false;
+    setInitialLoaded(false);
+    onOrgNameChange?.('');
+    // Reload to show create/join view
+    await loadOrg(true);
+  }
+
   // ── Create org ─────────────────────────────────────────────────
   async function createOrg() {
     if (!orgCreateName.trim()) return;
@@ -250,6 +312,29 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
       setOrgCreateName('');
       onOrgNameChange?.(createdName);
       initialLoadedRef.current = false;
+      await loadOrg(true);
+    }
+  }
+
+  // ── Accept invite ──────────────────────────────────────────────
+  async function acceptInvite(inviteId: string) {
+    setAcceptingInviteId(inviteId);
+    setInviteAcceptError(null);
+    const res = await fetch('/api/org/invites/accept', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inviteId }),
+    });
+    const data = await res.json();
+    setAcceptingInviteId(null);
+    if (!res.ok) {
+      setInviteAcceptError(data.error ?? 'Failed to join organization');
+    } else {
+      // Successfully joined — reload org data
+      const accepted = pendingInvites.find(i => i.id === inviteId);
+      onOrgNameChange?.(accepted?.orgName ?? '');
+      initialLoadedRef.current = false;
+      setPendingInvites([]);
       await loadOrg(true);
     }
   }
@@ -528,46 +613,147 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
                   </p>
                 </section>
               )}
+
+              {/* ── Delete org (owner only) ─────────────────────────── */}
+              {isOwner && (
+                <section className="pt-2 border-t border-border">
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5 leading-normal">
+                    <Trash2 className="w-3 h-3" />
+                    Danger zone
+                  </p>
+                  <p className="text-xs text-muted-foreground mb-2 leading-relaxed">
+                    Permanently delete <span className="font-semibold text-foreground">{org?.name}</span> and
+                    remove all members. This action cannot be undone. Type the organization name to confirm.
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={deleteOrgConfirm}
+                      onChange={e => setDeleteOrgConfirm(e.target.value)}
+                      placeholder={org?.name ?? 'Organization name'}
+                      className={cn(
+                        'flex-1 px-3 py-2 rounded-md text-sm border border-border bg-secondary/40 leading-normal',
+                        'text-foreground placeholder:text-muted-foreground/50',
+                        'focus:outline-none focus:ring-2 focus:ring-destructive/30 transition',
+                      )}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={deleteOrg}
+                      disabled={deletingOrg || deleteOrgConfirm !== org?.name}
+                      className="shrink-0 gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      {deletingOrg ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <><Trash2 className="w-3.5 h-3.5" /> Delete</>
+                      )}
+                    </Button>
+                  </div>
+                </section>
+              )}
             </>
           ) : (
-            /* ── No org yet ─────────────────────────────────────────── */
-            <div className="space-y-4 py-2">
-              <div className="text-center">
-                <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                  <Building2 className="w-7 h-7 text-primary/50" />
-                </div>
-                <p className="text-sm font-semibold text-foreground leading-normal">No organization yet</p>
-                <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
-                  Create one to manage team members, share embeds, and control access.
+            /* ── No org yet — Create / Join ─────────────────────────── */
+            <div className="space-y-6 py-2">
+              {/* ── Create an Organization ──────────────────────────── */}
+              <section>
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5 leading-normal">
+                  <Building2 className="w-3 h-3" />
+                  Create an organization
                 </p>
+                <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
+                  Start your own org to manage team members, share embeds, and control access.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={orgCreateName}
+                    onChange={e => setOrgCreateName(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') createOrg(); }}
+                    placeholder="Organization name"
+                    maxLength={100}
+                    className={cn(
+                      'flex-1 px-3 py-2 rounded-md text-sm border border-border bg-secondary/40 leading-normal',
+                      'text-foreground placeholder:text-muted-foreground/50',
+                      'focus:outline-none focus:ring-2 focus:ring-ring transition',
+                    )}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={createOrg}
+                    disabled={orgCreating || !orgCreateName.trim()}
+                    className="shrink-0"
+                  >
+                    {orgCreating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Create'}
+                  </Button>
+                </div>
+                {orgCreateError && (
+                  <p className="text-xs text-destructive mt-1.5 leading-normal">{orgCreateError}</p>
+                )}
+              </section>
+
+              {/* ── Divider ────────────────────────────────────────── */}
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-border" />
+                <span className="text-[11px] text-muted-foreground font-medium">or</span>
+                <div className="flex-1 h-px bg-border" />
               </div>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={orgCreateName}
-                  onChange={e => setOrgCreateName(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') createOrg(); }}
-                  placeholder="My Organization"
-                  maxLength={100}
-                  className={cn(
-                    'flex-1 px-3 py-2 rounded-md text-sm border border-border bg-secondary/40 leading-normal',
-                    'text-foreground placeholder:text-muted-foreground/50',
-                    'focus:outline-none focus:ring-2 focus:ring-ring transition',
-                  )}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={createOrg}
-                  disabled={orgCreating || !orgCreateName.trim()}
-                  className="shrink-0"
-                >
-                  {orgCreating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Create'}
-                </Button>
-              </div>
-              {orgCreateError && (
-                <p className="text-xs text-destructive leading-normal">{orgCreateError}</p>
-              )}
+
+              {/* ── Join an Organization ────────────────────────────── */}
+              <section>
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5 leading-normal">
+                  <Inbox className="w-3 h-3" />
+                  Pending invites
+                </p>
+                {inviteAcceptError && (
+                  <p className="text-xs text-destructive mb-2 leading-normal">{inviteAcceptError}</p>
+                )}
+                {pendingInvites.length === 0 ? (
+                  <div className="text-center py-4 px-3 rounded-xl bg-secondary/20 border border-dashed border-border">
+                    <Mail className="w-5 h-5 text-muted-foreground/40 mx-auto mb-2" />
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      No pending invites. Ask your admin to send you an invite.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {pendingInvites.map(inv => (
+                      <div
+                        key={inv.id}
+                        className="flex items-center gap-3 px-3 py-3 rounded-xl bg-secondary/30 border border-border transition-colors hover:bg-secondary/50"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
+                          <Building2 className="w-4 h-4 text-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-foreground truncate leading-normal">
+                            {inv.orgName}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground truncate leading-normal">
+                            Invited by {inv.invitedBy}
+                          </p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => acceptInvite(inv.id)}
+                          disabled={acceptingInviteId === inv.id}
+                          className="shrink-0 gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-500"
+                        >
+                          {acceptingInviteId === inv.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <><UserPlus className="w-3.5 h-3.5" /> Join</>
+                          )}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
             </div>
           )}
         </div>

@@ -18,19 +18,38 @@ export default function WelcomePage() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
-  // Verify the user has an active session (established by the invite link)
+  // Verify an active session exists (established by /auth/invite → setSession).
+  // Retries once after 1.5 s in case cookie propagation lagged on slow connections.
   useEffect(() => {
     if (!isSupabaseConfigured()) { router.replace('/login'); return; }
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data, error: authErr }) => {
-      if (authErr || !data.user) {
-        // No session — invite link may be expired or invalid
-        router.replace('/login?error=invite_expired');
+    let cancelled = false;
+
+    async function checkSession(attempt: number) {
+      console.log(`[welcome] getUser attempt ${attempt}`);
+      const { data, error: authErr } = await supabase.auth.getUser();
+      console.log('[welcome] getUser →', data.user?.email ?? 'no user', '| error:', authErr?.message ?? 'none');
+
+      if (cancelled) return;
+
+      if (data.user) {
+        setUserEmail(data.user.email ?? null);
+        setChecking(false);
         return;
       }
-      setUserEmail(data.user.email ?? null);
-      setChecking(false);
-    });
+
+      // First attempt failed — wait and retry once before giving up
+      if (attempt < 2) {
+        setTimeout(() => checkSession(attempt + 1), 1500);
+        return;
+      }
+
+      // Both attempts failed — session is genuinely missing
+      router.replace('/login?error=invite_expired');
+    }
+
+    checkSession(1);
+    return () => { cancelled = true; };
   }, [router]);
 
   const valid = password.length >= 8 && password === confirm;
@@ -42,7 +61,9 @@ export default function WelcomePage() {
     setError(null);
 
     const supabase = createClient();
+    console.log('[welcome] calling updateUser({ password })');
     const { error: updateError } = await supabase.auth.updateUser({ password });
+    console.log('[welcome] updateUser →', updateError?.message ?? 'success');
     setSaving(false);
 
     if (updateError) {
@@ -50,7 +71,14 @@ export default function WelcomePage() {
       return;
     }
 
+    // Activate any pending org invites now that the user has confirmed
+    try {
+      await fetch('/api/org?bootstrap=true');
+      console.log('[welcome] bootstrap org completed');
+    } catch { /* non-fatal */ }
+
     setDone(true);
+    console.log('[welcome] redirecting to /schedule');
     setTimeout(() => router.push('/schedule'), 1500);
   }
 
@@ -134,7 +162,7 @@ export default function WelcomePage() {
             ) : done ? (
               <><CheckCircle className="w-4 h-4" /> Redirecting…</>
             ) : (
-              'Set Password & Continue'
+              'Continue'
             )}
           </Button>
         </form>

@@ -61,6 +61,12 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
+  // Allow welcome page — it does its own session check client-side
+  // (invite flow: session cookies may not be flushed when redirect arrives)
+  if (request.nextUrl.pathname === '/welcome') {
+    return supabaseResponse;
+  }
+
   // Allow embed pages (served in iframes on external sites)
   if (request.nextUrl.pathname.startsWith('/embed/')) {
     return supabaseResponse;

@@ -177,8 +177,22 @@ export async function POST(req: NextRequest) {
           redirectTo,
         });
 
-      if (inviteErr || !inviteData?.user?.id) {
-        // Invite failed — tell the user no account exists
+      if (inviteErr) {
+        const msg = inviteErr.message || 'Unknown error';
+        // Surface rate-limit errors clearly
+        if (msg.toLowerCase().includes('rate') && msg.toLowerCase().includes('limit')) {
+          return NextResponse.json(
+            { error: 'Email rate limit exceeded. Please wait a few minutes and try again.', code: 'RATE_LIMIT' },
+            { status: 429 },
+          );
+        }
+        return NextResponse.json(
+          { error: `Failed to send invite: ${msg}`, code: 'INVITE_FAILED' },
+          { status: 400 },
+        );
+      }
+
+      if (!inviteData?.user?.id) {
         return NextResponse.json(
           {
             error: `No account found for "${trimmedEmail}". Ask them to sign up at Score Bar first, then try again.`,
@@ -190,13 +204,11 @@ export async function POST(req: NextRequest) {
 
       targetUserId = inviteData.user.id;
       invited = true;
-    } catch {
+    } catch (inviteCatchErr) {
+      const msg = inviteCatchErr instanceof Error ? inviteCatchErr.message : 'Unknown error';
       return NextResponse.json(
-        {
-          error: `No account found for "${trimmedEmail}". Ask them to sign up first, then try again.`,
-          code: 'NO_ACCOUNT',
-        },
-        { status: 404 },
+        { error: `Failed to send invite: ${msg}`, code: 'INVITE_FAILED' },
+        { status: 500 },
       );
     }
 

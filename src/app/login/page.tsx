@@ -2,6 +2,8 @@
 
 import { useState, useEffect, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { Eye, EyeOff } from 'lucide-react';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 
 type Mode = 'signin' | 'signup' | 'verify';
@@ -10,50 +12,40 @@ export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('signin');
 
-  // Handle invite hash fragment & auto-redirect for existing sessions
+  // Auth routing: hand off invite/recovery tokens to the dedicated page,
+  // and redirect already-signed-in users to /schedule.
   useEffect(() => {
-    if (!isSupabaseConfigured()) return;
-    const supabase = createClient();
-
-    // Supabase puts invite tokens in the URL hash: #access_token=...&type=invite
-    // The browser client auto-exchanges this for a session via onAuthStateChange.
-    // We listen for SIGNED_IN with type=invite to redirect to /welcome.
     const hash = window.location.hash;
-    const isInviteHash = hash.includes('type=invite');
+    const search = window.location.search;
 
-    // Check for error in hash fragment (expired/invalid invite link)
-    if (hash.includes('error=')) {
-      const hashParams = new URLSearchParams(hash.substring(1));
-      const hashError = hashParams.get('error_description') || hashParams.get('error');
-      if (hashError) {
-        setError('This invite link has expired or was already used. Please ask your admin to send a new invite.');
-        // Clear the hash so it doesn't re-trigger
-        window.history.replaceState(null, '', window.location.pathname);
-      }
+    // Invite / recovery / PKCE tokens → hand off to /auth/invite which handles
+    // them with full error logging. window.location preserves the hash fragment
+    // (router.replace/push would strip it).
+    const hasHashTokens = hash.includes('access_token=') || hash.includes('refresh_token=');
+    const hasCode = new URLSearchParams(search).has('code');
+
+    if (hasHashTokens || hasCode) {
+      console.log('[login] auth tokens detected — handing off to /auth/invite');
+      window.location.replace('/auth/invite' + hash + search);
       return;
     }
 
-    if (isInviteHash) {
-      // Let Supabase client process the hash and establish the session
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-        if (event === 'SIGNED_IN') {
-          subscription.unsubscribe();
-          router.replace('/welcome');
-        }
-      });
-      return () => subscription.unsubscribe();
-    }
-
-    // Normal flow: redirect to /schedule if already signed in
+    // Normal case: redirect already-authenticated users to the app
+    if (!isSupabaseConfigured()) return;
+    const supabase = createClient();
+    let cancelled = false;
     supabase.auth.getUser().then(({ data }) => {
-      if (data.user) router.replace('/schedule');
+      if (!cancelled && data.user) router.replace('/schedule');
     });
+    return () => { cancelled = true; };
   }, [router]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [failedAttempt, setFailedAttempt] = useState(false);
 
   // Show error from URL params (e.g. expired invite, failed verification)
   useEffect(() => {
@@ -66,9 +58,14 @@ export default function LoginPage() {
     }
   }, []);
 
+  const [showVerifyNotice, setShowVerifyNotice] = useState(false);
+  const [resendingVerification, setResendingVerification] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
+
   async function handleSignIn(e: FormEvent) {
     e.preventDefault();
     setError('');
+    setShowVerifyNotice(false);
     setLoading(true);
     try {
       if (!isSupabaseConfigured()) {
@@ -77,9 +74,18 @@ export default function LoginPage() {
         return;
       }
       const supabase = createClient();
-      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      const { data: signInData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
       if (authError) {
         setError(authError.message);
+        setFailedAttempt(true);
+        setLoading(false);
+        return;
+      }
+      // Check if email is verified
+      if (signInData.user && !signInData.user.email_confirmed_at) {
+        // Sign out the unverified user so they can't access the app
+        await supabase.auth.signOut();
+        setShowVerifyNotice(true);
         setLoading(false);
         return;
       }
@@ -89,6 +95,30 @@ export default function LoginPage() {
       setError('Network error — please try again');
       setLoading(false);
     }
+  }
+
+  async function handleResendVerification() {
+    if (!email) return;
+    setResendingVerification(true);
+    setResendSuccess(false);
+    try {
+      const supabase = createClient();
+      const { error: resendError } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/confirm`,
+        },
+      });
+      if (resendError) {
+        setError(resendError.message);
+      } else {
+        setResendSuccess(true);
+      }
+    } catch {
+      setError('Failed to resend verification email');
+    }
+    setResendingVerification(false);
   }
 
   async function handleSignUp(e: FormEvent) {
@@ -128,6 +158,50 @@ export default function LoginPage() {
       setError('Network error — please try again');
       setLoading(false);
     }
+  }
+
+  // ── Email verification required screen ────────────────────────────────────
+  if (showVerifyNotice) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <div className="w-full max-w-95 bg-card rounded-2xl p-[2.5rem_2rem] border border-border shadow-2xl shadow-black/20 text-center">
+          <div className="text-4xl mb-4">⚠️</div>
+          <h1 className="text-[20px] font-extrabold text-foreground tracking-tight mb-2">
+            Email verification required
+          </h1>
+          <p className="text-[13px] text-muted-foreground leading-relaxed mb-4">
+            Your email <span className="font-semibold text-foreground">{email}</span> hasn&apos;t been verified yet.
+            Please check your inbox for the verification link we sent when you signed up.
+          </p>
+          {resendSuccess ? (
+            <p className="text-[13px] text-emerald-500 font-medium mb-4">
+              ✓ Verification email sent! Check your inbox.
+            </p>
+          ) : (
+            <button
+              onClick={handleResendVerification}
+              disabled={resendingVerification}
+              className="mb-4 py-2 px-4 rounded-lg border border-border bg-secondary text-foreground text-sm font-semibold cursor-pointer transition-colors hover:bg-secondary/80 disabled:opacity-60 disabled:cursor-wait"
+            >
+              {resendingVerification ? 'Sending…' : 'Resend verification email'}
+            </button>
+          )}
+          {error && (
+            <div className="bg-destructive/12 border border-destructive/30 rounded-lg py-2 px-3 mb-4 text-[13px] text-destructive">
+              {error}
+            </div>
+          )}
+          <div>
+            <button
+              onClick={() => { setShowVerifyNotice(false); setError(''); setResendSuccess(false); }}
+              className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+            >
+              Back to sign in
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // ── Verification pending screen ────────────────────────────────────────────
@@ -221,15 +295,25 @@ export default function LoginPage() {
           <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
             Password
           </label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-            placeholder="••••••••"
-            className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none mb-4 placeholder:text-muted-foreground/60 focus:ring-2 focus:ring-ring/30 focus:border-ring transition-colors"
-          />
+          <div className="relative mb-4">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+              placeholder="••••••••"
+              className="w-full px-3 py-2.5 pr-10 rounded-lg border border-border bg-background text-foreground text-sm outline-none placeholder:text-muted-foreground/60 focus:ring-2 focus:ring-ring/30 focus:border-ring transition-colors"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(v => !v)}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
+              tabIndex={-1}
+            >
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
 
           {/* Confirm password (sign-up only) */}
           {mode === 'signup' && (
@@ -237,15 +321,25 @@ export default function LoginPage() {
               <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
                 Confirm Password
               </label>
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                autoComplete="new-password"
-                placeholder="••••••••"
-                className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm outline-none mb-4 placeholder:text-muted-foreground/60 focus:ring-2 focus:ring-ring/30 focus:border-ring transition-colors"
-              />
+              <div className="relative mb-4">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  autoComplete="new-password"
+                  placeholder="••••••••"
+                  className="w-full px-3 py-2.5 pr-10 rounded-lg border border-border bg-background text-foreground text-sm outline-none placeholder:text-muted-foreground/60 focus:ring-2 focus:ring-ring/30 focus:border-ring transition-colors"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(v => !v)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </>
           )}
 
@@ -259,6 +353,17 @@ export default function LoginPage() {
               ? mode === 'signin' ? 'Signing in…' : 'Creating account…'
               : mode === 'signin' ? 'Sign In' : 'Create Account'}
           </button>
+
+          {mode === 'signin' && (
+            <div className="text-center mt-3">
+              <Link
+                href="/forgot-password"
+                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+              >
+                Forgot your password?
+              </Link>
+            </div>
+          )}
         </form>
       </div>
     </div>
