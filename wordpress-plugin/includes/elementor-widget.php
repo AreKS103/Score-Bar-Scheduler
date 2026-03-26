@@ -214,7 +214,10 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
             window.addEventListener('message', function(e){
                 if (e.data && typeof e.data.sbHeight === 'number') {
                     var f = document.getElementById(fid);
-                    try { if (f && new URL(f.src).origin === e.origin) { f.style.height = e.data.sbHeight + 'px'; } } catch(err) {}
+                    // Use e.source identity check — origin-only check would resize ALL widgets
+                    // on the page whenever any single iframe posts a height message, because
+                    // all embeds share the same origin (score-bar-scheduler.vercel.app).
+                    try { if (f && e.source === f.contentWindow) { f.style.height = e.data.sbHeight + 'px'; } } catch(err) {}
                     // Relay to the Elementor editor window (parent of the preview iframe)
                     try {
                         if (window.parent && window.parent !== window) {
