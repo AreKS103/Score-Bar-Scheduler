@@ -192,4 +192,26 @@ input[type='checkbox'] { accent-color: oklch(0.623 0.214 259); }
     border-right: none !important;
     border-bottom: 1px solid var(--border) !important;
   }
+
+  /* Preview panel header: force dropdown instead of pills on phone landscape */
+  .phone-ls-pills-desktop {
+    display: none !important;
+  }
+  .phone-ls-pills-mobile {
+    display: block !important;
+  }
+}
+
+/* ── Tablet portrait overrides (e.g. iPad Pro vertical 1024×1366) ──────── */
+/* Stack preview panel body vertically so aside sits on top, preview below. */
+@media (orientation: portrait) and (min-width: 768px) and (max-width: 1100px) {
+  .tablet-portrait-preview-body {
+    flex-direction: column !important;
+  }
+  .tablet-portrait-preview-aside {
+    width: 100% !important;
+    max-height: 35vh !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border) !important;
+  }
 }

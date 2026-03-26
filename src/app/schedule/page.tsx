@@ -180,7 +180,18 @@ export default function SchedulePage() {
   const [previewCheckedIds, setPreviewCheckedIds] = useState<Set<string>>(new Set());
   const [leagueOrder, setLeagueOrder] = useState<string[]>([]);
   const [deleteAllConfirm, setDeleteAllConfirm] = useState(false);
-  const [panelWidth, setPanelWidth] = useState(700);
+  const [panelWidth, setPanelWidth] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const vw = window.innerWidth;
+      if (vw < 768) return vw;
+      // Tablet portrait (e.g. iPad Pro vertical 1024×1366): full-width panel
+      const isPortraitTablet = vw >= 768 && vw <= 1100 && window.innerHeight > vw;
+      if (isPortraitTablet) return vw;
+      if (vw >= 1200) return Math.min(900, Math.round(vw * 0.65));
+      return 700;
+    }
+    return 700;
+  });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [businessInfoOpen, setBusinessInfoOpen] = useState(false);
   const [orgModalOpen, setOrgModalOpen] = useState(false);
@@ -1990,7 +2001,7 @@ export default function SchedulePage() {
               <span className="text-[11px] text-muted-foreground shrink-0">Publish to:</span>
 
               {/* Desktop: draggable pills — double-click to rename, drag to reorder */}
-              <div className="hidden sm:block min-w-0 flex-1 overflow-hidden">
+              <div className="hidden sm:block min-w-0 flex-1 overflow-hidden phone-ls-pills-desktop">
                 <DraggableEmbedPills
                   instances={embedInstances}
                   publishTarget={publishTarget}
@@ -2006,7 +2017,7 @@ export default function SchedulePage() {
               </div>
 
               {/* Mobile: compact dropdown */}
-              <div className="sm:hidden relative min-w-0">
+              <div className="sm:hidden relative min-w-0 phone-ls-pills-mobile">
                 <button
                   onClick={() => setEmbedDropdownOpen(o => !o)}
                   className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-accent/60 hover:bg-accent border border-border/50 max-w-35"
@@ -2056,7 +2067,7 @@ export default function SchedulePage() {
         </div>
 
         {/* Two-column body (stacks on narrow panels) */}
-        <div className="relative flex flex-col sm:flex-row flex-1 overflow-hidden phone-ls-preview-body">
+        <div className="relative flex flex-col sm:flex-row flex-1 overflow-hidden phone-ls-preview-body tablet-portrait-preview-body">
           {isRestoringSchedule && (
             <div className="absolute inset-0 z-30 flex items-center justify-center bg-background/75 backdrop-blur-[1px]">
               <div className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-lg">
@@ -2067,7 +2078,7 @@ export default function SchedulePage() {
           )}
 
           {/* Left: match list */}
-          <aside className="w-full sm:w-60 shrink-0 border-b sm:border-b-0 sm:border-r border-border bg-sidebar flex flex-col overflow-hidden relative max-h-[40vh] sm:max-h-none phone-ls-preview-aside">
+          <aside className="w-full sm:w-60 shrink-0 border-b sm:border-b-0 sm:border-r border-border bg-sidebar flex flex-col overflow-hidden relative max-h-[40vh] sm:max-h-none phone-ls-preview-aside tablet-portrait-preview-aside">
             <div className="shrink-0 px-3 py-2 border-b border-border">
               <div className="flex items-center justify-between">
                 <div className="flex gap-3 text-[10px] text-muted-foreground">
