@@ -1065,7 +1065,11 @@ export default function SchedulePage() {
   // Lock body scroll on mobile when preview panel or sidebar is open
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const shouldLock = (previewOpen || sidebarOpen) && window.innerWidth < 768;
+    // Lock background scroll on mobile AND portrait-tablet (where panel is full-screen)
+    const isPortraitTablet = window.innerWidth >= 768 && window.innerWidth <= 1100 && window.innerHeight > window.innerWidth;
+    const shouldLock = (previewOpen || sidebarOpen) && (
+      window.innerWidth < 768 || (previewOpen && isPortraitTablet)
+    );
     document.body.style.overflow = shouldLock ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
   }, [previewOpen, sidebarOpen]);
@@ -2094,7 +2098,7 @@ export default function SchedulePage() {
           )}
 
           {/* Left: match list */}
-          <aside className="w-full sm:w-60 shrink-0 border-b sm:border-b-0 sm:border-r border-border bg-sidebar flex flex-col overflow-hidden relative max-h-[40vh] sm:max-h-none phone-ls-preview-aside tablet-portrait-preview-aside">
+          <aside className="w-full sm:w-60 shrink-0 border-b sm:border-b-0 sm:border-r border-border bg-sidebar flex flex-col overflow-hidden relative max-h-[28vh] sm:max-h-none phone-ls-preview-aside tablet-portrait-preview-aside">
             <div className="shrink-0 px-3 py-2 border-b border-border">
               <div className="flex items-center justify-between">
                 <div className="flex gap-3 text-[10px] text-muted-foreground">
@@ -2122,7 +2126,7 @@ export default function SchedulePage() {
               </div>
             </div>
 
-            <div ref={sidebarScrollRef} className="flex-1 overflow-y-auto p-2 space-y-3">
+            <div ref={sidebarScrollRef} className="flex-1 overflow-y-auto overscroll-y-contain p-2 space-y-3">
               {selectedCount === 0 && featuredOnlyLeagues.length === 0 && featuredMatches.length === 0 ? (
                 <p className="text-[10px] text-muted-foreground text-center pt-8">No matches selected</p>
               ) : (
@@ -2344,7 +2348,7 @@ export default function SchedulePage() {
           </aside>
 
           {/* Right: HTML preview */}
-          <div ref={htmlPreviewRef} className="flex-1 overflow-y-auto" onPointerDown={() => setActiveSortLeague(null)}>
+          <div ref={htmlPreviewRef} className="flex-1 overflow-y-auto overscroll-y-contain" onPointerDown={() => setActiveSortLeague(null)}>
             <div className="p-3 sm:p-6">
               <PreviewPanel
                 html={html}

@@ -392,9 +392,10 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
 
   return (
     <div className="relative">
-    <div className="flex items-center gap-2">
+    <div className="relative flex items-center gap-2">
       {/* History button — LEFT of Publish */}
-      <div className="relative" ref={historyRef}>
+      {/* No `relative` here — positioned relative to outer wrapper so dropdown anchors to the full right-side group */}
+      <div ref={historyRef}>
         <button
           onClick={() => {
             setHistoryOpen((o) => !o);
