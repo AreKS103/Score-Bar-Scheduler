@@ -75,6 +75,11 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   // ── Organization state removed — managed by OrgModal ────────────────────
 
+  // ── Org creator detection (for WP integration + timezone lock) ──────────
+  const [isOrgCreator, setIsOrgCreator] = useState<boolean | null>(null); // null = loading
+  const [creatorConnectedSite, setCreatorConnectedSite] = useState<string | null>(null);
+  const [orgTimezone, setOrgTimezone] = useState<string | null>(null);
+
   // Handle modal close
   useEffect(() => {
     if (!isOpen) {
@@ -127,6 +132,50 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
     loadKey();
   }, [userId, supabase]);
+
+  // Load org creator settings (WP connection + timezone)
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch('/api/org/creator-settings')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data) {
+          setIsOrgCreator(data.isCreator ?? true);
+          setCreatorConnectedSite(data.creatorConnectedSite ?? null);
+          setOrgTimezone(data.orgTimezone ?? null);
+          // If non-creator member and org has a timezone, lock to it
+          if (!data.isCreator && data.orgTimezone) {
+            setTimezone(data.orgTimezone);
+          }
+        }
+      })
+      .catch(() => { /* ignore */ });
+  }, [isOpen, setTimezone]);
+
+  /** Persist timezone to the org record when the creator changes it */
+  const syncOrgTimezone = (tz: string) => {
+    if (isOrgCreator) {
+      fetch('/api/org/creator-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timezone: tz }),
+      }).catch(() => { /* fire-and-forget */ });
+    }
+  };
+
+  const handleSetTimezone = (tz: string) => {
+    setTimezone(tz);
+    syncOrgTimezone(tz);
+  };
+
+  const handleSetUseLocal = (val: boolean) => {
+    setUseLocal(val);
+    // When toggling auto-detect, persist the resolved timezone
+    const resolved = val
+      ? (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')
+      : timezone;
+    syncOrgTimezone(resolved);
+  };
 
   const generateKey = async () => {
     if (!userId) return;
@@ -356,7 +405,11 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <CardTitle className="flex items-center gap-2 text-base">
                 <Globe className="w-4 h-4" /> Timezone
               </CardTitle>
-              <CardDescription>Match times are displayed in your chosen timezone and remembered for next time.</CardDescription>
+              <CardDescription>
+                {isOrgCreator === false
+                  ? 'Your timezone is set by the organization creator to keep all schedules consistent.'
+                  : 'Match times are displayed in your chosen timezone and remembered for next time.'}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
 
@@ -369,119 +422,132 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
               </div>
 
-              {/* Auto-detect toggle */}
-              <div className="flex items-center justify-between p-3 rounded-lg bg-primary/5 border border-primary/15">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <Navigation className="w-4 h-4 text-primary shrink-0" />
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-foreground">Use my location</div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {useLocal ? `Auto: ${formatTimezoneDisplay(detectedTz)}` : 'Auto-detect disabled — using custom timezone'}
-                    </div>
-                  </div>
+              {/* ── Non-creator member: locked timezone notice ─────────────── */}
+              {isOrgCreator === false ? (
+                <div className="flex items-center gap-2.5 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
+                  <ShieldCheck className="w-4 h-4 text-amber-500 shrink-0" />
+                  <p className="text-xs text-muted-foreground">
+                    This timezone is managed by the organization creator and applies to all members.
+                    Contact them to change it.
+                  </p>
                 </div>
-                <button
-                  onClick={() => setUseLocal(!useLocal)}
-                  className={cn(
-                    'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ml-3',
-                    useLocal ? 'bg-primary' : 'bg-secondary border border-border'
-                  )}
-                  role="switch"
-                  aria-checked={useLocal}
-                >
-                  <span className={cn(
-                    'inline-block h-4 w-4 rounded-full bg-white shadow transition-transform',
-                    useLocal ? 'translate-x-6' : 'translate-x-1'
-                  )} />
-                </button>
-              </div>
-
-              {/* Manual timezone picker — shown when auto-detect is off */}
-              {!useLocal && (
-                <div ref={tzRef} className="relative">
-                  <label className="text-sm font-medium text-muted-foreground mb-1.5 block">Choose Timezone</label>
-                  <button
-                    type="button"
-                    onClick={() => { setTzOpen(v => !v); setTzSearch(''); }}
-                    className={cn(
-                      'w-full flex items-center justify-between px-3 py-2 rounded-md border text-sm bg-secondary/40 text-foreground transition',
-                      tzOpen ? 'border-ring ring-2 ring-ring/30' : 'border-border hover:border-ring/50'
-                    )}
-                  >
-                    <span>{formatTimezoneDisplay(timezone)} <span className="text-muted-foreground font-mono text-xs ml-1">{timezone}</span></span>
-                    <svg className={cn('w-4 h-4 text-muted-foreground transition-transform', tzOpen && 'rotate-180')} viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                    </svg>
-                  </button>
-
-                  {tzOpen && (
-                    <div className="absolute z-50 mt-1 w-full rounded-xl border border-border bg-popover shadow-2xl shadow-black/30 animate-in fade-in-0 zoom-in-95 overflow-hidden">
-                      {/* Search input */}
-                      <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
-                        <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                        <input
-                          autoFocus
-                          type="text"
-                          placeholder="Search timezone…"
-                          value={tzSearch}
-                          onChange={e => setTzSearch(e.target.value)}
-                          className="flex-1 bg-transparent text-sm outline-none text-foreground placeholder:text-muted-foreground/60"
-                        />
-                        {tzSearch && (
-                          <button onClick={() => setTzSearch('')} className="text-muted-foreground hover:text-foreground">
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+              ) : (
+                <>
+                  {/* Auto-detect toggle */}
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-primary/5 border border-primary/15">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Navigation className="w-4 h-4 text-primary shrink-0" />
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-foreground">Use my location</div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {useLocal ? `Auto: ${formatTimezoneDisplay(detectedTz)}` : 'Auto-detect disabled — using custom timezone'}
+                        </div>
                       </div>
+                    </div>
+                    <button
+                      onClick={() => handleSetUseLocal(!useLocal)}
+                      className={cn(
+                        'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ml-3',
+                        useLocal ? 'bg-primary' : 'bg-secondary border border-border'
+                      )}
+                      role="switch"
+                      aria-checked={useLocal}
+                    >
+                      <span className={cn(
+                        'inline-block h-4 w-4 rounded-full bg-white shadow transition-transform',
+                        useLocal ? 'translate-x-6' : 'translate-x-1'
+                      )} />
+                    </button>
+                  </div>
 
-                      {/* Results list */}
-                      <ul className="max-h-56 overflow-y-auto py-1" role="listbox">
-                        {/* Browser detected TZ always at top */}
-                        {!tzSearch && (
-                          <li>
-                            <button
-                              type="button"
-                              role="option"
-                              aria-selected={timezone === detectedTz}
-                              onClick={() => { setTimezone(detectedTz); setTzOpen(false); setTzSearch(''); }}
-                              className={cn(
-                                'w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-accent transition-colors',
-                                timezone === detectedTz && 'bg-primary/10 text-primary'
-                              )}
-                            >
-                              <span className="flex items-center gap-2">
-                                <Navigation className="w-3 h-3 text-primary shrink-0" />
-                                {formatTimezoneDisplay(detectedTz)}
-                              </span>
-                              <span className="text-xs text-muted-foreground font-mono">{detectedTz}</span>
-                            </button>
-                          </li>
+                  {/* Manual timezone picker — shown when auto-detect is off */}
+                  {!useLocal && (
+                    <div ref={tzRef} className="relative">
+                      <label className="text-sm font-medium text-muted-foreground mb-1.5 block">Choose Timezone</label>
+                      <button
+                        type="button"
+                        onClick={() => { setTzOpen(v => !v); setTzSearch(''); }}
+                        className={cn(
+                          'w-full flex items-center justify-between px-3 py-2 rounded-md border text-sm bg-secondary/40 text-foreground transition',
+                          tzOpen ? 'border-ring ring-2 ring-ring/30' : 'border-border hover:border-ring/50'
                         )}
-                        {filteredTz.length === 0 ? (
-                          <li className="px-3 py-4 text-sm text-muted-foreground text-center">No timezones found</li>
-                        ) : (
-                          filteredTz.map(tz => (
-                            <li key={tz}>
-                              <button
-                                type="button"
-                                role="option"
-                                aria-selected={timezone === tz}
-                                onClick={() => { setTimezone(tz); setTzOpen(false); setTzSearch(''); }}
-                                className={cn(
-                                  'w-full flex items-center justify-between px-3 py-1.5 text-sm hover:bg-accent transition-colors',
-                                  timezone === tz && 'bg-primary/10 text-primary'
-                                )}
-                              >
-                                <span>{formatTimezoneDisplay(tz)}</span>
-                                <span className="text-xs text-muted-foreground font-mono">{tz}</span>
+                      >
+                        <span>{formatTimezoneDisplay(timezone)} <span className="text-muted-foreground font-mono text-xs ml-1">{timezone}</span></span>
+                        <svg className={cn('w-4 h-4 text-muted-foreground transition-transform', tzOpen && 'rotate-180')} viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+
+                      {tzOpen && (
+                        <div className="absolute z-50 mt-1 w-full rounded-xl border border-border bg-popover shadow-2xl shadow-black/30 animate-in fade-in-0 zoom-in-95 overflow-hidden">
+                          {/* Search input */}
+                          <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
+                            <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                            <input
+                              autoFocus
+                              type="text"
+                              placeholder="Search timezone…"
+                              value={tzSearch}
+                              onChange={e => setTzSearch(e.target.value)}
+                              className="flex-1 bg-transparent text-sm outline-none text-foreground placeholder:text-muted-foreground/60"
+                            />
+                            {tzSearch && (
+                              <button onClick={() => setTzSearch('')} className="text-muted-foreground hover:text-foreground">
+                                <X className="w-3.5 h-3.5" />
                               </button>
-                            </li>
-                          ))
-                        )}
-                      </ul>
+                            )}
+                          </div>
+
+                          {/* Results list */}
+                          <ul className="max-h-56 overflow-y-auto py-1" role="listbox">
+                            {/* Browser detected TZ always at top */}
+                            {!tzSearch && (
+                              <li>
+                                <button
+                                  type="button"
+                                  role="option"
+                                  aria-selected={timezone === detectedTz}
+                                  onClick={() => { handleSetTimezone(detectedTz); setTzOpen(false); setTzSearch(''); }}
+                                  className={cn(
+                                    'w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-accent transition-colors',
+                                    timezone === detectedTz && 'bg-primary/10 text-primary'
+                                  )}
+                                >
+                                  <span className="flex items-center gap-2">
+                                    <Navigation className="w-3 h-3 text-primary shrink-0" />
+                                    {formatTimezoneDisplay(detectedTz)}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground font-mono">{detectedTz}</span>
+                                </button>
+                              </li>
+                            )}
+                            {filteredTz.length === 0 ? (
+                              <li className="px-3 py-4 text-sm text-muted-foreground text-center">No timezones found</li>
+                            ) : (
+                              filteredTz.map(tz => (
+                                <li key={tz}>
+                                  <button
+                                    type="button"
+                                    role="option"
+                                    aria-selected={timezone === tz}
+                                    onClick={() => { handleSetTimezone(tz); setTzOpen(false); setTzSearch(''); }}
+                                    className={cn(
+                                      'w-full flex items-center justify-between px-3 py-1.5 text-sm hover:bg-accent transition-colors',
+                                      timezone === tz && 'bg-primary/10 text-primary'
+                                    )}
+                                  >
+                                    <span>{formatTimezoneDisplay(tz)}</span>
+                                    <span className="text-xs text-muted-foreground font-mono">{tz}</span>
+                                  </button>
+                                </li>
+                              ))
+                            )}
+                          </ul>
+                        </div>
+                      )}
                     </div>
                   )}
-                </div>
+                </>
               )}
 
             </CardContent>
@@ -493,11 +559,41 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <Server className="w-4 h-4" /> WordPress Integration
               </CardTitle>
               <CardDescription>
-                Connect your account to your WordPress site via our white-label plugin.
+                {isOrgCreator === false
+                  ? 'Your organization\'s WordPress connection is managed by the org creator.'
+                  : 'Connect your account to your WordPress site via our white-label plugin.'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
-              {!keyPreview ? (
+
+              {/* ── Non-creator member: read-only view ─────────────────────── */}
+              {isOrgCreator === false ? (
+                <div className="bg-secondary/30 rounded-lg p-3 border border-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-medium text-sm">Connection Status</h3>
+                    <p className="text-xs text-muted-foreground mt-1 max-w-[250px] truncate">
+                      {creatorConnectedSite ? (
+                        <>Connected to: <a href={creatorConnectedSite} target="_blank" rel="noreferrer" className="text-primary hover:underline">{creatorConnectedSite}</a></>
+                      ) : (
+                        'The org creator has not connected a WordPress site yet.'
+                      )}
+                    </p>
+                  </div>
+                  <div>
+                    {creatorConnectedSite ? (
+                      <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-full border border-emerald-500/20">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 block animate-pulse"></span>
+                        Connected
+                      </span>
+                    ) : (
+                      <span className="text-xs font-medium text-muted-foreground bg-secondary px-2 py-1 rounded-full border border-border block">
+                        Not Connected
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+              ) : /* ── Creator / solo user: full key management ────────────── */ !keyPreview ? (
                 <Button onClick={generateKey} disabled={generating} className="w-full sm:w-auto">
                   {generating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
                   Generate API Key
@@ -507,7 +603,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <div>
                     <label className="text-sm font-medium text-foreground mb-2 block">Your API Key</label>
                     <div className="flex flex-col gap-2">
-                       {/* If apiKey is null we show the preview stored in DB (raw key not available) */}
                        {apiKey ? (
                          <>
                           <code className="w-full bg-secondary px-3 py-2 rounded-md font-mono text-xs border border-border select-all break-all text-foreground font-semibold">
@@ -543,7 +638,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     </div>
                     {apiKey ? (
                       <p className="text-xs text-destructive font-medium mt-2">
-                        Make sure to copy your API key now. You won't be able to see it again!
+                        Make sure to copy your API key now. You won&#39;t be able to see it again!
                       </p>
                     ) : (
                        <p className="text-xs text-muted-foreground mt-2">
@@ -578,7 +673,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                 </div>
               )}
-
 
             </CardContent>
           </Card>

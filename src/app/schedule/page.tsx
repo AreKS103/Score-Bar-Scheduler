@@ -49,6 +49,8 @@ const BusinessInfoModal = dynamic(() => import('@/components/BusinessInfoModal')
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useOrgRealtime } from '@/hooks/useOrgRealtime';
+import { useEmbedRealtime } from '@/hooks/useEmbedRealtime';
+import { useTimezoneStore } from '@/lib/timezoneStore';
 import { Separator } from '@/components/ui/separator';
 
 interface ScheduleHistoryState {
@@ -270,44 +272,47 @@ export default function SchedulePage() {
 
   // ─── Fetch embed instances — auto-select first on initial load ──────────
   const didAutoSelectEmbed = useRef(false);
-  useEffect(() => {
-    const load = () =>
-      fetch('/api/embed-instances')
-        .then((r) => r.json())
-        .then((d) => {
-          const fetched: { display_id: string; embed_id: string | null }[] = d.instances ?? [];
-          // Restore user-sorted order from localStorage
-          const savedOrder = (() => {
-            try {
-              const raw = typeof window !== 'undefined' && localStorage.getItem('sportglobe_embed_order_v1');
-              return raw ? (JSON.parse(raw) as string[]) : null;
-            } catch { return null; }
-          })();
-          const instances = savedOrder
-            ? [
-                ...savedOrder
-                  .map(id => fetched.find(f => (f.embed_id ?? f.display_id) === id))
-                  .filter((x): x is typeof fetched[number] => x !== undefined),
-                ...fetched.filter(f => !savedOrder.includes(f.embed_id ?? f.display_id)),
-              ]
-            : fetched;
-          setEmbedInstances(instances);
-          // Prune localStorage selection keys for embeds that no longer exist.
-          // Sequential IDs ("1", "2", …) get recycled on delete+recreate, so stale
-          // keys would silently populate a brand-new embed with the old one's selections.
-          const liveIds = new Set(fetched.map(f => f.embed_id ?? f.display_id));
-          pruneStaleSelectionKeys(liveIds);
-          // Auto-select first embed on first load (no "All" option).
-          if (!didAutoSelectEmbed.current && instances.length > 0) {
-            didAutoSelectEmbed.current = true;
-            setPublishTarget(instances[0].embed_id ?? instances[0].display_id);
-          }
-        })
-        .catch(() => {});
-    load();
-    const id = setInterval(load, 120_000);
-    return () => clearInterval(id);
+
+  const loadEmbedInstances = useCallback(() => {
+    return fetch('/api/embed-instances')
+      .then((r) => r.json())
+      .then((d) => {
+        const fetched: { display_id: string; embed_id: string | null }[] = d.instances ?? [];
+        // Restore user-sorted order from localStorage
+        const savedOrder = (() => {
+          try {
+            const raw = typeof window !== 'undefined' && localStorage.getItem('sportglobe_embed_order_v1');
+            return raw ? (JSON.parse(raw) as string[]) : null;
+          } catch { return null; }
+        })();
+        const instances = savedOrder
+          ? [
+              ...savedOrder
+                .map(id => fetched.find(f => (f.embed_id ?? f.display_id) === id))
+                .filter((x): x is typeof fetched[number] => x !== undefined),
+              ...fetched.filter(f => !savedOrder.includes(f.embed_id ?? f.display_id)),
+            ]
+          : fetched;
+        setEmbedInstances(instances);
+        // Prune localStorage selection keys for embeds that no longer exist.
+        // Sequential IDs ("1", "2", …) get recycled on delete+recreate, so stale
+        // keys would silently populate a brand-new embed with the old one's selections.
+        const liveIds = new Set(fetched.map(f => f.embed_id ?? f.display_id));
+        pruneStaleSelectionKeys(liveIds);
+        // Auto-select first embed on first load (no "All" option).
+        if (!didAutoSelectEmbed.current && instances.length > 0) {
+          didAutoSelectEmbed.current = true;
+          setPublishTarget(instances[0].embed_id ?? instances[0].display_id);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    loadEmbedInstances();
+    const id = setInterval(loadEmbedInstances, 120_000);
+    return () => clearInterval(id);
+  }, [loadEmbedInstances]);
 
   // ─── Rename embed instance ─────────────────────────────────────────────────
   async function commitRename(oldId: string) {
@@ -539,6 +544,15 @@ export default function SchedulePage() {
             const { organizations } = await orgRes.json();
             if (organizations?.length > 0) {
               setOrgName(organizations[0].name ?? null);
+              // Apply org timezone for non-creator members
+              fetch('/api/org/creator-settings')
+                .then(r => r.ok ? r.json() : null)
+                .then(csData => {
+                  if (csData && !csData.isCreator && csData.orgTimezone) {
+                    useTimezoneStore.getState().setTimezone(csData.orgTimezone);
+                  }
+                })
+                .catch(() => { /* non-fatal */ });
             } else {
               // No org — check for pending invites to show a banner
               try {
@@ -613,6 +627,12 @@ export default function SchedulePage() {
   useOrgRealtime({
     userId,
     onChange: handleOrgRealtimeChange,
+    enabled: !!userId,
+  });
+
+  useEmbedRealtime({
+    userId,
+    onChange: loadEmbedInstances,
     enabled: !!userId,
   });
 
