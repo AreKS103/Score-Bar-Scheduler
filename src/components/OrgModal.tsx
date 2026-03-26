@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   X, Building2, Users, UserPlus, Crown, UserMinus,
-  CheckCircle, Loader2, Mail, LogOut, ShieldCheck, Inbox, Trash2,
+  CheckCircle, Loader2, Mail, LogOut, ShieldCheck, Inbox, Trash2, Pencil, RefreshCw, XCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -49,6 +49,7 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
   const [orgNameDraft, setOrgNameDraft] = useState('');
   const [orgNameSaving, setOrgNameSaving] = useState(false);
   const [orgNameSaved, setOrgNameSaved] = useState(false);
+  const [editingName, setEditingName] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Invite
@@ -80,7 +81,9 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
   // Pending invites (join section)
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const [acceptingInviteId, setAcceptingInviteId] = useState<string | null>(null);
+  const [decliningInviteId, setDecliningInviteId] = useState<string | null>(null);
   const [inviteAcceptError, setInviteAcceptError] = useState<string | null>(null);
+  const [refreshingInvites, setRefreshingInvites] = useState(false);
 
   // ── Fetch data ─────────────────────────────────────────────────
   const initialLoadedRef = useRef(false);
@@ -151,31 +154,50 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
     return () => document.removeEventListener('mousedown', handler);
   }, [roleDropdownId]);
 
-  // ── Auto-save org name with debounce ───────────────────────────
+  // ── Org name editing ──────────────────────────────────────────
   function handleOrgNameChange(value: string) {
     setOrgNameDraft(value);
     setOrgNameSaved(false);
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      autoSaveOrgName(value);
-    }, 800);
   }
 
-  async function autoSaveOrgName(name: string) {
-    const trimmed = name.trim();
-    if (!org || !trimmed || trimmed === org.name) return;
+  function commitName() {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    const trimmed = orgNameDraft.trim();
+    setEditingName(false);
+    if (!org || !trimmed || trimmed === org.name) {
+      setOrgNameDraft(org?.name ?? '');
+      return;
+    }
+    // Optimistic: show new name instantly
+    const prevName = org.name;
+    setOrg(o => o ? { ...o, name: trimmed } : o);
+    onOrgNameChange?.(trimmed);
+    // Save in background; revert on failure
+    void saveOrgNameBg(org.id, trimmed, prevName);
+  }
+
+  function revertName() {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    setOrgNameDraft(org?.name ?? '');
+    setEditingName(false);
+  }
+
+  async function saveOrgNameBg(orgId: string, newName: string, prevName: string) {
     setOrgNameSaving(true);
     const res = await fetch('/api/org', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orgId: org.id, name: trimmed }),
+      body: JSON.stringify({ orgId, name: newName }),
     });
     setOrgNameSaving(false);
     if (res.ok) {
-      setOrg(o => o ? { ...o, name: trimmed } : o);
-      onOrgNameChange?.(trimmed);
       setOrgNameSaved(true);
       setTimeout(() => setOrgNameSaved(false), 2000);
+    } else {
+      // Revert on failure
+      setOrg(o => o ? { ...o, name: prevName } : o);
+      onOrgNameChange?.(prevName);
+      setOrgNameDraft(prevName);
     }
   }
 
@@ -339,6 +361,40 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
     }
   }
 
+  // ── Decline invite ─────────────────────────────────────────────
+  async function declineInvite(inviteId: string) {
+    setDecliningInviteId(inviteId);
+    setInviteAcceptError(null);
+    // Optimistic removal
+    setPendingInvites(prev => prev.filter(i => i.id !== inviteId));
+    const res = await fetch('/api/org/invites', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inviteId }),
+    });
+    const data = await res.json();
+    setDecliningInviteId(null);
+    if (!res.ok) {
+      // Rollback
+      await refreshInvites();
+      setInviteAcceptError(data.error ?? 'Failed to decline invite');
+    }
+  }
+
+  // ── Refresh invites ────────────────────────────────────────────
+  async function refreshInvites() {
+    setRefreshingInvites(true);
+    try {
+      const res = await fetch('/api/org/invites');
+      if (res.ok) {
+        const { invites } = await res.json();
+        setPendingInvites(invites ?? []);
+      }
+    } finally {
+      setRefreshingInvites(false);
+    }
+  }
+
   if (!isOpen) return null;
 
   const myMembership = orgMembers.find(m => m.isYou);
@@ -362,8 +418,43 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
               <Building2 className="w-3.5 h-3.5 text-primary" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-foreground leading-normal">Organization</h2>
-              {org && <p className="text-[10px] text-muted-foreground leading-normal">{org.slug}</p>}
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground leading-normal">Organization</p>
+              {org ? (
+                editingName ? (
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      autoFocus
+                      type="text"
+                      value={orgNameDraft}
+                      onChange={e => handleOrgNameChange(e.target.value)}
+                      onBlur={commitName}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') { e.preventDefault(); commitName(); }
+                        if (e.key === 'Escape') revertName();
+                      }}
+                      maxLength={100}
+                      className="text-sm font-bold bg-transparent border-b border-primary focus:outline-none text-foreground w-44 leading-normal"
+                    />
+                    {orgNameSaving && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground shrink-0" />}
+                    {orgNameSaved && <CheckCircle className="w-3 h-3 text-emerald-500 shrink-0" />}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1 group/orgname">
+                    <h2 className="text-sm font-bold text-foreground leading-normal">{org.name}</h2>
+                    {isOwner && (
+                      <button
+                        onClick={() => setEditingName(true)}
+                        className="p-0.5 opacity-0 group-hover/orgname:opacity-100 text-muted-foreground hover:text-foreground transition-all rounded"
+                        aria-label="Edit organization name"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                )
+              ) : (
+                <h2 className="text-sm font-bold text-foreground leading-normal">—</h2>
+              )}
             </div>
           </div>
           <button
@@ -383,45 +474,6 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
             </div>
           ) : org ? (
             <>
-              {/* ── Name (auto-save for owner, read-only for member) ── */}
-              {isOwner ? (
-                <section>
-                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 leading-normal">
-                    Organization name
-                  </p>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={orgNameDraft}
-                      onChange={e => handleOrgNameChange(e.target.value)}
-                      maxLength={100}
-                      placeholder="Organization name"
-                      className={cn(
-                        'w-full px-3 py-2.5 pr-9 rounded-lg text-sm border border-border bg-secondary/40',
-                        'text-foreground placeholder:text-muted-foreground/50',
-                        'focus:outline-none focus:ring-2 focus:ring-ring transition',
-                      )}
-                    />
-                    <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
-                      {orgNameSaving ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
-                      ) : orgNameSaved ? (
-                        <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
-                      ) : null}
-                    </div>
-                  </div>
-                </section>
-              ) : (
-                <section>
-                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 leading-normal">
-                    Organization name
-                  </p>
-                  <div className="px-3 py-2.5 rounded-lg bg-secondary/50 border border-border text-sm font-medium text-foreground leading-normal">
-                    {org.name}
-                  </div>
-                </section>
-              )}
-
               {/* ── Members ─────────────────────────────────────────── */}
               <section>
                 <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5 leading-normal">
@@ -708,10 +760,21 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
 
               {/* ── Join an Organization ────────────────────────────── */}
               <section>
-                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5 leading-normal">
-                  <Inbox className="w-3 h-3" />
-                  Pending invites
-                </p>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 leading-normal">
+                    <Inbox className="w-3 h-3" />
+                    Pending invites
+                  </p>
+                  <button
+                    onClick={refreshInvites}
+                    disabled={refreshingInvites}
+                    className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                    aria-label="Refresh invites"
+                    title="Refresh invites"
+                  >
+                    <RefreshCw className={cn('w-3 h-3', refreshingInvites && 'animate-spin')} />
+                  </button>
+                </div>
                 {inviteAcceptError && (
                   <p className="text-xs text-destructive mb-2 leading-normal">{inviteAcceptError}</p>
                 )}
@@ -740,19 +803,35 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
                             Invited by {inv.invitedBy}
                           </p>
                         </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => acceptInvite(inv.id)}
-                          disabled={acceptingInviteId === inv.id}
-                          className="shrink-0 gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-500"
-                        >
-                          {acceptingInviteId === inv.id ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <><UserPlus className="w-3.5 h-3.5" /> Join</>
-                          )}
-                        </Button>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => acceptInvite(inv.id)}
+                            disabled={acceptingInviteId === inv.id || decliningInviteId === inv.id}
+                            className="gap-1.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-500"
+                          >
+                            {acceptingInviteId === inv.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <><UserPlus className="w-3.5 h-3.5" /> Join</>
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => declineInvite(inv.id)}
+                            disabled={decliningInviteId === inv.id || acceptingInviteId === inv.id}
+                            className="gap-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 px-2"
+                            aria-label="Decline invite"
+                          >
+                            {decliningInviteId === inv.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <XCircle className="w-3.5 h-3.5" />
+                            )}
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
