@@ -30,6 +30,7 @@ export async function POST(req: NextRequest) {
       league_order: leagueOrder || [],
       featured_leagues: featuredLeagues || {},
       embed_target: targetValue,
+      author_email: user.email ?? null,
     });
 
     if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
@@ -89,7 +90,7 @@ export async function GET(req: NextRequest) {
     // MAX_HISTORY=1 per embed means there are at most N rows total (N = number of embeds).
     const { data, error } = await supabase
       .from('published_schedules')
-      .select('id, week_label, date_range_start, date_range_end, published_at, embed_target')
+      .select('id, week_label, date_range_start, date_range_end, published_at, embed_target, author_email')
       .in('user_id', orgMemberIds)
       .order('published_at', { ascending: false });
 

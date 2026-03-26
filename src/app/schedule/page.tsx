@@ -1949,11 +1949,29 @@ export default function SchedulePage() {
         <div className="shrink-0 flex items-center justify-between gap-3 px-4 py-2 border-b border-border">
           <h3 className="text-sm font-bold text-foreground shrink-0">Schedule Preview</h3>
 
-          {/* Publish-to: compact dropdown */}
+          {/* Publish-to: pills (desktop) / dropdown (mobile) */}
           {embedInstances.length > 0 && (
-            <div className="relative flex items-center gap-1.5 min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 min-w-0 flex-1">
               <span className="text-[11px] text-muted-foreground shrink-0">Publish to:</span>
-              <div className="relative min-w-0">
+
+              {/* Desktop: draggable pills — double-click to rename, drag to reorder */}
+              <div className="hidden sm:block min-w-0 flex-1 overflow-hidden">
+                <DraggableEmbedPills
+                  instances={embedInstances}
+                  publishTarget={publishTarget}
+                  renamingId={renamingId}
+                  renameValue={renameValue}
+                  onSelect={(val) => setPublishTarget(val)}
+                  onDoubleClick={(val, displayId) => { setRenamingId(val); setRenameValue(displayId); }}
+                  onRenameChange={setRenameValue}
+                  onRenameCommit={(val) => commitRename(val)}
+                  onRenameCancel={() => setRenamingId(null)}
+                  onReorder={(next) => setEmbedInstances(next)}
+                />
+              </div>
+
+              {/* Mobile: compact dropdown */}
+              <div className="sm:hidden relative min-w-0">
                 <button
                   onClick={() => setEmbedDropdownOpen(o => !o)}
                   className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-accent/60 hover:bg-accent border border-border/50 max-w-35"
