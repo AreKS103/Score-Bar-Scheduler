@@ -309,6 +309,15 @@ export async function DELETE(req: NextRequest) {
       }
     }
 
+    // First, set status to 'removed' so the Supabase Realtime UPDATE event
+    // fires for the removed user (DELETE events are not filterable by column).
+    // This lets the removed member's client detect the change in real-time.
+    await adminClient
+      .from('organization_members')
+      .update({ status: 'removed' })
+      .eq('id', memberId);
+
+    // Now delete the row
     const { error } = await adminClient
       .from('organization_members')
       .delete()

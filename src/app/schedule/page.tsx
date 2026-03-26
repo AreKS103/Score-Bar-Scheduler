@@ -621,8 +621,9 @@ export default function SchedulePage() {
           return;
         }
       }
-      // No org — clear badge, refresh invites
+      // No org — clear state, refresh embeds (remove former org members' embeds)
       setOrgName(null);
+      loadEmbedInstances();
       try {
         const invitesRes = await fetch('/api/org/invites');
         if (invitesRes.ok) {
@@ -2546,7 +2547,20 @@ export default function SchedulePage() {
 
       {/* Settings lightbox */}
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
-      <OrgModal isOpen={orgModalOpen} onClose={() => setOrgModalOpen(false)} onOrgNameChange={name => setOrgName(name)} />
+      <OrgModal isOpen={orgModalOpen} onClose={() => setOrgModalOpen(false)} onOrgNameChange={name => {
+        setOrgName(name);
+        // Reload embeds immediately (org members' embeds now included)
+        loadEmbedInstances();
+        // Apply org timezone for non-creator members
+        fetch('/api/org/creator-settings')
+          .then(r => r.ok ? r.json() : null)
+          .then(csData => {
+            if (csData && !csData.isCreator && csData.orgTimezone) {
+              useTimezoneStore.getState().setTimezone(csData.orgTimezone);
+            }
+          })
+          .catch(() => {});
+      }} />
       <BusinessInfoModal
         isOpen={businessInfoOpen}
         onClose={() => setBusinessInfoOpen(false)}
