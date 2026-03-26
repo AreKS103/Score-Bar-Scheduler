@@ -3,8 +3,11 @@ import { NextResponse } from 'next/server';
 const GITHUB_REPO = 'AreKS103/Score-Bar-Scheduler';
 const RELEASE_TAG = 'plugin-latest';
 
-// No caching — always stream the latest zip.
+// No caching — always serve the latest zip.
 export const dynamic = 'force-dynamic';
+
+// Allow up to 30 s for the two GitHub API calls + full download.
+export const maxDuration = 30;
 
 export async function GET() {
   try {
@@ -17,7 +20,7 @@ export async function GET() {
       apiHeaders['Authorization'] = `Bearer ${process.env.GITHUB_TOKEN}`;
     }
 
-    // Fetch release metadata to get the asset download URL.
+    // 1. Fetch release metadata to find the zip asset ID.
     const metaRes = await fetch(
       `https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${RELEASE_TAG}`,
       { headers: apiHeaders },
@@ -34,10 +37,9 @@ export async function GET() {
       return NextResponse.json({ error: 'No zip asset in release' }, { status: 404 });
     }
 
-    // Proxy the download server-side so WordPress never needs a GitHub token.
-    // Use the GitHub Assets API endpoint (with asset ID) instead of browser_download_url.
-    // browser_download_url redirects to S3 and fetch() strips the Authorization header
-    // on redirect, causing 403 for private repos. The API endpoint returns bytes directly.
+    // 2. Download the zip via the GitHub Assets API.
+    //    Uses asset ID + application/octet-stream to avoid S3 redirect issues
+    //    with Authorization headers on private repos.
     const assetHeaders: Record<string, string> = {
       'Accept': 'application/octet-stream',
       'X-GitHub-Api-Version': '2022-11-28',
@@ -54,14 +56,20 @@ export async function GET() {
         redirect: 'follow',
       },
     );
-    if (!zipRes.ok || !zipRes.body) {
+    if (!zipRes.ok) {
       return NextResponse.json({ error: 'Failed to fetch zip from GitHub' }, { status: 502 });
     }
 
-    return new NextResponse(zipRes.body, {
+    // 3. Buffer the entire zip so we can set Content-Length.
+    //    The zip is small (~30 KB), so buffering is fine and avoids
+    //    streaming/chunked-encoding issues that break WordPress's download_url().
+    const zipBuffer = await zipRes.arrayBuffer();
+
+    return new NextResponse(zipBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'application/zip',
+        'Content-Length': String(zipBuffer.byteLength),
         'Content-Disposition': 'attachment; filename="scorebar-scheduler.zip"',
         'Cache-Control': 'no-store',
       },
