@@ -48,6 +48,7 @@ import UserProfileMenu from '@/components/UserProfileMenu';
 const BusinessInfoModal = dynamic(() => import('@/components/BusinessInfoModal'), { ssr: false });
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { useOrgRealtime } from '@/hooks/useOrgRealtime';
 import { Separator } from '@/components/ui/separator';
 
 interface ScheduleHistoryState {
@@ -188,6 +189,7 @@ export default function SchedulePage() {
   const [orgModalOpen, setOrgModalOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [userUsername, setUserUsername] = useState<string | null>(null);
   const [businessName, setBusinessName] = useState<string | null>(null);
   const [businessLogoUrl, setBusinessLogoUrl] = useState<string | null>(null);
@@ -527,6 +529,7 @@ export default function SchedulePage() {
     supabase.auth.getUser().then(async ({ data, error }) => {
       if (error) { router.push('/login'); return; }
       setUserEmail(data.user?.email ?? null);
+      setUserId(data.user?.id ?? null);
 
       // Lazy-bootstrap org: ensure user has at least one organization
       if (data.user?.id) {
@@ -582,6 +585,36 @@ export default function SchedulePage() {
     });
     return () => subscription.unsubscribe();
   }, [router]);
+
+  // ── Realtime: auto-refresh org state on membership changes ────
+  const handleOrgRealtimeChange = useCallback(async () => {
+    try {
+      const orgRes = await fetch('/api/org');
+      if (orgRes.ok) {
+        const { organizations } = await orgRes.json();
+        if (organizations?.length > 0) {
+          setOrgName(organizations[0].name ?? null);
+          setPendingInvites([]);
+          return;
+        }
+      }
+      // No org — clear badge, refresh invites
+      setOrgName(null);
+      try {
+        const invitesRes = await fetch('/api/org/invites');
+        if (invitesRes.ok) {
+          const { invites } = await invitesRes.json();
+          setPendingInvites(invites ?? []);
+        }
+      } catch { /* ignore */ }
+    } catch { /* ignore */ }
+  }, []);
+
+  useOrgRealtime({
+    userId,
+    onChange: handleOrgRealtimeChange,
+    enabled: !!userId,
+  });
 
   async function handleLogout() {
     if (isSupabaseConfigured()) {

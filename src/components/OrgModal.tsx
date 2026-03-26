@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/client';
+import { useOrgRealtime } from '@/hooks/useOrgRealtime';
 
 interface OrgMember {
   id: string;
@@ -87,6 +89,14 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
   const [decliningInviteId, setDecliningInviteId] = useState<string | null>(null);
   const [inviteAcceptError, setInviteAcceptError] = useState<string | null>(null);
   const [refreshingInvites, setRefreshingInvites] = useState(false);
+
+  // ── Current user ID (for realtime subscription) ────────────────
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  useEffect(() => {
+    createClient().auth.getUser().then(({ data }) => {
+      setCurrentUserId(data.user?.id ?? null);
+    });
+  }, []);
 
   // ── Fetch data ─────────────────────────────────────────────────
 
@@ -202,6 +212,14 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
       }
     } catch { /* ignore */ }
   }, [onOrgNameChange]);
+
+  // ── Realtime subscription: auto-refresh on org member changes ──
+  useOrgRealtime({
+    userId: currentUserId,
+    orgId: org?.id ?? null,
+    onChange: refreshOrgAndMembers,
+    enabled: isOpen,
+  });
 
   // Keep ref in sync so the open-effect can always call the latest version
   // without adding loadOrgInitial to the effect's dependency array
