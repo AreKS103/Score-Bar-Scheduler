@@ -1587,12 +1587,14 @@ export default function SchedulePage() {
             </div>
 
             <div className="flex items-center gap-2 sm:gap-3">
+              {/* Undo/Redo — always visible on desktop; hidden on mobile (moved to row 2) */}
               <Button
                 variant="outline"
                 size="sm"
                 onClick={undo}
                 disabled={!canUndo}
                 title="Undo last schedule change (Ctrl+Z)"
+                className="hidden sm:flex"
               >
                 <Undo2 className="w-4 h-4" />
               </Button>
@@ -1602,6 +1604,7 @@ export default function SchedulePage() {
                 onClick={redo}
                 disabled={!canRedo}
                 title="Redo last undone change (Ctrl+Shift+Z)"
+                className="hidden sm:flex"
               >
                 <Redo2 className="w-4 h-4" />
               </Button>
@@ -1631,21 +1634,44 @@ export default function SchedulePage() {
             </div>
           </div>
 
-          {/* ── Row 2 (mobile only): Refresh button below calendar ──────────── */}
-          <div className="flex items-center gap-2 mt-2 sm:hidden">
+          {/* ── Row 2 (mobile only): Refresh (left, compact) + Undo/Redo (right) */}
+          <div className="flex items-center justify-between gap-2 mt-2 sm:hidden">
+            {/* Refresh — small, left-aligned */}
             <Button
               onClick={() => handleFetch(true)}
               disabled={isFetching}
-              size="default"
-              className="w-full"
+              size="sm"
+              variant="outline"
             >
               {isFetching ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
-                <RefreshCw className="w-4 h-4" />
+                <RefreshCw className="w-3.5 h-3.5" />
               )}
               {isFetching ? 'Fetching...' : 'Refresh'}
             </Button>
+
+            {/* Undo / Redo — right side */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={undo}
+                disabled={!canUndo}
+                title="Undo (Ctrl+Z)"
+              >
+                <Undo2 className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={redo}
+                disabled={!canRedo}
+                title="Redo (Ctrl+Shift+Z)"
+              >
+                <Redo2 className="w-3.5 h-3.5" />
+              </Button>
+            </div>
           </div>
 
           {/* Toolbar */}
