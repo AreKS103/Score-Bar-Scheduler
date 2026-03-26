@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 
 interface UserProfileMenuProps {
   email: string | null;
+  username?: string | null;
   onLogout: () => void;
   onBusinessInfo: () => void;
   onSettings: () => void;
@@ -15,14 +16,19 @@ interface UserProfileMenuProps {
   orgName?: string | null;
 }
 
-function getInitials(email: string | null): string {
+function getInitials(email: string | null, username?: string | null): string {
+  if (username) {
+    const parts = username.trim().split(/\s+/);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return username.slice(0, 2).toUpperCase();
+  }
   if (!email) return '?';
   const parts = email.split('@')[0].split(/[._-]/);
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
   return email.slice(0, 2).toUpperCase();
 }
 
-export default function UserProfileMenu({ email, onLogout, onBusinessInfo, onSettings, onOrgManage, businessLogoUrl, orgName }: UserProfileMenuProps) {
+export default function UserProfileMenu({ email, username, onLogout, onBusinessInfo, onSettings, onOrgManage, businessLogoUrl, orgName }: UserProfileMenuProps) {
   const [open, setOpen] = useState(false);
   const { theme, toggleTheme } = useThemeStore();
   const isDark = theme === 'dark';
@@ -45,7 +51,7 @@ export default function UserProfileMenu({ email, onLogout, onBusinessInfo, onSet
     };
   }, [open]);
 
-  const initials = getInitials(email);
+  const initials = getInitials(email, username);
 
   return (
     <div ref={menuRef} className="relative">
@@ -69,10 +75,10 @@ export default function UserProfileMenu({ email, onLogout, onBusinessInfo, onSet
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold text-foreground truncate leading-normal">
-                {email ?? 'Unknown user'}
+                {username || email || 'Unknown user'}
               </p>
               <p className="text-[10px] text-muted-foreground leading-normal mt-0.5">
-                {orgName ?? 'Your Account'}
+                {username ? (email ?? 'Your Account') : (orgName ?? 'Your Account')}
               </p>
             </div>
           </button>
@@ -177,7 +183,7 @@ export default function UserProfileMenu({ email, onLogout, onBusinessInfo, onSet
         {/* Email + Org */}
         <div className="flex-1 min-w-0 text-left overflow-hidden">
           <p className="text-xs text-muted-foreground truncate leading-normal">
-            {email ?? '—'}
+            {username || email || '—'}
           </p>
           {orgName && (
             <p className="text-[10px] text-primary/70 font-medium truncate leading-normal">

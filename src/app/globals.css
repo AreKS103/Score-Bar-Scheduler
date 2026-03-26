@@ -181,4 +181,15 @@ input[type='checkbox'] { accent-color: oklch(0.623 0.214 259); }
     padding-top: 0.35rem !important;
     padding-bottom: 0.35rem !important;
   }
+
+  /* Preview panel: stack aside and content vertically in landscape phone */
+  .phone-ls-preview-body {
+    flex-direction: column !important;
+  }
+  .phone-ls-preview-aside {
+    width: 100% !important;
+    max-height: 25vh !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border) !important;
+  }
 }

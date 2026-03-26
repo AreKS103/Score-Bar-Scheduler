@@ -68,6 +68,10 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [resetSent, setResetSent] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [username, setUsername] = useState('');
+  const [usernameLoaded, setUsernameLoaded] = useState(false);
+  const [savingUsername, setSavingUsername] = useState(false);
+  const [usernameSaved, setUsernameSaved] = useState(false);
 
   // ── Organization state removed — managed by OrgModal ────────────────────
 
@@ -93,6 +97,18 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       setEmailVerified(!!data.user?.email_confirmed_at);
     });
   }, [supabase.auth]);
+
+  // Load username from user_profiles
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch('/api/user-profile')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.username) setUsername(data.username);
+        setUsernameLoaded(true);
+      })
+      .catch(() => setUsernameLoaded(true));
+  }, [isOpen]);
 
   // Load Key preview from DB
   useEffect(() => {
@@ -159,6 +175,22 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       setPhoneSaved(true);
       setTimeout(() => setPhoneSaved(false), 2000);
     }
+  };
+
+  const saveUsername = async () => {
+    setSavingUsername(true);
+    try {
+      const res = await fetch('/api/user-profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim() }),
+      });
+      if (res.ok) {
+        setUsernameSaved(true);
+        setTimeout(() => setUsernameSaved(false), 2000);
+      }
+    } catch { /* ignore */ }
+    setSavingUsername(false);
   };
 
   const sendPasswordReset = async () => {
@@ -230,6 +262,38 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     </span>
                   )}
                 </div>
+              </div>
+
+              {/* Username */}
+              <div>
+                <label className="text-sm font-medium text-muted-foreground flex items-center gap-1.5 mb-1.5">
+                  <User className="w-3.5 h-3.5" /> Username
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={e => setUsername(e.target.value)}
+                    placeholder={userEmail ?? 'Enter a display name'}
+                    maxLength={50}
+                    className={cn(
+                      'flex-1 px-3 py-2 rounded-md text-sm border border-border bg-secondary/40',
+                      'text-foreground placeholder:text-muted-foreground/50',
+                      'focus:outline-none focus:ring-2 focus:ring-ring transition',
+                    )}
+                  />
+                  <Button variant="outline" size="sm" onClick={saveUsername} disabled={savingUsername} className="shrink-0">
+                    {savingUsername
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      : usernameSaved
+                        ? <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
+                        : 'Save'
+                    }
+                  </Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Shown in publish history and across the app. Leave empty to use your email.
+                </p>
               </div>
 
               {/* Phone */}

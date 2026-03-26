@@ -19,6 +19,13 @@ export async function POST(req: NextRequest) {
 
     const targetValue = (typeof embedTarget === 'string' && embedTarget.trim()) ? embedTarget.trim() : null;
 
+    // Look up the user's display name from user_profiles
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('username')
+      .eq('user_id', user.id)
+      .single();
+
     const { error: insertError } = await supabase.from('published_schedules').insert({
       user_id: user.id,
       organization_id: orgId,
@@ -31,6 +38,7 @@ export async function POST(req: NextRequest) {
       featured_leagues: featuredLeagues || {},
       embed_target: targetValue,
       author_email: user.email ?? null,
+      author_username: profile?.username ?? null,
     });
 
     if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
@@ -90,7 +98,7 @@ export async function GET(req: NextRequest) {
     // MAX_HISTORY=1 per embed means there are at most N rows total (N = number of embeds).
     const { data, error } = await supabase
       .from('published_schedules')
-      .select('id, week_label, date_range_start, date_range_end, published_at, embed_target, author_email')
+      .select('id, week_label, date_range_start, date_range_end, published_at, embed_target, author_email, author_username')
       .in('user_id', orgMemberIds)
       .order('published_at', { ascending: false });
 

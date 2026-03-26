@@ -141,18 +141,31 @@ export async function getUserOrgId(userId: string): Promise<string | null> {
 }
 
 /**
- * Get all active member user_ids for the user's org (including the user themselves).
+ * Get all active member user_ids across ALL orgs the user belongs to.
  * Returns `[userId]` if the user has no org. Used for org-scoped queries across
  * published_schedules, scheduled_publishes, custom_events, etc.
+ *
+ * Important: a user may belong to multiple orgs (e.g. their auto-created
+ * personal org + an org they were invited to). We aggregate members from
+ * every org so cross-org history, schedules, and other data are visible.
  */
 export async function getOrgMemberIds(userId: string): Promise<string[]> {
-  const orgId = await getUserOrgId(userId);
-  if (!orgId) return [userId];
+  // 1. Find every org this user is an active member of
+  const { data: userOrgs } = await supabase
+    .from('organization_members')
+    .select('organization_id')
+    .eq('user_id', userId)
+    .eq('status', 'active');
 
+  if (!userOrgs?.length) return [userId];
+
+  const orgIds = userOrgs.map(o => o.organization_id);
+
+  // 2. Collect all active members across those orgs
   const { data: members } = await supabase
     .from('organization_members')
     .select('user_id')
-    .eq('organization_id', orgId)
+    .in('organization_id', orgIds)
     .eq('status', 'active');
 
   if (!members?.length) return [userId];

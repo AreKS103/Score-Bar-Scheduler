@@ -13,6 +13,7 @@ interface ScheduleSummary {
   published_at: string;
   embed_target: string | null;
   author_email?: string | null;
+  author_username?: string | null;
 }
 
 interface PendingSchedule {
@@ -472,9 +473,9 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
                               timeZone: selectedTimezone,
                             })}
                           </p>
-                          {item.author_email && (
+                          {(item.author_username || item.author_email) && (
                             <p className="text-[10px] text-muted-foreground/60 mt-0.5 truncate">
-                              by {item.author_email}
+                              by {item.author_username || item.author_email}
                             </p>
                           )}
                         </div>

@@ -186,6 +186,7 @@ export default function SchedulePage() {
   const [orgModalOpen, setOrgModalOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userUsername, setUserUsername] = useState<string | null>(null);
   const [businessName, setBusinessName] = useState<string | null>(null);
   const [businessLogoUrl, setBusinessLogoUrl] = useState<string | null>(null);
   const [orgName, setOrgName] = useState<string | null>(null);
@@ -556,6 +557,14 @@ export default function SchedulePage() {
               setBusinessLogoUrl(biz.logo_url ?? null);
             }
           });
+
+        // Load username from user_profiles
+        fetch('/api/user-profile')
+          .then(r => r.ok ? r.json() : null)
+          .then(profileData => {
+            if (profileData?.username) setUserUsername(profileData.username);
+          })
+          .catch(() => { /* non-fatal */ });
       }
     });
     // Listen for sign-out / token-refresh failures
@@ -1543,7 +1552,7 @@ export default function SchedulePage() {
 
         {/* Pinned user profile at bottom */}
         <div className="shrink-0 border-t border-border px-2 py-1.5">
-          <UserProfileMenu email={userEmail} onLogout={handleLogout} onBusinessInfo={() => setBusinessInfoOpen(true)} onSettings={() => setSettingsOpen(true)} onOrgManage={() => setOrgModalOpen(true)} businessLogoUrl={businessLogoUrl} orgName={orgName} />
+          <UserProfileMenu email={userEmail} username={userUsername} onLogout={handleLogout} onBusinessInfo={() => setBusinessInfoOpen(true)} onSettings={() => setSettingsOpen(true)} onOrgManage={() => setOrgModalOpen(true)} businessLogoUrl={businessLogoUrl} orgName={orgName} />
         </div>
       </aside>
 
@@ -1972,7 +1981,7 @@ export default function SchedulePage() {
           className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize z-10 hover:bg-primary/20 transition-colors"
         />
         {/* Panel header */}
-        <div className="shrink-0 flex items-center justify-between gap-3 px-4 py-2 border-b border-border">
+        <div className="shrink-0 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-2 border-b border-border">
           <h3 className="text-sm font-bold text-foreground shrink-0">Schedule Preview</h3>
 
           {/* Publish-to: pills (desktop) / dropdown (mobile) */}
@@ -2047,7 +2056,7 @@ export default function SchedulePage() {
         </div>
 
         {/* Two-column body (stacks on narrow panels) */}
-        <div className="relative flex flex-col sm:flex-row flex-1 overflow-hidden">
+        <div className="relative flex flex-col sm:flex-row flex-1 overflow-hidden phone-ls-preview-body">
           {isRestoringSchedule && (
             <div className="absolute inset-0 z-30 flex items-center justify-center bg-background/75 backdrop-blur-[1px]">
               <div className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-lg">
@@ -2058,7 +2067,7 @@ export default function SchedulePage() {
           )}
 
           {/* Left: match list */}
-          <aside className="w-full sm:w-60 shrink-0 border-b sm:border-b-0 sm:border-r border-border bg-sidebar flex flex-col overflow-hidden relative max-h-[40vh] sm:max-h-none">
+          <aside className="w-full sm:w-60 shrink-0 border-b sm:border-b-0 sm:border-r border-border bg-sidebar flex flex-col overflow-hidden relative max-h-[40vh] sm:max-h-none phone-ls-preview-aside">
             <div className="shrink-0 px-3 py-2 border-b border-border">
               <div className="flex items-center justify-between">
                 <div className="flex gap-3 text-[10px] text-muted-foreground">

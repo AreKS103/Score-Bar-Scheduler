@@ -131,7 +131,7 @@ export default function DateRangeCalendar({
       {open && (
         <div className={cn(
           "absolute top-full mt-2 z-50 rounded-xl border border-border bg-popover p-3 shadow-2xl shadow-black/30 animate-in fade-in-0 zoom-in-95",
-          isMobile ? "left-0 right-0 fixed mx-3" : "left-0"
+          isMobile ? "left-0 w-fit max-w-[calc(100vw-1.5rem)]" : "left-0"
         )}>
           {/* Mode toggle */}
           <div className="flex items-center gap-1 mb-2 px-1">
