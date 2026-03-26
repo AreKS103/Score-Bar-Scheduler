@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   X, Building2, Users, UserPlus, Crown, UserMinus,
   CheckCircle, Loader2, Mail, LogOut, ShieldCheck, Inbox, Trash2, Pencil, RefreshCw, XCircle,
+  ArrowRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -52,6 +53,10 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
   const [editingName, setEditingName] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadOrgInitialRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const wasOpenRef = useRef(false);
+
+  // Revoke pending invite (owner only)
+  const [revokingInviteId, setRevokingInviteId] = useState<string | null>(null);
 
   // Invite
   const [inviteEmail, setInviteEmail] = useState('');
@@ -203,9 +208,18 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
   loadOrgInitialRef.current = loadOrgInitial;
 
   useEffect(() => {
+    const justOpened = isOpen && !wasOpenRef.current;
+    wasOpenRef.current = isOpen;
+
     if (!isOpen) return;
-    setInitialLoaded(false);
-    loadOrgInitialRef.current();
+
+    // Only do the full load (with spinner) on the open transition.
+    // If onClose reference changes while modal is already open, skip reload.
+    if (justOpened) {
+      setInitialLoaded(false);
+      loadOrgInitialRef.current();
+    }
+
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
@@ -446,6 +460,25 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
     }
   }
 
+  // ── Revoke pending invite (owner-side) ───────────────────────
+  async function revokeInvite(memberId: string) {
+    setRevokingInviteId(memberId);
+    // Optimistic removal
+    setOrgMembers(prev => prev.filter(m => m.id !== memberId));
+    const res = await fetch('/api/org/members', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ memberId }),
+    });
+    setRevokingInviteId(null);
+    if (!res.ok) {
+      const data = await res.json();
+      // Rollback on failure
+      refreshMembers();
+      alert(data.error ?? 'Failed to revoke invite');
+    }
+  }
+
   // ── Decline invite ─────────────────────────────────────────────
   async function declineInvite(inviteId: string) {
     setDecliningInviteId(inviteId);
@@ -587,10 +620,25 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
                       {/* Role badge with dropdown for owners */}
                       <div className="relative shrink-0" ref={roleDropdownId === m.id ? dropdownRef : undefined}>
                         {m.status === 'invited' ? (
-                          /* Pending invite badge */
-                          <span className="text-[11px] px-2 py-1 rounded-full border font-medium flex items-center gap-1 leading-normal text-yellow-500 bg-yellow-500/10 border-yellow-500/20">
-                            <Loader2 className="w-2.5 h-2.5" /> Pending
-                          </span>
+                          /* Pending invite badge + revoke button for owners */
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] px-2 py-1 rounded-full border font-medium flex items-center gap-1 leading-normal text-yellow-500 bg-yellow-500/10 border-yellow-500/20">
+                              <ArrowRight className="w-2.5 h-2.5" /> Pending
+                            </span>
+                            {isOwner && (
+                              <button
+                                onClick={() => revokeInvite(m.id)}
+                                disabled={revokingInviteId === m.id}
+                                className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                aria-label="Revoke invite"
+                                title="Revoke invite"
+                              >
+                                {revokingInviteId === m.id
+                                  ? <Loader2 className="w-3 h-3 animate-spin" />
+                                  : <XCircle className="w-3 h-3" />}
+                              </button>
+                            )}
+                          </div>
                         ) : isOwner && !m.isYou ? (
                           <button
                             onClick={() => setRoleDropdownId(v => v === m.id ? null : m.id)}
@@ -705,7 +753,7 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
                   {inviteSuccess && (
                     <p className="text-xs text-emerald-500 mt-1.5 flex items-center gap-1 leading-normal">
                       <CheckCircle className="w-3 h-3" />
-                      Invite sent — waiting for them to accept.
+                      Invite sent
                     </p>
                   )}
                 </section>

@@ -56,3 +56,5 @@ supabase/.temp/
 .playwright-mcp
 
 .github/wordpress-plugin-framework.md
+
+.github/agents

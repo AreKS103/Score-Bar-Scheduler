@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { getUserOrgId } from '@/lib/supabase/org';
+import { sendOrgInviteEmail } from '@/lib/mailer';
 
 const adminClient = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -144,6 +145,28 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: insertErr.message }, { status: 500 });
       }
 
+      // ── Send notification email to the existing user ────────────
+      // (fire-and-forget — don't fail the invite if email errors)
+      void (async () => {
+        try {
+          const [orgRes, inviterRes] = await Promise.all([
+            adminClient.from('organizations').select('name').eq('id', orgId).single(),
+            adminClient.auth.admin.getUserById(user.id),
+          ]);
+          const orgName = orgRes.data?.name ?? 'an organization';
+          const inviterEmail = inviterRes.data?.user?.email ?? 'A team member';
+          const origin = req.headers.get('origin')
+            || process.env.NEXT_PUBLIC_SITE_URL
+            || 'http://localhost:3000';
+          await sendOrgInviteEmail({
+            toEmail: trimmedEmail,
+            orgName,
+            invitedByEmail: inviterEmail,
+            acceptUrl: `${origin}/schedule`,
+          });
+        } catch { /* ignore email errors */ }
+      })();
+
       return NextResponse.json({ ok: true, invited: true });
     }
 
@@ -259,7 +282,7 @@ export async function DELETE(req: NextRequest) {
 
     const { data: targetMembership } = await adminClient
       .from('organization_members')
-      .select('user_id, role')
+      .select('user_id, role, status')
       .eq('id', memberId)
       .single();
 
@@ -292,6 +315,21 @@ export async function DELETE(req: NextRequest) {
       .eq('id', memberId);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // ── If this was a pending invite, try to invalidate the email link ──
+    // Only delete the auth user if their email is unconfirmed (created solely by inviteUserByEmail).
+    // This prevents the invite email link from being usable after revocation.
+    if (targetMembership?.status === 'invited' && targetMembership.user_id) {
+      void (async () => {
+        try {
+          const { data } = await adminClient.auth.admin.getUserById(targetMembership.user_id);
+          if (data?.user && !data.user.email_confirmed_at) {
+            await adminClient.auth.admin.deleteUser(targetMembership.user_id);
+          }
+        } catch { /* ignore cleanup errors */ }
+      })();
+    }
+
     return NextResponse.json({ ok: true });
   } catch (err) {
     return NextResponse.json(
