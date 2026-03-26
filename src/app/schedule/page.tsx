@@ -646,17 +646,25 @@ export default function SchedulePage() {
 
   useEmbedRealtime({
     userId,
-    // Also re-check org membership whenever embeds change.
-    // This is a reliable fallback for the org name badge: if the user was
-    // removed from an org their embed list changes, which fires this hook.
-    // The org realtime channel can silently miss the UPDATE event without
-    // REPLICA IDENTITY FULL, so this dual-trigger ensures the badge clears.
-    onChange: () => {
-      loadEmbedInstances();
-      handleOrgRealtimeChange();
-    },
+    onChange: loadEmbedInstances,
     enabled: !!userId,
   });
+
+  // ── Broadcast channel: server-side push for org membership changes ────
+  // This is the primary notification path for member removal. The removal
+  // API sends a Broadcast message to `user-push:${userId}` which arrives
+  // instantly — unlike postgres_changes which depends on REPLICA IDENTITY.
+  useEffect(() => {
+    if (!userId) return;
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`user-push:${userId}`)
+      .on('broadcast', { event: 'org-membership-changed' }, () => {
+        handleOrgRealtimeChange();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [userId, handleOrgRealtimeChange]);
 
   async function handleLogout() {
     if (isSupabaseConfigured()) {

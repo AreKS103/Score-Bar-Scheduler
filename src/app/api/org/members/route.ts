@@ -309,25 +309,30 @@ export async function DELETE(req: NextRequest) {
       }
     }
 
-    // Set status to 'removed' so the Supabase Realtime UPDATE event
-    // fires for the removed user (DELETE events are not filterable by column).
-    // This lets the removed member's client detect the change in real-time.
-    const { error: updateError } = await adminClient
+    // Delete the membership row immediately.
+    const { error: deleteError } = await adminClient
       .from('organization_members')
-      .update({ status: 'removed' })
+      .delete()
       .eq('id', memberId);
 
-    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+    if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 });
 
-    // Delete the row in the background after a short delay so Supabase
-    // Realtime has time to deliver the UPDATE event to connected clients.
-    void (async () => {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      await adminClient
-        .from('organization_members')
-        .delete()
-        .eq('id', memberId);
-    })();
+    // Push a Realtime Broadcast message directly to the removed user's
+    // personal channel. This is instant and does not rely on postgres_changes
+    // (which requires REPLICA IDENTITY FULL for non-PK column filters).
+    if (targetMembership?.user_id) {
+      const channelName = `user-push:${targetMembership.user_id}`;
+      const channel = adminClient.channel(channelName);
+      channel.subscribe((status) => {
+        if (status !== 'SUBSCRIBED') return;
+        channel.send({
+          type: 'broadcast',
+          event: 'org-membership-changed',
+          payload: {},
+        }).then(() => adminClient.removeChannel(channel));
+      });
+      // Fire-and-forget: don't block the response on broadcast delivery
+    }
 
     // ── If this was a pending invite, try to invalidate the email link ──
     // Only delete the auth user if their email is unconfirmed (created solely by inviteUserByEmail).
