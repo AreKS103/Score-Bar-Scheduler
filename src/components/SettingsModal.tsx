@@ -323,7 +323,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     type="text"
                     value={username}
                     onChange={e => setUsername(e.target.value)}
-                    placeholder={userEmail ?? 'Enter a display name'}
+                    placeholder={userEmail?.split('@')[0] ?? ''}
                     maxLength={50}
                     className={cn(
                       'flex-1 px-3 py-2 rounded-md text-sm border border-border bg-secondary/40',
@@ -340,9 +340,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     }
                   </Button>
                 </div>
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  Shown in publish history and across the app. Leave empty to use your email.
-                </p>
               </div>
 
               {/* Phone */}

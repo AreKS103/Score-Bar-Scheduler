@@ -623,6 +623,10 @@ export default function SchedulePage() {
       }
       // No org — clear state, refresh embeds (remove former org members' embeds)
       setOrgName(null);
+      setPublishTarget('');
+      didAutoSelectEmbed.current = false;
+      setPreviewOpen(false);
+      setPreviewCheckedIds(new Set());
       loadEmbedInstances();
       try {
         const invitesRes = await fetch('/api/org/invites');
@@ -642,7 +646,15 @@ export default function SchedulePage() {
 
   useEmbedRealtime({
     userId,
-    onChange: loadEmbedInstances,
+    // Also re-check org membership whenever embeds change.
+    // This is a reliable fallback for the org name badge: if the user was
+    // removed from an org their embed list changes, which fires this hook.
+    // The org realtime channel can silently miss the UPDATE event without
+    // REPLICA IDENTITY FULL, so this dual-trigger ensures the badge clears.
+    onChange: () => {
+      loadEmbedInstances();
+      handleOrgRealtimeChange();
+    },
     enabled: !!userId,
   });
 

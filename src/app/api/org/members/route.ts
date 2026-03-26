@@ -309,21 +309,25 @@ export async function DELETE(req: NextRequest) {
       }
     }
 
-    // First, set status to 'removed' so the Supabase Realtime UPDATE event
+    // Set status to 'removed' so the Supabase Realtime UPDATE event
     // fires for the removed user (DELETE events are not filterable by column).
     // This lets the removed member's client detect the change in real-time.
-    await adminClient
+    const { error: updateError } = await adminClient
       .from('organization_members')
       .update({ status: 'removed' })
       .eq('id', memberId);
 
-    // Now delete the row
-    const { error } = await adminClient
-      .from('organization_members')
-      .delete()
-      .eq('id', memberId);
+    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    // Delete the row in the background after a short delay so Supabase
+    // Realtime has time to deliver the UPDATE event to connected clients.
+    void (async () => {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      await adminClient
+        .from('organization_members')
+        .delete()
+        .eq('id', memberId);
+    })();
 
     // ── If this was a pending invite, try to invalidate the email link ──
     // Only delete the auth user if their email is unconfirmed (created solely by inviteUserByEmail).
