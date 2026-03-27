@@ -256,6 +256,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ apiKey: string }> }
 ) {
+  try {
   const { apiKey } = await params;
   const sp = Object.fromEntries(request.nextUrl.searchParams.entries());
 
@@ -435,7 +436,7 @@ export async function GET(
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
         'Content-Security-Policy': 'frame-ancestors *',
-        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=86400, stale-if-error=604800',
       },
     });
   }
@@ -471,7 +472,21 @@ export async function GET(
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
       'X-Frame-Options': 'ALLOWALL',
-      'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+      'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=86400, stale-if-error=604800',
     },
   });
+  } catch (err) {
+    // Graceful fallback: if the server crashes, return a lightweight HTML page
+    // that auto-retries instead of a broken embed. The stale-if-error CDN
+    // cache should prevent this from ever being reached in normal operation.
+    console.error('[Embed] Unhandled error in GET handler:', err);
+    const fallbackHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:transparent;padding:12px;color:#9ca3af}</style></head><body><div style="display:inline-flex;align-items:center;gap:8px;font-size:13px;border:1px dashed #d1d5db;border-radius:8px;padding:10px 16px;background:#f9fafb"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>Schedule temporarily unavailable. Retrying&hellip;</div><script>setTimeout(function(){location.reload();},30000);</script></body></html>`;
+    return new Response(fallbackHtml, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store',
+      },
+    });
+  }
 }
