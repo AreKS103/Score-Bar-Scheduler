@@ -1739,7 +1739,7 @@ export default function SchedulePage() {
 
         {/* Pinned user profile at bottom */}
         <div className="shrink-0 border-t border-border px-2 py-1.5">
-          <UserProfileMenu email={userEmail} username={userUsername} onLogout={handleLogout} onBusinessInfo={() => setBusinessInfoOpen(true)} onSettings={() => setSettingsOpen(true)} onOrgManage={() => setOrgModalOpen(true)} businessLogoUrl={businessLogoUrl} orgName={orgName} />
+          <UserProfileMenu email={userEmail} username={userUsername} onLogout={handleLogout} onBusinessInfo={() => setBusinessInfoOpen(true)} onSettings={() => setSettingsOpen(true)} onOrgManage={() => setOrgModalOpen(true)} businessLogoUrl={businessLogoUrl} orgName={orgName} pendingInviteCount={pendingInvites.length} />
         </div>
       </aside>
 
@@ -2022,9 +2022,10 @@ export default function SchedulePage() {
         ref={toggleBtnRef}
         onClick={() => { setPreviewOpen((o) => !o); setDeleteAllConfirm(false); }}
         title={previewOpen ? 'Close preview' : 'Open preview'}
+        style={{ transition: 'right 150ms ease-in-out, color 150ms, background-color 150ms' }}
         className={cn(
           // z-90 keeps this below the header (z-100) so header dropdowns render above it
-          "fixed z-90 top-1/2 -translate-y-1/2 flex flex-col items-center justify-center bg-secondary border border-border border-r-0 rounded-l-md px-2.5 py-5 md:px-1 md:py-3 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors",
+          "fixed z-90 top-1/2 -translate-y-1/2 flex flex-col items-center justify-center bg-secondary border border-border border-r-0 rounded-l-md px-2.5 py-5 md:px-1 md:py-3 text-muted-foreground hover:text-foreground hover:bg-accent",
           // On mobile, hide when preview open (panel is full-width, button would clip off-screen)
           previewOpen && "max-md:hidden"
         )}

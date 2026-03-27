@@ -26,8 +26,11 @@ export async function GET(request: NextRequest) {
       if (type === 'recovery') {
         return NextResponse.redirect(new URL('/reset-password', origin));
       }
-      // Verification succeeded — redirect into the app
-      return NextResponse.redirect(new URL(next, origin));
+      // Verification succeeded — redirect into the app.
+      // Validate that `next` stays on the same origin to prevent open redirects.
+      const redirectUrl = new URL(next, origin);
+      const safeNext = redirectUrl.origin === origin ? redirectUrl : new URL('/schedule', origin);
+      return NextResponse.redirect(safeNext);
     }
   }
 

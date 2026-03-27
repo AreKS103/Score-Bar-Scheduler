@@ -58,3 +58,8 @@ supabase/.temp/
 .github/wordpress-plugin-framework.md
 
 .github/agents
+
+# RuFlo / Claude Code local config
+.claude/
+.claude-flow/
+.swarm/
