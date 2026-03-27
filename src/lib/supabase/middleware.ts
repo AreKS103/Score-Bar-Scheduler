@@ -100,11 +100,10 @@ export async function updateSession(request: NextRequest) {
 
   return supabaseResponse;
   } catch (err) {
-    // If anything goes wrong (network error, malformed token, etc.) redirect
-    // to login rather than silently passing the request through unauthenticated.
-    console.error('[Middleware] updateSession error — redirecting to login:', err);
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    return NextResponse.redirect(url);
+    // If anything goes wrong (network error, malformed token, etc.) fall through
+    // rather than redirecting — a redirect here would break /embed/ and /api/ paths
+    // whose exclusion checks are inside the try block above getUser().
+    console.error('[Middleware] updateSession error — falling through:', err);
+    return NextResponse.next({ request });
   }
 }

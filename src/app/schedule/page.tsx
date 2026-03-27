@@ -279,7 +279,7 @@ export default function SchedulePage() {
         // Restore user-sorted order from localStorage
         const savedOrder = (() => {
           try {
-            const raw = typeof window !== 'undefined' && localStorage.getItem('sportglobe_embed_order_v1');
+            const raw = typeof window !== 'undefined' && localStorage.getItem('scorebar_embed_order_v1');
             return raw ? (JSON.parse(raw) as string[]) : null;
           } catch { return null; }
         })();
