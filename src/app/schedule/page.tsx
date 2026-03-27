@@ -312,6 +312,14 @@ export default function SchedulePage() {
     return () => clearInterval(id);
   }, [loadEmbedInstances]);
 
+  // ─── Delete embed instance (manual cleanup from web app) ──────────────────
+  const handleDeleteEmbed = useCallback(async (embedId: string) => {
+    try {
+      await fetch(`/api/embed-instances?embedId=${encodeURIComponent(embedId)}`, { method: 'DELETE' });
+    } catch { /* ignore */ }
+    loadEmbedInstances();
+  }, [loadEmbedInstances]);
+
   // ─── Rename embed instance ─────────────────────────────────────────────────
   async function commitRename(oldId: string) {
     const trimmed = renameValue.trim();
@@ -2130,6 +2138,7 @@ export default function SchedulePage() {
                   onRenameCommit={(val) => commitRename(val)}
                   onRenameCancel={() => setRenamingId(null)}
                   onReorder={(next) => setEmbedInstances(next)}
+                  onDelete={handleDeleteEmbed}
                 />
               </div>
 
@@ -2156,16 +2165,24 @@ export default function SchedulePage() {
                         const val = inst.embed_id ?? inst.display_id;
                         const isActive = val === publishTarget || (!publishTarget && inst === embedInstances[0]);
                         return (
-                          <button
-                            key={val}
-                            onClick={() => { setPublishTarget(val); setEmbedDropdownOpen(false); }}
-                            className={cn(
-                              'w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors truncate block',
-                              isActive && 'text-primary font-medium bg-primary/10',
-                            )}
-                          >
-                            {inst.display_id}
-                          </button>
+                          <div key={val} className="flex items-center group">
+                            <button
+                              onClick={() => { setPublishTarget(val); setEmbedDropdownOpen(false); }}
+                              className={cn(
+                                'flex-1 text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors truncate',
+                                isActive && 'text-primary font-medium bg-primary/10',
+                              )}
+                            >
+                              {inst.display_id}
+                            </button>
+                            <button
+                              onClick={() => { setEmbedDropdownOpen(false); handleDeleteEmbed(inst.embed_id ?? '__null__'); }}
+                              title={`Remove "${inst.display_id}" embed registration`}
+                              className="shrink-0 px-2 py-1.5 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
                         );
                       })}
                     </div>

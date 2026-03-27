@@ -12,6 +12,7 @@
  */
 
 import { useState, useRef } from 'react';
+import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface EmbedInstance {
@@ -30,6 +31,7 @@ interface Props {
   onRenameCommit: (value: string) => void;
   onRenameCancel: () => void;
   onReorder: (next: EmbedInstance[]) => void;
+  onDelete?: (embedId: string) => void;
 }
 
 interface DragState {
@@ -52,6 +54,7 @@ export default function DraggableEmbedPills({
   onRenameCommit,
   onRenameCancel,
   onReorder,
+  onDelete,
 }: Props) {
   const [drag, setDrag] = useState<DragState | null>(null);
   // Suppresses CSS transitions for the render cycle immediately after a drop,
@@ -198,7 +201,7 @@ export default function DraggableEmbedPills({
           <div
             key={inst.display_id}
             ref={el => { pillRefs.current[i] = el; }}
-            className="inline-flex"
+            className="inline-flex relative group"
             style={{
               transform: `translateX(${tx}px)`,
               transition: (isDragging || suppressTransition)
@@ -225,28 +228,40 @@ export default function DraggableEmbedPills({
                 onBlur={() => onRenameCommit(value)}
               />
             ) : (
-              <button
-                draggable={false}
-                title={drag ? undefined : 'Double-click to rename — drag to reorder'}
-                className={cn(
-                  'text-[11px] px-2 py-0.5 rounded-full border select-none touch-none',
-                  isDragging
-                    ? cn(
-                        'cursor-grabbing',
-                        publishTarget === value
-                          ? 'bg-primary text-primary-foreground border-primary shadow-lg shadow-black/40 scale-105'
-                          : 'bg-background border-border text-muted-foreground shadow-lg shadow-black/40 scale-105',
-                      )
-                    : cn(
-                        'cursor-grab transition-all',
-                        publishTarget === value
-                          ? 'bg-primary text-primary-foreground border-primary'
-                          : 'bg-background border-border text-muted-foreground hover:text-foreground hover:border-foreground/30',
-                      ),
+              <>
+                <button
+                  draggable={false}
+                  title={drag ? undefined : 'Double-click to rename — drag to reorder'}
+                  className={cn(
+                    'text-[11px] px-2 py-0.5 rounded-full border select-none touch-none',
+                    isDragging
+                      ? cn(
+                          'cursor-grabbing',
+                          publishTarget === value
+                            ? 'bg-primary text-primary-foreground border-primary shadow-lg shadow-black/40 scale-105'
+                            : 'bg-background border-border text-muted-foreground shadow-lg shadow-black/40 scale-105',
+                        )
+                      : cn(
+                          'cursor-grab transition-all',
+                          publishTarget === value
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-background border-border text-muted-foreground hover:text-foreground hover:border-foreground/30',
+                        ),
+                  )}
+                >
+                  {inst.display_id}
+                </button>
+                {onDelete && (
+                  <button
+                    className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-destructive text-destructive-foreground items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110 z-10 hidden group-hover:flex"
+                    title={`Remove "${inst.display_id}" embed registration`}
+                    onPointerDown={e => e.stopPropagation()}
+                    onClick={e => { e.stopPropagation(); onDelete(inst.embed_id ?? '__null__'); }}
+                  >
+                    <X className="w-2.5 h-2.5" />
+                  </button>
                 )}
-              >
-                {inst.display_id}
-              </button>
+              </>
             )}
           </div>
         );

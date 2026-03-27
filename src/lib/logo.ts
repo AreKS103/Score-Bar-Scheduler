@@ -1,7 +1,10 @@
 // The absolute Base URL pointing to this app's deployed public folder.
 // This is used for generating absolute URLs for the WordPress integration
 // so it doesn't 404. Github Raw won't work because the repo is private.
-const APP_PUBLIC_BASE = 'https://score-bar-scheduler.vercel.app';
+// Uses NEXT_PUBLIC_APP_URL env var so it works across domain renames.
+const APP_PUBLIC_BASE =
+  (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '') ||
+  'https://scorebar.vercel.app';
 
 export const LOGO_PLACEHOLDER_LOCAL = '/file.svg';
 export const LOGO_PLACEHOLDER_REMOTE = `${APP_PUBLIC_BASE}/file.svg`;

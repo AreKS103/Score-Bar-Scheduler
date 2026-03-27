@@ -28,7 +28,7 @@ if (!defined('SCHEDULE_PLUGIN_URL')) {
 
 // The Vercel app URL is hardcoded — the plugin is purpose-built for this endpoint.
 if (!defined('SCHEDULE_APP_DOMAIN')) {
-    define('SCHEDULE_APP_DOMAIN', 'https://score-bar-scheduler.vercel.app');
+    define('SCHEDULE_APP_DOMAIN', 'https://scorebar.vercel.app');
 }
 
 // Backward-compatible helper used by settings.php, shortcode.php, elementor-widget.php.

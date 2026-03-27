@@ -29,7 +29,7 @@ if (!defined('SCOREBAR_APP_VERCEL_DOMAIN')) {
             $is_local = strpos($home_url, 'localhost') !== false || strpos($home_url, '127.0.0.1') !== false || strpos($home_url, '.local') !== false;
         }
 
-        define('SCOREBAR_APP_VERCEL_DOMAIN', $is_local ? 'http://localhost:3000' : 'https://score-bar-scheduler.vercel.app');
+        define('SCOREBAR_APP_VERCEL_DOMAIN', $is_local ? 'http://localhost:3000' : 'https://scorebar.vercel.app');
     }
 }
 
