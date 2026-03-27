@@ -71,7 +71,9 @@ export async function PATCH(req: NextRequest) {
       .eq('user_id', user.id)
       .single();
 
-    if (!membership) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (!membership || membership.role !== 'owner') {
+      return NextResponse.json({ error: 'Only the org owner can rename it' }, { status: 403 });
+    }
 
     const newSlug = slugify(name.trim());
     const { error } = await adminClient

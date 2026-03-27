@@ -84,7 +84,8 @@ function buildEmbedPage(
     ? 'border-bottom-color:var(--tab-active);background:transparent;color:var(--tab-active)'
     : 'background:var(--tab-active);color:var(--tab-active-text);border-color:var(--tab-active)';
 
-  const tabsHTML = hasTabs ? `\n<div id="sport-tabs" role="tablist">\n  <button class="tab active" data-cat="all" role="tab" aria-selected="true">All</button>\n  ${foundCategories.map((c) => `<button class="tab" data-cat="${c.toLowerCase().replace(/\s+/g, '-')}" role="tab">${opts.catLabels?.[c] || c}</button>`).join('\n  ')}\n</div>` : '';
+  const escCatLabel = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const tabsHTML = hasTabs ? `\n<div id="sport-tabs" role="tablist">\n  <button class="tab active" data-cat="all" role="tab" aria-selected="true">All</button>\n  ${foundCategories.map((c) => `<button class="tab" data-cat="${c.toLowerCase().replace(/\s+/g, '-')}" role="tab">${escCatLabel(opts.catLabels?.[c] || c)}</button>`).join('\n  ')}\n</div>` : '';
 
   const bgOverride   = opts.bgColor || '';
   const textOverride = opts.textColor || '';
@@ -152,7 +153,7 @@ ${isCard ? `.league-block{background:var(--card-bg);border:1px solid var(--borde
   const cardJS = isCard ? `<script>\nwindow._sbWrapCards=function(c){\n    var f=document.createDocumentFragment(),b=null;\n    while(c.firstChild){\n      var n=c.firstChild;c.removeChild(n);\n      var isImg=n.nodeType===1&&n.tagName==='IMG'&&n.getAttribute&&n.getAttribute('data-preview-league');\n      if(isImg){if(b)f.appendChild(b);b=document.createElement('div');b.className='league-block';b.appendChild(n);}\n      else if(b){b.appendChild(n);}\n      else{f.appendChild(n);}\n    }\n    if(b)f.appendChild(b);c.appendChild(f);\n  };\n(function(){\n  var s=document.querySelectorAll('.sport-section,.sport-always');\n  if(s.length>0){s.forEach(window._sbWrapCards);}else{var sc=document.querySelector('.schedule-content');if(sc)window._sbWrapCards(sc);}\n  try{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}catch(e){}\n})();\n</script>` : '';
 
   const resizeJS = `\n<script>\n(function(){\n  function send(){ try{ window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*'); }catch(e){} }\n  if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded',send); } else { send(); }\n  if(typeof ResizeObserver!=='undefined'){ new ResizeObserver(send).observe(document.body); }\n})();\n</script>`;
-  const styleJS = `\n<script>\n(function(){\n  window.addEventListener('message',function(e){\n    if(!e.data||!e.data.sbStyle)return;\n    var r=document.documentElement;var s=e.data.sbStyle;\n    if(s.matchFontSize)r.style.setProperty('--sb-match-size',s.matchFontSize);\n    if(s.dateFontSize)r.style.setProperty('--sb-date-size',s.dateFontSize);\n    if(s.headerSize)r.style.setProperty('--sb-h3-size',s.headerSize);\n    if(s.logoHeight)r.style.setProperty('--sb-logo-height',s.logoHeight);\n    if(s.hlFontSize)r.style.setProperty('--sb-hl-size',s.hlFontSize);\n  });\n})();\n</script>`;
+  const styleJS = `\n<script>\n(function(){\n  var CSS_SIZE=/^\\d+(\\.\\d+)?(px|em|rem|%)$/;\n  window.addEventListener('message',function(e){\n    if(!e.data||!e.data.sbStyle)return;\n    var r=document.documentElement;var s=e.data.sbStyle;\n    if(s.matchFontSize&&CSS_SIZE.test(s.matchFontSize))r.style.setProperty('--sb-match-size',s.matchFontSize);\n    if(s.dateFontSize&&CSS_SIZE.test(s.dateFontSize))r.style.setProperty('--sb-date-size',s.dateFontSize);\n    if(s.headerSize&&CSS_SIZE.test(s.headerSize))r.style.setProperty('--sb-h3-size',s.headerSize);\n    if(s.logoHeight&&CSS_SIZE.test(s.logoHeight))r.style.setProperty('--sb-logo-height',s.logoHeight);\n    if(s.hlFontSize&&CSS_SIZE.test(s.hlFontSize))r.style.setProperty('--sb-hl-size',s.hlFontSize);\n  });\n})();\n</script>`;
 
   const noCopyJS = opts.noCopy ? `\n<script>\n(function(){\n  var s=document.createElement('style');s.textContent='*{-webkit-user-select:none!important;user-select:none!important;-moz-user-select:none!important}';\n  document.head.appendChild(s);\n  function b(e){e.preventDefault();return false;}\n  document.addEventListener('contextmenu',b,false);\n  document.addEventListener('selectstart',b,false);\n  document.addEventListener('copy',b,false);\n  document.addEventListener('cut',b,false);\n  document.addEventListener('keydown',function(e){\n    if((e.ctrlKey||e.metaKey)&&['a','c','u','s','p'].indexOf(e.key.toLowerCase())>=0)b(e);\n  });\n  document.addEventListener('dragstart',b,false);\n})();\n</script>` : '';
 
@@ -236,7 +237,7 @@ body{padding:${paddingVal}px}
 
   const pollJS = `\n<script>\n(function(){\n  var INTERVAL=15000;\n  var root=document.getElementById('schedule-root');\n  if(!root)return;\n  var serial=root.getAttribute('data-serial')||'';\n  var base=location.href.split('#')[0];\n  var sep=base.indexOf('?')>=0?'&':'?';\n  var pollUrl=base+sep+'_poll=1';\n  function applyContent(d){\n    if(d.empty){\n      root.innerHTML='<div style="display:inline-flex;align-items:center;gap:8px;font-size:13px;border:1px dashed #d1d5db;border-radius:8px;padding:10px 16px;background:#f9fafb;color:#9ca3af">No schedule published yet.</div>';\n      root.setAttribute('data-serial','none');serial='none';\n      try{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}catch(e){}\n      return;\n    }\n    root.innerHTML=d.html;\n    root.setAttribute('data-serial',d.serial);serial=d.serial;\n    try{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}catch(e){}\n  }\n  function poll(){\n    fetch(pollUrl,{cache:'no-store'})\n      .then(function(r){return r.ok?r.json():null;})\n      .then(function(d){if(d&&d.serial!==serial)applyContent(d);})\n      .catch(function(){});\n  }\n  setInterval(poll,INTERVAL);\n  window.addEventListener('message',function(ev){\n    if(ev.data&&ev.data.sbRefresh)poll();\n  });\n})();\n</script>`;
 
-  const styleJSCal = `\n<script>\n(function(){\n  window.addEventListener('message',function(e){\n    if(!e.data||!e.data.sbStyle)return;\n    var r=document.documentElement;var s=e.data.sbStyle;\n    if(s.hlFontSize)r.style.setProperty('--sb-hl-size',s.hlFontSize);\n    if(s.headerSize)r.style.setProperty('--sb-h3-size',s.headerSize);\n    if(s.dateFontSize)r.style.setProperty('--sb-date-size',s.dateFontSize);\n  });\n})();\n</script>`;
+  const styleJSCal = `\n<script>\n(function(){\n  var CSS_SIZE=/^\\d+(\\.\\d+)?(px|em|rem|%)$/;\n  window.addEventListener('message',function(e){\n    if(!e.data||!e.data.sbStyle)return;\n    var r=document.documentElement;var s=e.data.sbStyle;\n    if(s.hlFontSize&&CSS_SIZE.test(s.hlFontSize))r.style.setProperty('--sb-hl-size',s.hlFontSize);\n    if(s.headerSize&&CSS_SIZE.test(s.headerSize))r.style.setProperty('--sb-h3-size',s.headerSize);\n    if(s.dateFontSize&&CSS_SIZE.test(s.dateFontSize))r.style.setProperty('--sb-date-size',s.dateFontSize);\n  });\n})();\n</script>`;
 
   const noCopyJSCal = opts.noCopy ? `\n<script>\n(function(){\n  var s=document.createElement('style');s.textContent='*{-webkit-user-select:none!important;user-select:none!important;-moz-user-select:none!important}';\n  document.head.appendChild(s);\n  function b(e){e.preventDefault();return false;}\n  document.addEventListener('contextmenu',b,false);\n  document.addEventListener('selectstart',b,false);\n  document.addEventListener('copy',b,false);\n  document.addEventListener('cut',b,false);\n  document.addEventListener('keydown',function(e){\n    if((e.ctrlKey||e.metaKey)&&['a','c','u','s','p'].indexOf(e.key.toLowerCase())>=0)b(e);\n  });\n  document.addEventListener('dragstart',b,false);\n})();\n</script>` : '';
 
@@ -255,6 +256,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ apiKey: string }> }
 ) {
+  try {
   const { apiKey } = await params;
   const sp = Object.fromEntries(request.nextUrl.searchParams.entries());
 
@@ -433,8 +435,8 @@ export async function GET(
       status: 200,
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
-        'X-Frame-Options': 'ALLOWALL',
-        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+        'Content-Security-Policy': 'frame-ancestors *',
+        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=86400, stale-if-error=604800',
       },
     });
   }
@@ -457,7 +459,7 @@ export async function GET(
   if (sp._poll === '1') {
     const hasTabs = opts.showSportTabs && categories.length > 1;
     const tabsHtml = hasTabs
-      ? `<div id="sport-tabs" role="tablist"><button class="tab active" data-cat="all" role="tab" aria-selected="true">All</button>${categories.map((c) => `<button class="tab" data-cat="${c.toLowerCase().replace(/\s+/g, '-')}" role="tab">${(opts.catLabels?.[c] || c).replace(/</g, '&lt;')}</button>`).join('')}</div>`
+      ? `<div id="sport-tabs" role="tablist"><button class="tab active" data-cat="all" role="tab" aria-selected="true">All</button>${categories.map((c) => `<button class="tab" data-cat="${c.toLowerCase().replace(/\s+/g, '-')}" role="tab">${(opts.catLabels?.[c] || c).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}</button>`).join('')}</div>`
       : '';
     return Response.json(
       { serial: scheduleAt, html: scheduleContent, tabsHtml, hasTabs, empty: false },
@@ -470,7 +472,21 @@ export async function GET(
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
       'X-Frame-Options': 'ALLOWALL',
-      'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+      'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=86400, stale-if-error=604800',
     },
   });
+  } catch (err) {
+    // Graceful fallback: if the server crashes, return a lightweight HTML page
+    // that auto-retries instead of a broken embed. The stale-if-error CDN
+    // cache should prevent this from ever being reached in normal operation.
+    console.error('[Embed] Unhandled error in GET handler:', err);
+    const fallbackHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:transparent;padding:12px;color:#9ca3af}</style></head><body><div style="display:inline-flex;align-items:center;gap:8px;font-size:13px;border:1px dashed #d1d5db;border-radius:8px;padding:10px 16px;background:#f9fafb"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>Schedule temporarily unavailable. Retrying&hellip;</div><script>setTimeout(function(){location.reload();},30000);</script></body></html>`;
+    return new Response(fallbackHtml, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store',
+      },
+    });
+  }
 }

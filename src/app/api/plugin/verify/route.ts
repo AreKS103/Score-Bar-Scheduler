@@ -81,6 +81,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     let userId: string | null = keyData?.user_id ?? null;
+    let foundByHash = userId !== null;
 
     // ── Step 2: Key not found by hash — try by siteUrl (handles key
     //    regeneration where WordPress still holds the old token but the
@@ -98,12 +99,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid API Key' }, { status: 401, headers: corsHeaders });
     }
 
-    // ── Step 3: Always write the canonical hash + site back to the DB so
-    //    WordPress and Supabase are always in sync after every verify call ──
+    // ── Step 3: Sync DB — only update key_hash when the user was found by
+    //    their own valid hash (Step 1). If found via siteUrl fallback (Step 2),
+    //    do NOT overwrite key_hash — an unverified caller must not be able to
+    //    replace a victim's stored hash with their own key. ──────────────────
     const updatePayload: Record<string, string> = {
-      key_hash:   hash,
       updated_at: new Date().toISOString(),
     };
+    if (foundByHash) updatePayload.key_hash = hash;
     if (siteUrl) updatePayload.connected_site = siteUrl;
 
     const { error: updateErr } = await supabase

@@ -51,6 +51,7 @@ const LOCAL_LEAGUE_LOGOS: Record<string, string> = {
   'tennis-atp': '/league-logos/tennis-atp.png',
   'golf-pga': '/league-logos/golf-pga.svg',
   'golf-lpga': '/league-logos/golf-lpga.png',
+  'cycling-uci': '/league-logos/cycling-uci.png',
 };
 
 export const SPORTS_CONFIG: SportConfig[] = [
@@ -133,7 +134,8 @@ export const SPORTS_CONFIG: SportConfig[] = [
   // ── Golf ───────────────────────────────────────────────────────────────────
   { id: 'golf-pga',              label: 'PGA Tour',                           category: 'Golf',        espnSlug: 'golf/pga',                  logo: '/PGA_Tour_logo.svg' },
   { id: 'golf-lpga',             label: 'LPGA Tour',                          category: 'Golf',        espnSlug: 'golf/lpga',                 logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/lpga.png' },
-].map((sport) => ({
+  // ── Cycling ────────────────────────────────────────────────────────────────
+  { id: 'cycling-uci',           label: 'UCI World Tour',                     category: 'Cycling',     espnSlug: null,                        sportsdbId: '4465', logo: 'https://r2.thesportsdb.com/images/media/league/badge/igahc11535183469.png' },].map((sport) => ({
   ...sport,
   logo: LOCAL_LEAGUE_LOGOS[sport.id] ?? sport.logo,
   publishLogo: sport.publishLogo,
@@ -153,6 +155,7 @@ export const CATEGORY_ORDER = [
   'Australian Football',
   'Tennis',
   'Golf',
+  'Cycling',
 ];
 
 export const FOOTBALL_LEAGUE_ORDER = [
@@ -206,6 +209,7 @@ export const CATEGORY_LOGOS: Record<string, string> = {
   'Australian Football': 'https://a.espncdn.com/i/teamlogos/leagues/500/afl.png',
   'Tennis':              'https://r2.thesportsdb.com/images/media/league/badge/q7aej51769857150.png',
   'Golf':                'https://a.espncdn.com/combiner/i?img=/i/teamlogos/leagues/500/pgatour.png',
+  'Cycling':             'https://r2.thesportsdb.com/images/media/league/badge/igahc11535183469.png',
 };
 
 export function getSportConfig(sportId: string): SportConfig | undefined {

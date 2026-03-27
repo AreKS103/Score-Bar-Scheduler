@@ -131,6 +131,17 @@ function mapSportsDBEvent(
     if (parsed.cardName) leagueLabel = parsed.cardName;
   }
 
+  // For cycling, format stage races with a dash separator: "Volta a Catalunya Stage 6" → "Volta a Catalunya – Stage 6"
+  if (sportConfig.category === 'Cycling' && !event.strHomeTeam && event.strEvent) {
+    const stageMatch = event.strEvent.match(/^(.+?)\s+Stage\s+(\d+)$/i);
+    if (stageMatch) {
+      home = `${stageMatch[1]} \u2013 Stage ${stageMatch[2]}`;
+    } else {
+      home = event.strEvent;
+    }
+    away = '';
+  }
+
   return {
     id: `sportsdb-${event.idEvent}`,
     source: 'sportsdb' as const,
@@ -212,9 +223,13 @@ export async function fetchSportsDBLeague(
   const seasons = getSmartSeasons();
   let allEvents: SportsDBEvent[] = [];
 
+  // Track which seasons actually returned events — needed for targeted round-by-round fallback.
+  const seasonsWithData: string[] = [];
+
   // Try eventsseason.php sequentially with a small gap between requests
   for (let i = 0; i < seasons.length; i++) {
     const events = await fetchLeagueSeason(config.sportsdbId, seasons[i]);
+    if (events.length > 0) seasonsWithData.push(seasons[i]);
     allEvents = [...allEvents, ...events];
     if (i < seasons.length - 1) await wait(150);
   }
@@ -222,15 +237,17 @@ export async function fetchSportsDBLeague(
   // Only fall back to round-by-round when eventsseason returned SOME but
   // limited events (1-20 → free-tier truncation). 0 means the league
   // simply doesn't exist in that season — no point fetching rounds.
+  //
+  // IMPORTANT: Run round-by-round for the seasons that actually returned
+  // data, not just hyphenated ones. Single-year seasons (e.g. "2026" for
+  // UCI World Tour, MotoGP) are equally affected by the 15-event cap.
   if (allEvents.length > 0 && allEvents.length <= 20) {
     console.log(
-      `[SportsDB] League ${config.sportsdbId} (${config.label}): ${allEvents.length} events from eventsseason → trying round-by-round`
+      `[SportsDB] League ${config.sportsdbId} (${config.label}): ${allEvents.length} events from eventsseason → trying round-by-round for seasons: ${seasonsWithData.join(', ')}`
     );
-    for (const season of seasons) {
-      if (season.includes('-')) {
-        const roundEvents = await fetchLeagueByRounds(config.sportsdbId, season);
-        allEvents = [...allEvents, ...roundEvents];
-      }
+    for (const season of seasonsWithData) {
+      const roundEvents = await fetchLeagueByRounds(config.sportsdbId, season);
+      allEvents = [...allEvents, ...roundEvents];
     }
   }
 

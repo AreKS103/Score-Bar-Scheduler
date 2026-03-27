@@ -100,8 +100,9 @@ export async function updateSession(request: NextRequest) {
 
   return supabaseResponse;
   } catch (err) {
-    // If anything goes wrong (network error, malformed token, etc.) just
-    // allow the request through instead of surfacing a 404/500.
+    // If anything goes wrong (network error, malformed token, etc.) fall through
+    // rather than redirecting — a redirect here would break /embed/ and /api/ paths
+    // whose exclusion checks are inside the try block above getUser().
     console.error('[Middleware] updateSession error — falling through:', err);
     return NextResponse.next({ request });
   }
