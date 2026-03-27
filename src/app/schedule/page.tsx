@@ -191,9 +191,11 @@ export default function SchedulePage() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [userUsername, setUserUsername] = useState<string | null>(null);
+  const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
   const [businessName, setBusinessName] = useState<string | null>(null);
   const [businessLogoUrl, setBusinessLogoUrl] = useState<string | null>(null);
   const [orgName, setOrgName] = useState<string | null>(null);
+  const [isOwner, setIsOwner] = useState(true); // default true — solo users always have full control
   const [pendingInvites, setPendingInvites] = useState<Array<{
     id: string; orgId: string; orgName: string; orgSlug: string; invitedBy: string; invitedAt: string;
   }>>([]);
@@ -541,6 +543,9 @@ export default function SchedulePage() {
       if (error) { router.push('/login'); return; }
       setUserEmail(data.user?.email ?? null);
       setUserId(data.user?.id ?? null);
+      setUserAvatarUrl(
+        (data.user?.user_metadata?.avatar_url as string | undefined) ?? null
+      );
 
       // Lazy-bootstrap org: ensure user has at least one organization
       if (data.user?.id) {
@@ -550,6 +555,8 @@ export default function SchedulePage() {
             const { organizations } = await orgRes.json();
             if (organizations?.length > 0) {
               setOrgName(organizations[0].name ?? null);
+              // Determine if user is owner so we can gate destructive actions
+              setIsOwner(organizations[0].role === 'owner');
               // Apply org timezone for non-creator members
               fetch('/api/org/creator-settings')
                 .then(r => r.ok ? r.json() : null)
@@ -614,6 +621,7 @@ export default function SchedulePage() {
         const { organizations } = await orgRes.json();
         if (organizations?.length > 0) {
           setOrgName(organizations[0].name ?? null);
+          setIsOwner(organizations[0].role === 'owner');
           setPendingInvites([]);
           // Refresh embed instances (org members' embeds now included)
           loadEmbedInstances();
@@ -631,6 +639,7 @@ export default function SchedulePage() {
       }
       // No org — clear state, refresh embeds (remove former org members' embeds)
       setOrgName(null);
+      setIsOwner(true); // solo user — full control
       setPublishTarget('');
       didAutoSelectEmbed.current = false;
       setPreviewOpen(false);
@@ -1747,7 +1756,7 @@ export default function SchedulePage() {
 
         {/* Pinned user profile at bottom */}
         <div className="shrink-0 border-t border-border px-2 py-1.5">
-          <UserProfileMenu email={userEmail} username={userUsername} onLogout={handleLogout} onBusinessInfo={() => setBusinessInfoOpen(true)} onSettings={() => setSettingsOpen(true)} onOrgManage={() => setOrgModalOpen(true)} businessLogoUrl={businessLogoUrl} orgName={orgName} />
+          <UserProfileMenu email={userEmail} username={userUsername} onLogout={handleLogout} onBusinessInfo={() => setBusinessInfoOpen(true)} onSettings={() => setSettingsOpen(true)} onOrgManage={() => setOrgModalOpen(true)} businessLogoUrl={businessLogoUrl} orgName={orgName} avatarUrl={userAvatarUrl} />
         </div>
       </aside>
 
@@ -1816,6 +1825,7 @@ export default function SchedulePage() {
                 getHTML={getHTML}
                 disabled={selectedCount === 0}
                 onDeleteSchedule={handleDeleteSchedule}
+                canDeleteSchedule={isOwner}
                 getSnapshotData={getSnapshotData}
                 onRestoreSchedule={handleRestoreSchedule}
                 hasCurrentSelections={selectedCount > 0}
@@ -2139,6 +2149,7 @@ export default function SchedulePage() {
                   onRenameCancel={() => setRenamingId(null)}
                   onReorder={(next) => setEmbedInstances(next)}
                   onDelete={handleDeleteEmbed}
+                  isOwner={isOwner}
                 />
               </div>
 
@@ -2175,13 +2186,15 @@ export default function SchedulePage() {
                             >
                               {inst.display_id}
                             </button>
-                            <button
-                              onClick={() => { setEmbedDropdownOpen(false); handleDeleteEmbed(inst.embed_id ?? '__null__'); }}
-                              title={`Remove "${inst.display_id}" embed registration`}
-                              className="shrink-0 px-2 py-1.5 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
+                            {isOwner && (
+                              <button
+                                onClick={() => { setEmbedDropdownOpen(false); handleDeleteEmbed(inst.embed_id ?? '__null__'); }}
+                                title={`Remove "${inst.display_id}" embed registration`}
+                                className="shrink-0 px-2 py-1.5 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
                           </div>
                         );
                       })}

@@ -11,8 +11,7 @@
  * - Double-click still opens the rename input
  */
 
-import { useState, useRef } from 'react';
-import { X } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 
 export interface EmbedInstance {
@@ -32,6 +31,7 @@ interface Props {
   onRenameCancel: () => void;
   onReorder: (next: EmbedInstance[]) => void;
   onDelete?: (embedId: string) => void;
+  isOwner?: boolean;
 }
 
 interface DragState {
@@ -55,7 +55,28 @@ export default function DraggableEmbedPills({
   onRenameCancel,
   onReorder,
   onDelete,
+  isOwner,
 }: Props) {
+  const [contextMenu, setContextMenu] = useState<{ index: number; x: number; y: number } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = (e: MouseEvent | KeyboardEvent) => {
+      if (
+        e instanceof MouseEvent &&
+        contextMenuRef.current &&
+        contextMenuRef.current.contains(e.target as Node)
+      ) return;
+      setContextMenu(null);
+    };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', close);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', close);
+    };
+  }, [contextMenu]);
   const [drag, setDrag] = useState<DragState | null>(null);
   // Suppresses CSS transitions for the render cycle immediately after a drop,
   // preventing the "slide-left" glitch where pills animate from their dragged
@@ -190,7 +211,8 @@ export default function DraggableEmbedPills({
   }
 
   return (
-    <div className="flex items-center gap-1.5">
+    <>
+      <div className="flex items-center gap-1.5">
       {instances.map((inst, i) => {
         const value = inst.embed_id ?? inst.display_id;
         const isRenaming = renamingId === value;
@@ -201,7 +223,11 @@ export default function DraggableEmbedPills({
           <div
             key={inst.display_id}
             ref={el => { pillRefs.current[i] = el; }}
-            className="inline-flex relative group"
+            className="inline-flex relative"
+            onContextMenu={isOwner && onDelete ? (e) => {
+              e.preventDefault();
+              setContextMenu({ index: i, x: e.clientX, y: e.clientY });
+            } : undefined}
             style={{
               transform: `translateX(${tx}px)`,
               transition: (isDragging || suppressTransition)
@@ -228,44 +254,59 @@ export default function DraggableEmbedPills({
                 onBlur={() => onRenameCommit(value)}
               />
             ) : (
-              <>
-                <button
-                  draggable={false}
-                  title={drag ? undefined : 'Double-click to rename — drag to reorder'}
-                  className={cn(
-                    'text-[11px] px-2 py-0.5 rounded-full border select-none touch-none',
-                    isDragging
-                      ? cn(
-                          'cursor-grabbing',
-                          publishTarget === value
-                            ? 'bg-primary text-primary-foreground border-primary shadow-lg shadow-black/40 scale-105'
-                            : 'bg-background border-border text-muted-foreground shadow-lg shadow-black/40 scale-105',
-                        )
-                      : cn(
-                          'cursor-grab transition-all',
-                          publishTarget === value
-                            ? 'bg-primary text-primary-foreground border-primary'
-                            : 'bg-background border-border text-muted-foreground hover:text-foreground hover:border-foreground/30',
-                        ),
-                  )}
-                >
-                  {inst.display_id}
-                </button>
-                {onDelete && (
-                  <button
-                    className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-destructive text-destructive-foreground items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110 z-10 hidden group-hover:flex"
-                    title={`Remove "${inst.display_id}" embed registration`}
-                    onPointerDown={e => e.stopPropagation()}
-                    onClick={e => { e.stopPropagation(); onDelete(inst.embed_id ?? '__null__'); }}
-                  >
-                    <X className="w-2.5 h-2.5" />
-                  </button>
+              <button
+                draggable={false}
+                title={drag ? undefined : `Double-click to rename — drag to reorder${isOwner && onDelete ? ' — right-click to remove' : ''}`}
+                className={cn(
+                  'text-[11px] px-2 py-0.5 rounded-full border select-none touch-none',
+                  isDragging
+                    ? cn(
+                        'cursor-grabbing',
+                        publishTarget === value
+                          ? 'bg-primary text-primary-foreground border-primary shadow-lg shadow-black/40 scale-105'
+                          : 'bg-background border-border text-muted-foreground shadow-lg shadow-black/40 scale-105',
+                      )
+                    : cn(
+                        'cursor-grab transition-all',
+                        publishTarget === value
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-background border-border text-muted-foreground hover:text-foreground hover:border-foreground/30',
+                      ),
                 )}
-              </>
+              >
+                {inst.display_id}
+              </button>
             )}
           </div>
         );
       })}
-    </div>
+      </div>
+
+      {/* Right-click context menu */}
+      {contextMenu && isOwner && onDelete && (() => {
+        const inst = instances[contextMenu.index];
+        if (!inst) return null;
+        return (
+          <div
+            ref={contextMenuRef}
+            className="fixed z-500 min-w-44 rounded-lg border border-border bg-popover shadow-xl shadow-black/20 py-1 text-sm"
+            style={{ top: contextMenu.y, left: contextMenu.x }}
+          >
+            <div className="px-3 py-1.5 text-[11px] text-muted-foreground font-medium truncate border-b border-border mb-1">
+              {inst.display_id}
+            </div>
+            <button
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-destructive hover:bg-destructive/10 transition-colors"
+              onClick={() => {
+                setContextMenu(null);
+                onDelete(inst.embed_id ?? '__null__');
+              }}
+            >
+              Remove embed registration
+            </button>
+          </div>
+        );
+      })()}
+    </>
   );
 }

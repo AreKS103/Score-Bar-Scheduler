@@ -31,6 +31,8 @@ interface PublishButtonProps {
   disabled?: boolean;
   onSuccess?: (timestamp: string) => void;
   onDeleteSchedule?: () => Promise<void>;
+  /** If false (org member, not owner), hide the Delete Schedule option */
+  canDeleteSchedule?: boolean;
   /** Data needed to save a schedule snapshot on publish */
   getSnapshotData?: () => {
     weekLabel: string;
@@ -47,7 +49,7 @@ interface PublishButtonProps {
   publishTarget?: string;
 }
 
-export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSchedule, getSnapshotData, onRestoreSchedule, hasCurrentSelections, embedInstances: externalEmbedInstances, publishTarget: externalPublishTarget }: PublishButtonProps) {
+export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSchedule, canDeleteSchedule = true, getSnapshotData, onRestoreSchedule, hasCurrentSelections, embedInstances: externalEmbedInstances, publishTarget: externalPublishTarget }: PublishButtonProps) {
   const selectedTimezone = useTimezoneStore((state) => state.timezone);
   const [status, setStatus] = useState<'idle' | 'pushing' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
@@ -611,11 +613,11 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
                 </div>
               )}
               {/* Divider between schedule and delete */}
-              {!scheduleMode && !deleteConfirm && (
+              {!scheduleMode && !deleteConfirm && canDeleteSchedule && (
                 <div className="h-px bg-border mx-2" />
               )}
               {/* Delete */}
-              {!scheduleMode && !deleteConfirm && (
+              {!scheduleMode && !deleteConfirm && canDeleteSchedule && (
                 <button
                   onClick={() => setDeleteConfirm(true)}
                   className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-destructive hover:bg-destructive/10 transition-colors"

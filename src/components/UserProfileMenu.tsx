@@ -15,6 +15,7 @@ interface UserProfileMenuProps {
   businessLogoUrl?: string | null;
   orgName?: string | null;
   pendingInviteCount?: number;
+  avatarUrl?: string | null;
 }
 
 function getInitials(email: string | null, username?: string | null): string {
@@ -29,7 +30,7 @@ function getInitials(email: string | null, username?: string | null): string {
   return email.slice(0, 2).toUpperCase();
 }
 
-export default function UserProfileMenu({ email, username, onLogout, onBusinessInfo, onSettings, onOrgManage, businessLogoUrl, orgName, pendingInviteCount }: UserProfileMenuProps) {
+export default function UserProfileMenu({ email, username, onLogout, onBusinessInfo, onSettings, onOrgManage, businessLogoUrl, orgName, pendingInviteCount, avatarUrl }: UserProfileMenuProps) {
   const [open, setOpen] = useState(false);
   const { theme, toggleTheme } = useThemeStore();
   const isDark = theme === 'dark';
@@ -69,8 +70,8 @@ export default function UserProfileMenu({ email, username, onLogout, onBusinessI
             className="w-full flex items-center gap-3 px-3 py-3 border-b border-border hover:bg-accent transition-colors text-left"
           >
             <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold shrink-0 select-none overflow-hidden">
-              {businessLogoUrl
-                ? <img src={businessLogoUrl} alt="" className="w-full h-full object-cover" />
+              {avatarUrl
+                ? <img src={avatarUrl} alt="" className="w-full h-full object-cover rounded-full" />
                 : initials
               }
             </div>
@@ -180,8 +181,8 @@ export default function UserProfileMenu({ email, username, onLogout, onBusinessI
       >
         {/* Avatar */}
         <div className="w-7 h-7 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[11px] font-bold shrink-0 select-none overflow-hidden">
-          {businessLogoUrl
-            ? <img src={businessLogoUrl} alt="" className="w-full h-full object-cover" />
+          {avatarUrl
+            ? <img src={avatarUrl} alt="" className="w-full h-full object-cover rounded-full" />
             : initials
           }
         </div>
