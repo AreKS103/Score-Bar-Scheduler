@@ -1,10 +1,7 @@
 // The absolute Base URL pointing to this app's deployed public folder.
 // This is used for generating absolute URLs for the WordPress integration
 // so it doesn't 404. Github Raw won't work because the repo is private.
-// Set NEXT_PUBLIC_APP_URL in Vercel env vars to override the default.
-const APP_PUBLIC_BASE =
-  process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ||
-  'https://score-bar-scheduler.vercel.app';
+const APP_PUBLIC_BASE = 'https://score-bar-scheduler.vercel.app';
 
 export const LOGO_PLACEHOLDER_LOCAL = '/file.svg';
 export const LOGO_PLACEHOLDER_REMOTE = `${APP_PUBLIC_BASE}/file.svg`;

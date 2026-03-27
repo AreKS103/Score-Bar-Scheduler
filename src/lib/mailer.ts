@@ -1,14 +1,5 @@
 import nodemailer from 'nodemailer';
 
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST ?? 'smtp.gmail.com',
   port: parseInt(process.env.SMTP_PORT ?? '587', 10),
@@ -53,13 +44,13 @@ export async function sendOrgInviteEmail({
       <div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;color:#1a1a1a">
         <h2 style="margin:0 0 16px">You've been invited!</h2>
         <p style="margin:0 0 12px">
-          <strong>${escapeHtml(invitedByEmail)}</strong> has invited you to join
-          <strong>${escapeHtml(orgName)}</strong> on Score Bar Scheduler.
+          <strong>${invitedByEmail}</strong> has invited you to join
+          <strong>${orgName}</strong> on Score Bar Scheduler.
         </p>
         <p style="margin:0 0 24px">
           To accept, open Score Bar and check your Organization settings — you'll see the invite waiting there.
         </p>
-        <a href="${escapeHtml(acceptUrl)}"
+        <a href="${acceptUrl}"
            style="display:inline-block;padding:10px 20px;background:#2563eb;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">
           Open Score Bar
         </a>

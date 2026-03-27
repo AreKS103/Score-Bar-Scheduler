@@ -323,11 +323,8 @@ export async function GET(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const sessionCors = getSessionCorsHeaders(req);
 
-  // Support both session auth and API key auth (for WordPress uninstall),
-  // but bulk deletion (__all__) requires session auth to prevent a compromised
-  // API key from wiping all published schedules.
+  // Support both session auth and API key auth (for WordPress uninstall)
   let userId: string;
-  let authedViaApiKey = false;
   const apiKey = req.nextUrl.searchParams.get('apiKey');
   if (apiKey) {
     const hash = resolveKeyHash(apiKey);
@@ -338,7 +335,6 @@ export async function DELETE(req: NextRequest) {
       .single();
     if (!keyData) return NextResponse.json({ error: 'Invalid key' }, { status: 401, headers: corsHeaders });
     userId = keyData.user_id;
-    authedViaApiKey = true;
   } else {
     const sessionClient = await createServerClient();
     const { data: { user } } = await sessionClient.auth.getUser();
@@ -371,12 +367,8 @@ export async function DELETE(req: NextRequest) {
 
   const headers = apiKey ? corsHeaders : sessionCors;
 
-  // '__all__' sentinel: delete ALL embed instances + related data for this org/user.
-  // Requires session auth — a compromised API key must not be able to wipe everything.
+  // '__all__' sentinel: delete ALL embed instances + related data for this org/user
   if (rawId === '__all__') {
-    if (authedViaApiKey) {
-      return NextResponse.json({ error: 'Session authentication required for bulk delete' }, { status: 403, headers: sessionCors });
-    }
     await supabase.from('embed_instances').delete().in('user_id', orgMemberIds);
     await supabase.from('published_schedules').delete().in('user_id', orgMemberIds);
     await supabase.from('user_selections').delete().in('user_id', orgMemberIds);

@@ -14,7 +14,6 @@ interface UserProfileMenuProps {
   onOrgManage?: () => void;
   businessLogoUrl?: string | null;
   orgName?: string | null;
-  pendingInviteCount?: number;
 }
 
 function getInitials(email: string | null, username?: string | null): string {
@@ -29,7 +28,7 @@ function getInitials(email: string | null, username?: string | null): string {
   return email.slice(0, 2).toUpperCase();
 }
 
-export default function UserProfileMenu({ email, username, onLogout, onBusinessInfo, onSettings, onOrgManage, businessLogoUrl, orgName, pendingInviteCount }: UserProfileMenuProps) {
+export default function UserProfileMenu({ email, username, onLogout, onBusinessInfo, onSettings, onOrgManage, businessLogoUrl, orgName }: UserProfileMenuProps) {
   const [open, setOpen] = useState(false);
   const { theme, toggleTheme } = useThemeStore();
   const isDark = theme === 'dark';
@@ -139,11 +138,6 @@ export default function UserProfileMenu({ email, username, onLogout, onBusinessI
               <span className="flex-1 text-left text-muted-foreground group-hover:text-foreground">
                 Organization
               </span>
-              {!orgName && pendingInviteCount != null && pendingInviteCount > 0 && (
-                <span className="inline-flex items-center justify-center min-w-4.5 h-4.5 px-1 rounded-full bg-red-500 text-[10px] font-bold text-white leading-none">
-                  {pendingInviteCount}
-                </span>
-              )}
               {orgName && (
                 <span className="text-[11px] text-primary/80 font-semibold truncate max-w-27.5 leading-normal">
                   {orgName}

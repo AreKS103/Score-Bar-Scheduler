@@ -7,8 +7,7 @@
 
 import type { MatchEvent } from '@/types';
 
-const CACHE_KEY = 'scorebar_events_cache';
-const LEGACY_CACHE_KEY = 'sportglobe_events_cache';
+const CACHE_KEY = 'sportglobe_events_cache';
 const CACHE_VERSION = 1;
 
 interface CacheData {
@@ -23,12 +22,7 @@ export function getCachedEvents(dateRange: { start: string; end: string }): Matc
   if (typeof window === 'undefined') return null;
 
   try {
-    let raw = localStorage.getItem(CACHE_KEY);
-    // Migrate from legacy key
-    if (!raw) {
-      raw = localStorage.getItem(LEGACY_CACHE_KEY);
-      if (raw) { localStorage.setItem(CACHE_KEY, raw); localStorage.removeItem(LEGACY_CACHE_KEY); }
-    }
+    const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
 
     const cache: CacheData = JSON.parse(raw);
@@ -124,11 +118,9 @@ export function clearCachedEvents(): void {
 // Keeps manual events durable even when Supabase insert fails (missing migration,
 // temporary auth issues, RLS misconfig, etc).
 
-const CUSTOM_EVENTS_KEY = 'scorebar_custom_events_v1';
+const CUSTOM_EVENTS_KEY = 'sportglobe_custom_events_v1';
 const CUSTOM_EVENT_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 days (matches DB default)
-const CUSTOM_LEAGUE_LOGOS_KEY = 'scorebar_custom_league_logos_v1';
-const LEGACY_CUSTOM_EVENTS_KEY = 'sportglobe_custom_events_v1';
-const LEGACY_CUSTOM_LEAGUE_LOGOS_KEY = 'sportglobe_custom_league_logos_v1';
+const CUSTOM_LEAGUE_LOGOS_KEY = 'sportglobe_custom_league_logos_v1';
 
 interface LocalCustomEventsData {
   version: number;
@@ -147,11 +139,7 @@ function normalizeCustomLeagueKey(label: string): string {
 function readLocalCustomEventsStore(): LocalCustomEventsData {
   if (typeof window === 'undefined') return { version: 1, events: [] };
   try {
-    let raw = localStorage.getItem(CUSTOM_EVENTS_KEY);
-    if (!raw) {
-      raw = localStorage.getItem(LEGACY_CUSTOM_EVENTS_KEY);
-      if (raw) { localStorage.setItem(CUSTOM_EVENTS_KEY, raw); localStorage.removeItem(LEGACY_CUSTOM_EVENTS_KEY); }
-    }
+    const raw = localStorage.getItem(CUSTOM_EVENTS_KEY);
     if (!raw) return { version: 1, events: [] };
     const parsed = JSON.parse(raw) as LocalCustomEventsData;
     if (parsed.version !== 1 || !Array.isArray(parsed.events)) {
@@ -175,11 +163,7 @@ function writeLocalCustomEventsStore(events: MatchEvent[]): void {
 function readLocalCustomLeagueLogosStore(): LocalCustomLeagueLogosData {
   if (typeof window === 'undefined') return { version: 1, logos: {} };
   try {
-    let raw = localStorage.getItem(CUSTOM_LEAGUE_LOGOS_KEY);
-    if (!raw) {
-      raw = localStorage.getItem(LEGACY_CUSTOM_LEAGUE_LOGOS_KEY);
-      if (raw) { localStorage.setItem(CUSTOM_LEAGUE_LOGOS_KEY, raw); localStorage.removeItem(LEGACY_CUSTOM_LEAGUE_LOGOS_KEY); }
-    }
+    const raw = localStorage.getItem(CUSTOM_LEAGUE_LOGOS_KEY);
     if (!raw) return { version: 1, logos: {} };
     const parsed = JSON.parse(raw) as LocalCustomLeagueLogosData;
     if (parsed.version !== 1 || typeof parsed.logos !== 'object' || parsed.logos === null) {
@@ -296,12 +280,6 @@ const SELECTIONS_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 /** Return the localStorage key for a given embedTarget ('' = global/all-embeds slot). */
 function selectionsKey(embedTarget: string): string {
   const safe = embedTarget.replace(/[^a-zA-Z0-9_#-]/g, '_');
-  return safe ? `scorebar_selections_v2:${safe}` : 'scorebar_selections_v2';
-}
-
-/** Return the legacy key for migration purposes. */
-function legacySelectionsKey(embedTarget: string): string {
-  const safe = embedTarget.replace(/[^a-zA-Z0-9_#-]/g, '_');
   return safe ? `sportglobe_selections_v2:${safe}` : 'sportglobe_selections_v2';
 }
 
@@ -327,13 +305,7 @@ export function saveSelectionState(state: SavedSelectionState, embedTarget = '')
 export function loadSelectionState(embedTarget = ''): SavedSelectionState | null {
   if (typeof window === 'undefined') return null;
   try {
-    let raw = localStorage.getItem(selectionsKey(embedTarget));
-    // Migrate from legacy key
-    if (!raw) {
-      const legacyKey = legacySelectionsKey(embedTarget);
-      raw = localStorage.getItem(legacyKey);
-      if (raw) { localStorage.setItem(selectionsKey(embedTarget), raw); localStorage.removeItem(legacyKey); }
-    }
+    const raw = localStorage.getItem(selectionsKey(embedTarget));
     if (!raw) return null;
     const data = JSON.parse(raw) as SavedSelectionState;
     // Expire after 7 days
@@ -360,30 +332,24 @@ export function clearSelectionState(embedTarget: string): void {
  * When a different user is detected, all selection keys are purged before any
  * data is read — preventing cross-account selection contamination.
  */
-const USER_SCOPE_KEY = 'scorebar_active_user';
-const LEGACY_USER_SCOPE_KEY = 'sportglobe_active_user';
+const USER_SCOPE_KEY = 'sportglobe_active_user';
 
 /**
  * Compare the authenticated user ID against the one stored in localStorage.
  * If they differ (different account logged in on the same browser), all
- * `scorebar_selections_v2*` keys are removed before any read or write so that
+ * `sportglobe_selections_v2*` keys are removed before any read or write so that
  * User A's selections can never leak into User B's session.
  */
 export function checkAndClearIfUserChanged(userId: string): void {
   if (typeof window === 'undefined') return;
   try {
-    let stored = localStorage.getItem(USER_SCOPE_KEY);
-    // Migrate from legacy key
-    if (!stored) {
-      stored = localStorage.getItem(LEGACY_USER_SCOPE_KEY);
-      if (stored) { localStorage.setItem(USER_SCOPE_KEY, stored); localStorage.removeItem(LEGACY_USER_SCOPE_KEY); }
-    }
+    const stored = localStorage.getItem(USER_SCOPE_KEY);
     if (stored === userId) return; // same user — nothing to do
     // Different (or no) user — purge every selection key
     const toRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key?.startsWith('scorebar_selections_v2') || key?.startsWith('sportglobe_selections_v2')) toRemove.push(key);
+      if (key?.startsWith('sportglobe_selections_v2')) toRemove.push(key);
     }
     toRemove.forEach(k => localStorage.removeItem(k));
     localStorage.setItem(USER_SCOPE_KEY, userId);
@@ -397,22 +363,17 @@ export function checkAndClearIfUserChanged(userId: string): void {
 /**
  * Garbage-collect stale selection keys in localStorage.
  * Pass the set of embed IDs that currently exist. Any
- * `scorebar_selections_v2:*` key not in that set is removed.
- * Also removes legacy `sportglobe_selections_v2:*` keys.
+ * `sportglobe_selections_v2:*` key not in that set is removed.
  * This prevents recycled sequential embed IDs ("1", "2", …) from
  * inheriting selections left behind by a previously deleted embed.
  */
 export function pruneStaleSelectionKeys(liveEmbedIds: Set<string>): void {
   if (typeof window === 'undefined') return;
-  const PREFIX = 'scorebar_selections_v2:';
-  const LEGACY_PREFIX = 'sportglobe_selections_v2:';
+  const PREFIX = 'sportglobe_selections_v2:';
   const toRemove: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
-    if (!key) continue;
-    // Always remove legacy sportglobe keys
-    if (key.startsWith(LEGACY_PREFIX)) { toRemove.push(key); continue; }
-    if (!key.startsWith(PREFIX)) continue;
+    if (!key?.startsWith(PREFIX)) continue;
     const embedId = key.slice(PREFIX.length);
     if (!liveEmbedIds.has(embedId)) toRemove.push(key);
   }

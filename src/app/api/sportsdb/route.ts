@@ -7,7 +7,6 @@ const SPORTSDB_ORIGIN = 'https://www.thesportsdb.com/api/v1/json/3';
 // Allowlist of permitted SportsDB path prefixes — prevents SSRF abuse
 const ALLOWED_PATH_PREFIXES = [
   'eventsseason.php',
-  'eventsround.php',
   'eventsnextleague.php',
   'eventspastleague.php',
   'eventsnext.php',

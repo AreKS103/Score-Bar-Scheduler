@@ -107,9 +107,7 @@ export async function POST(req: NextRequest) {
       .eq('user_id', user.id)
       .single();
 
-    if (!membership || membership.role !== 'owner') {
-      return NextResponse.json({ error: 'Only the org owner can invite members' }, { status: 403 });
-    }
+    if (!membership) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     // ── Step 1: Try to find existing user by email ──────────────────
     let targetUserId = await findUserIdByEmail(trimmedEmail);
@@ -157,12 +155,14 @@ export async function POST(req: NextRequest) {
           ]);
           const orgName = orgRes.data?.name ?? 'an organization';
           const inviterEmail = inviterRes.data?.user?.email ?? 'A team member';
-          const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+          const origin = req.headers.get('origin')
+            || process.env.NEXT_PUBLIC_SITE_URL
+            || 'http://localhost:3000';
           await sendOrgInviteEmail({
             toEmail: trimmedEmail,
             orgName,
             invitedByEmail: inviterEmail,
-            acceptUrl: `${siteUrl}/schedule`,
+            acceptUrl: `${origin}/schedule`,
           });
         } catch { /* ignore email errors */ }
       })();
@@ -171,9 +171,12 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Step 2: User doesn't exist — try Supabase invite ──────────
-    // Always use the server-controlled site URL, never the request origin header.
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-    const redirectTo = `${siteUrl}/login`;
+    // Build the redirect URL from the request origin
+    const origin = req.headers.get('origin')
+      || req.headers.get('referer')?.replace(/\/[^/]*$/, '')
+      || process.env.NEXT_PUBLIC_SITE_URL
+      || 'http://localhost:3000';
+    const redirectTo = `${origin}/login`;
 
     try {
       const { data: inviteData, error: inviteErr } =
