@@ -3,7 +3,7 @@ const fs = require('fs');
 const phpMain = `<?php
 /**
  * Plugin Name: Scheduler
- * Plugin URI: https://score-bar-scheduler.vercel.app/
+ * Plugin URI: https://scorebar.vercel.app/schedule
  * Description: A sports schedule widget for your website.
  * Version: 1.0.5
  * Author: Scorebar

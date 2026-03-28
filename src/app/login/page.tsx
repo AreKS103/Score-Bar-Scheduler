@@ -57,6 +57,12 @@ export default function LoginPage() {
       setError('Email verification failed. The link may have expired — please try signing up again.');
     } else if (urlError === 'oauth_failed') {
       setError('Google sign-in failed. Please try again.');
+    } else if (urlError === 'oauth_state_expired') {
+      setError('Sign-in session expired — please try again.');
+    } else if (urlError === 'oauth_email_exists') {
+      setError(
+        'An account with this email already exists. Sign in with your email & password, then link Google under Settings → Account.',
+      );
     }
   }, []);
 
@@ -178,7 +184,16 @@ export default function LoginPage() {
         },
       });
       if (authError) {
-        setError(authError.message);
+        const msg = authError.message.toLowerCase();
+        if (msg.includes('already') || msg.includes('registered')) {
+          // Email already exists — could be from Google OAuth. Guide the user.
+          setError(
+            'An account with this email already exists. If you signed up with Google, use "Continue with Google" above. Otherwise sign in with your password.',
+          );
+          setMode('signin');
+        } else {
+          setError(authError.message);
+        }
         setLoading(false);
         return;
       }

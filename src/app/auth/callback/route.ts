@@ -17,37 +17,60 @@ import { createClient } from '@/lib/supabase/server';
  */
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
-  const code = searchParams.get('code');
+
+  // Resolve the public base URL (handles Vercel proxy where origin is internal)
+  const forwardedHost = request.headers.get('x-forwarded-host');
+  const isLocal = process.env.NODE_ENV === 'development';
+  const base = isLocal ? origin : forwardedHost ? `https://${forwardedHost}` : origin;
+
+  // ── Handle errors that Supabase itself redirects back with ───────────────
+  // e.g. bad_oauth_state, invalid_request, expired session — Supabase appends
+  // ?error=...&error_description=... to the redirect URL instead of ?code=...
+  const supabaseError = searchParams.get('error');
+  if (supabaseError) {
+    const desc = searchParams.get('error_description') ?? '';
+    console.error('[auth/callback] Supabase OAuth error:', supabaseError, '-', desc);
+    const isStateError =
+      supabaseError === 'invalid_request' ||
+      desc.toLowerCase().includes('state') ||
+      desc.toLowerCase().includes('expired');
+    return NextResponse.redirect(
+      `${base}/login?error=${isStateError ? 'oauth_state_expired' : 'oauth_failed'}`,
+    );
+  }
 
   // Allow callers to pass a safe relative `next` redirect (used by future deep links)
   const rawNext = searchParams.get('next') ?? '/schedule';
   // Security: only allow relative paths to prevent open-redirect attacks
   const next = rawNext.startsWith('/') ? rawNext : '/schedule';
 
+  const code = searchParams.get('code');
   if (code) {
     const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error) {
-      // When deployed behind a load-balancer/proxy (Vercel), the `origin` parsed
-      // from the request URL is the internal upstream origin, not the public one.
-      // x-forwarded-host carries the real public hostname in that case.
-      const forwardedHost = request.headers.get('x-forwarded-host');
-      const isLocal = process.env.NODE_ENV === 'development';
-
-      if (isLocal) {
-        return NextResponse.redirect(`${origin}${next}`);
-      } else if (forwardedHost) {
-        return NextResponse.redirect(`https://${forwardedHost}${next}`);
-      } else {
-        return NextResponse.redirect(`${origin}${next}`);
-      }
+      return NextResponse.redirect(`${base}${next}`);
     }
 
     console.error('[auth/callback] exchangeCodeForSession failed:', error.message);
+
+    // Detect duplicate-email / already-registered errors so the login page can
+    // show a helpful "link your accounts" message instead of a generic failure.
+    const msg = error.message?.toLowerCase() ?? '';
+    const isDuplicate =
+      msg.includes('already') ||
+      msg.includes('registered') ||
+      msg.includes('exists') ||
+      msg.includes('identity_already_exists') ||
+      msg.includes('user already');
+
+    if (isDuplicate) {
+      return NextResponse.redirect(`${base}/login?error=oauth_email_exists`);
+    }
   } else {
     console.warn('[auth/callback] no code param in request');
   }
 
-  return NextResponse.redirect(`${origin}/login?error=oauth_failed`);
+  return NextResponse.redirect(`${base}/login?error=oauth_failed`);
 }
