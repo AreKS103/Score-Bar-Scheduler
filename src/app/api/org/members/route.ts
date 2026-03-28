@@ -59,6 +59,22 @@ export async function GET() {
     const userIds = (members ?? []).map(m => m.user_id);
     const emails = await resolveEmails(userIds);
 
+    // Fetch username and business logo per member in parallel
+    const usernameMap: Record<string, string | null> = {};
+    const logoMap: Record<string, string | null> = {};
+    if (userIds.length) {
+      const [profilesRes, bizRes] = await Promise.all([
+        adminClient.from('user_profiles').select('user_id, username').in('user_id', userIds),
+        adminClient.from('business_info').select('user_id, logo_url').in('user_id', userIds),
+      ]);
+      for (const p of (profilesRes.data ?? [])) {
+        usernameMap[p.user_id] = p.username ?? null;
+      }
+      for (const b of (bizRes.data ?? [])) {
+        logoMap[b.user_id] = b.logo_url ?? null;
+      }
+    }
+
     const enriched = (members ?? []).map(m => {
       const email = emails[m.user_id] ?? m.invited_email ?? null;
       return {
@@ -67,6 +83,8 @@ export async function GET() {
         role: m.role,
         status: m.status ?? 'active',
         email,
+        username: usernameMap[m.user_id] ?? null,
+        businessLogoUrl: logoMap[m.user_id] ?? null,
         joinedAt: m.created_at,
         isYou: m.user_id === user.id,
       };

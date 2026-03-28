@@ -15,10 +15,24 @@ interface OrgMember {
   id: string;
   userId: string;
   email: string | null;
+  username?: string | null;
+  businessLogoUrl?: string | null;
   role: string;
   status?: 'active' | 'invited';
   isYou: boolean;
   joinedAt: string;
+}
+
+function getMemberInitials(username?: string | null, email?: string | null): string {
+  if (username) {
+    const parts = username.trim().split(/\s+/);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return username.slice(0, 2).toUpperCase();
+  }
+  if (!email) return '?';
+  const parts = email.split('@')[0].split(/[._-]/);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return email.slice(0, 2).toUpperCase();
 }
 
 interface Org {
@@ -623,8 +637,11 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
                       className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-secondary/30 border border-border group transition-colors hover:bg-secondary/50"
                     >
                       {/* Avatar */}
-                      <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[11px] font-bold shrink-0 select-none leading-none">
-                        {(m.email ?? '?').slice(0, 2).toUpperCase()}
+                      <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[11px] font-bold shrink-0 select-none leading-none overflow-hidden">
+                        {m.businessLogoUrl
+                          ? <img src={m.businessLogoUrl} alt="" className="w-full h-full object-cover rounded-full" />
+                          : getMemberInitials(m.username, m.email)
+                        }
                       </div>
 
                       {/* Info */}
