@@ -17,10 +17,12 @@ export async function GET() {
     // it's not stored yet (covers users who signed in before migration 034)
     const metaAvatar = user.user_metadata?.avatar_url as string | undefined;
     if (metaAvatar && !profile?.avatar_url) {
+      // Fire-and-forget: sync avatar from metadata into user_profiles.
+      // Two-arg .then() handles rejection inline (PromiseLike has no .catch()).
       supabase.from('user_profiles').upsert(
         { user_id: user.id, avatar_url: metaAvatar, updated_at: new Date().toISOString() },
         { onConflict: 'user_id' },
-      ).then(() => {}).catch(() => {});
+      ).then(() => {}, () => {});
     }
 
     return NextResponse.json({

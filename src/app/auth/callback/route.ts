@@ -55,11 +55,12 @@ export async function GET(request: Request) {
       const avatarUrl = sessionData?.user?.user_metadata?.avatar_url as string | undefined;
       const userId = sessionData?.user?.id;
       if (userId && avatarUrl) {
-        // Fire-and-forget — don't block the redirect on this
+        // Fire-and-forget — don't block the redirect on this.
+        // Two-arg .then() handles rejection inline (PromiseLike has no .catch()).
         supabase.from('user_profiles').upsert(
           { user_id: userId, avatar_url: avatarUrl, updated_at: new Date().toISOString() },
           { onConflict: 'user_id' },
-        ).then(() => {}).catch(() => {});
+        ).then(() => {}, () => {});
       }
 
       return NextResponse.redirect(`${base}${next}`);

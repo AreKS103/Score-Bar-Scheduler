@@ -596,11 +596,14 @@ export default function SchedulePage() {
             }
           });
 
-        // Load username from user_profiles
+        // Load username + avatar from user_profiles
+        // avatarUrl here is the db-stored value (from Google OAuth sync or future upload);
+        // it overrides the raw metadata value set earlier, so the latest wins.
         fetch('/api/user-profile')
           .then(r => r.ok ? r.json() : null)
           .then(profileData => {
             if (profileData?.username) setUserUsername(profileData.username);
+            if (profileData?.avatarUrl) setUserAvatarUrl(profileData.avatarUrl);
           })
           .catch(() => { /* non-fatal */ });
       }
