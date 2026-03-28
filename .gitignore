@@ -56,7 +56,7 @@ supabase/.temp/
 .playwright-mcp
 
 .github/wordpress-plugin-framework.md
-
+supabase/migrations/
 .github/agents
 
 # RuFlo / Claude Code local config
