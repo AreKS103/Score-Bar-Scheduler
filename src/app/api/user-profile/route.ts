@@ -9,12 +9,23 @@ export async function GET() {
 
     const { data: profile } = await supabase
       .from('user_profiles')
-      .select('username')
+      .select('username, avatar_url')
       .eq('user_id', user.id)
       .single();
 
+    // Auto-sync OAuth avatar_url from user metadata into user_profiles if
+    // it's not stored yet (covers users who signed in before migration 034)
+    const metaAvatar = user.user_metadata?.avatar_url as string | undefined;
+    if (metaAvatar && !profile?.avatar_url) {
+      supabase.from('user_profiles').upsert(
+        { user_id: user.id, avatar_url: metaAvatar, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id' },
+      ).then(() => {}).catch(() => {});
+    }
+
     return NextResponse.json({
       username: profile?.username ?? null,
+      avatarUrl: profile?.avatar_url ?? metaAvatar ?? null,
       email: user.email ?? null,
       displayName: profile?.username || user.email || null,
     });

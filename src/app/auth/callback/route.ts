@@ -47,9 +47,21 @@ export async function GET(request: Request) {
   const code = searchParams.get('code');
   if (code) {
     const supabase = await createClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const { data: sessionData, error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error) {
+      // Sync Google (or any OAuth provider) avatar_url into user_profiles so
+      // org member lists can display it without querying auth.users.
+      const avatarUrl = sessionData?.user?.user_metadata?.avatar_url as string | undefined;
+      const userId = sessionData?.user?.id;
+      if (userId && avatarUrl) {
+        // Fire-and-forget — don't block the redirect on this
+        supabase.from('user_profiles').upsert(
+          { user_id: userId, avatar_url: avatarUrl, updated_at: new Date().toISOString() },
+          { onConflict: 'user_id' },
+        ).then(() => {}).catch(() => {});
+      }
+
       return NextResponse.redirect(`${base}${next}`);
     }
 

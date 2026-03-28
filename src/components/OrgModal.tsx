@@ -17,6 +17,7 @@ interface OrgMember {
   email: string | null;
   username?: string | null;
   businessLogoUrl?: string | null;
+  avatarUrl?: string | null;
   role: string;
   status?: 'active' | 'invited';
   isYou: boolean;
@@ -640,6 +641,8 @@ export default function OrgModal({ isOpen, onClose, onOrgNameChange }: OrgModalP
                       <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[11px] font-bold shrink-0 select-none leading-none overflow-hidden">
                         {m.businessLogoUrl
                           ? <img src={m.businessLogoUrl} alt="" className="w-full h-full object-cover rounded-full" />
+                          : m.avatarUrl
+                          ? <img src={m.avatarUrl} alt="" className="w-full h-full object-cover rounded-full" />
                           : getMemberInitials(m.username, m.email)
                         }
                       </div>
