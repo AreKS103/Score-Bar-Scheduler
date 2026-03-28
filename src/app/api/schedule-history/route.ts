@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
 
     const orgId = await getUserOrgId(user.id);
 
-    const { weekLabel, dateRangeStart, dateRangeEnd, htmlContent, eventsSnapshot, leagueOrder, featuredLeagues, embedTarget } = await req.json();
+    const { weekLabel, dateRangeStart, dateRangeEnd, htmlContent, eventsSnapshot, leagueOrder, featuredLeagues, embedTarget, publishedAtLabel } = await req.json();
     if (!htmlContent || !eventsSnapshot) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
       embed_target: targetValue,
       author_email: user.email ?? null,
       author_username: profile?.username ?? null,
+      published_at_label: (typeof publishedAtLabel === 'string' && publishedAtLabel.trim()) ? publishedAtLabel.trim() : null,
     });
 
     if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
@@ -98,7 +99,7 @@ export async function GET(req: NextRequest) {
     // MAX_HISTORY=1 per embed means there are at most N rows total (N = number of embeds).
     const { data, error } = await supabase
       .from('published_schedules')
-      .select('id, week_label, date_range_start, date_range_end, published_at, embed_target, author_email, author_username')
+      .select('id, week_label, date_range_start, date_range_end, published_at, published_at_label, embed_target, author_email, author_username')
       .in('user_id', orgMemberIds)
       .order('published_at', { ascending: false });
 

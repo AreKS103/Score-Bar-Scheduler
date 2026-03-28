@@ -2148,8 +2148,6 @@ export default function SchedulePage() {
                   onRenameCommit={(val) => commitRename(val)}
                   onRenameCancel={() => setRenamingId(null)}
                   onReorder={(next) => setEmbedInstances(next)}
-                  onDelete={handleDeleteEmbed}
-                  isOwner={isOwner}
                 />
               </div>
 

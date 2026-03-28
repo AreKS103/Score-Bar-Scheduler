@@ -11,6 +11,7 @@ interface ScheduleSummary {
   id: string;
   week_label: string;
   published_at: string;
+  published_at_label?: string | null;
   embed_target: string | null;
   author_email?: string | null;
   author_username?: string | null;
@@ -200,6 +201,17 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
       const snapshot = getSnapshotData?.();
       if (!snapshot) throw new Error("Missing snapshot data");
 
+      // Build a locale-formatted label that snapshots the publisher's local time.
+      // This is stored as-is so every viewer sees the publisher's clock, not their own.
+      const publishedAtLabel = new Date().toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: selectedTimezone,
+      });
+
       const res = await fetch('/api/schedule-history', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -207,6 +219,7 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
           ...snapshot,
           htmlContent: html,
           embedTarget: publishTarget || null,
+          publishedAtLabel,
         }),
       });
 
@@ -467,7 +480,7 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
                             {item.week_label}
                           </p>
                           <p className="text-[11px] text-muted-foreground mt-0.5 wrap-break-word whitespace-normal">
-                            {new Date(item.published_at).toLocaleDateString('en-GB', {
+                            {item.published_at_label ?? new Date(item.published_at).toLocaleDateString('en-GB', {
                               day: 'numeric',
                               month: 'short',
                               year: 'numeric',
