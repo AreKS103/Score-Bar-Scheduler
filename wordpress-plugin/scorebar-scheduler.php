@@ -3,7 +3,7 @@
  * Plugin Name: Scheduler
  * Plugin URI:
  * Description: A sports schedule widget for your website.
- * Version: 1.2.10
+ * Version: 1.2.11
  * Text Domain: scorebar-scheduler
  * Requires at least: 6.0
  * Tested up to: 6.7
@@ -13,7 +13,7 @@
 if (!defined('ABSPATH')) exit;
 
 // Plugin version — must match the "Version:" header above.
-define('SCHEDULE_PLUGIN_VERSION', '1.2.10');
+define('SCHEDULE_PLUGIN_VERSION', '1.2.11');
 
 // ── PHP version gate ────────────────────────────────────────────────────────
 if (version_compare(PHP_VERSION, '7.4', '<')) {
@@ -312,6 +312,84 @@ if (!function_exists('schedule_plugin_api_info')) {
     }
 }
 add_filter('plugins_api', 'schedule_plugin_api_info', 10, 3);
+
+// ── REST API: /wp-json/scorebar/v1/connect ────────────────────────────────────
+// The Setup Wizard on scorebar.vercel.app redirects the browser here so the
+// plugin can receive the API key and complete the handshake without the user
+// having to copy-paste anything.
+//
+// Flow:
+//   1. User enters their site URL in the wizard.
+//   2. scorebar.vercel.app generates an API token (key hash) and redirects to:
+//        https://{their-site}/wp-json/scorebar/v1/connect?token=HASH&callback=CALLBACK_URL
+//   3. This handler validates the token, stores it, then redirects back to CALLBACK_URL.
+//   4. The callback endpoint (on scorebar.vercel.app) finalises the DB record.
+add_action('rest_api_init', function () {
+    register_rest_route('scorebar/v1', '/connect', [
+        'methods'             => WP_REST_Server::READABLE,   // GET — browser redirect
+        'callback'            => 'schedule_rest_connect_handler',
+        'permission_callback' => '__return_true',            // Public; auth is the token itself
+        'args'                => [
+            'token' => [
+                'required'          => true,
+                'type'              => 'string',
+                'sanitize_callback' => 'sanitize_text_field',
+                'description'       => 'SHA-256 API key hash from scorebar.vercel.app',
+            ],
+            'callback' => [
+                'required'          => true,
+                'type'              => 'string',
+                'sanitize_callback' => 'esc_url_raw',
+                'description'       => 'Callback URL on scorebar.vercel.app to redirect back to',
+            ],
+        ],
+    ]);
+});
+
+if (!function_exists('schedule_rest_connect_handler')) {
+    function schedule_rest_connect_handler(WP_REST_Request $request) {
+        $token        = $request->get_param('token');
+        $callback_url = $request->get_param('callback');
+
+        // ── 1. Validate token ─────────────────────────────────────────────
+        // Must be a 64-char lowercase hex string (SHA-256 hash).
+        if (empty($token) || !preg_match('/^[0-9a-f]{64}$/', $token)) {
+            return new WP_Error(
+                'invalid_token',
+                'Invalid token. Expected a 64-character hex string.',
+                ['status' => 400],
+            );
+        }
+
+        // ── 2. Validate callback host ──────────────────────────────────────
+        // Only allow redirects back to the official Scorebar domain to
+        // prevent open-redirect exploitation.
+        $parsed = wp_parse_url($callback_url);
+        if (empty($parsed['host']) || $parsed['host'] !== 'scorebar.vercel.app') {
+            return new WP_Error(
+                'invalid_callback',
+                'Callback URL host is not permitted.',
+                ['status' => 400],
+            );
+        }
+
+        // ── 3. Store the token and mark as connected ───────────────────────
+        // The token (key hash) is what the embed shortcode uses for the iframe
+        // URL — identical to the embedToken returned by /api/plugin/verify.
+        update_option('schedule_api_key', $token);
+        update_option('schedule_embed_token', $token);
+        set_transient('schedule_connection_status', [
+            'ok'      => true,
+            'message' => 'Connected via Setup Wizard',
+        ], 0);    // TTL 0 = persistent until explicitly deleted
+
+        // ── 4. Redirect back to Scorebar to finalise the handshake ─────────
+        // wp_safe_redirect() only allows same-host redirects, so we set the
+        // Location header directly after validating the host above.
+        header('Location: ' . esc_url_raw($callback_url), true, 302);
+        exit;
+    }
+}
 
 // ── Force-clear update transients ─────────────────────────────────────────────
 // Visit /wp-admin/plugins.php?force-update-check=1 to immediately discard the
