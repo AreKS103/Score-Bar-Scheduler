@@ -3,16 +3,17 @@
  * Plugin Name: Scheduler
  * Plugin URI:
  * Description: A sports schedule widget for your website.
- * Version: 1.2.8
+ * Version: 1.2.10
  * Text Domain: scorebar-scheduler
  * Requires at least: 6.0
  * Tested up to: 6.7
  * Requires PHP: 7.4
+ * Update URI: https://scorebar.vercel.app
  */
 if (!defined('ABSPATH')) exit;
 
 // Plugin version — must match the "Version:" header above.
-define('SCHEDULE_PLUGIN_VERSION', '1.2.8');
+define('SCHEDULE_PLUGIN_VERSION', '1.2.10');
 
 // ── PHP version gate ────────────────────────────────────────────────────────
 if (version_compare(PHP_VERSION, '7.4', '<')) {
@@ -191,16 +192,57 @@ if (!function_exists('schedule_enqueue_frontend_config')) {
 add_action('wp_enqueue_scripts', 'schedule_enqueue_frontend_config');
 
 // ── Auto-update checker ───────────────────────────────────────────────────────
-// Checks the Vercel endpoint every hour. When a newer version is available,
-// WordPress admin shows the standard "Update Available" notice with one-click install.
-add_filter('pre_set_site_transient_update_plugins', 'schedule_check_for_plugin_update');
+// Modern approach (WP 5.8+): uses the "Update URI" plugin header.
+// WordPress extracts the hostname from the header and calls this filter,
+// which returns remote version info. WP handles the version comparison.
+if (!function_exists('schedule_handle_update_check')) {
+    function schedule_handle_update_check($update, $plugin_data, $plugin_file, $locales) {
+        $cached = get_transient('scorebar_update_check');
+
+        if (false === $cached) {
+            $result = wp_remote_get(
+                schedule_get_app_domain() . '/api/plugin/update',
+                ['timeout' => 10, 'sslverify' => true]
+            );
+            if (!is_wp_error($result) && 200 === wp_remote_retrieve_response_code($result)) {
+                $cached = json_decode(wp_remote_retrieve_body($result), true);
+                set_transient('scorebar_update_check', $cached, 5 * MINUTE_IN_SECONDS);
+            }
+        }
+
+        if (empty($cached['version'])) {
+            return $update;
+        }
+
+        return [
+            'slug'         => 'scorebar-scheduler',
+            'version'      => $cached['version'],
+            'new_version'  => $cached['version'],
+            'url'          => 'https://scorebar.vercel.app',
+            'package'      => $cached['download_url'] ?? '',
+            'icons'        => [],
+            'banners'      => [],
+            'requires'     => $cached['requires']     ?? '6.0',
+            'tested'       => $cached['tested']       ?? '6.7',
+            'requires_php' => $cached['requires_php'] ?? '7.4',
+        ];
+    }
+}
+add_filter('update_plugins_scorebar.vercel.app', 'schedule_handle_update_check', 10, 4);
+
+// Legacy fallback: still hook pre_set_site_transient_update_plugins so that
+// older installs (without the Update URI header) can detect new versions.
 if (!function_exists('schedule_check_for_plugin_update')) {
     function schedule_check_for_plugin_update($transient) {
-        if (empty($transient->checked)) return $transient;
+        $plugin_file = plugin_basename(__FILE__);
 
-        $plugin_file       = 'scorebar-scheduler/scorebar-scheduler.php';
-        $installed_version = $transient->checked[$plugin_file] ?? '0.0.0';
-        $cached            = get_transient('scorebar_update_check');
+        // Use the constant as fallback — don't bail on empty $transient->checked.
+        $installed_version = SCHEDULE_PLUGIN_VERSION;
+        if (!empty($transient->checked) && isset($transient->checked[$plugin_file])) {
+            $installed_version = $transient->checked[$plugin_file];
+        }
+
+        $cached = get_transient('scorebar_update_check');
 
         if (false === $cached) {
             $result = wp_remote_get(
@@ -221,11 +263,11 @@ if (!function_exists('schedule_check_for_plugin_update')) {
             version_compare($remote_version, $installed_version, '>')
         ) {
             $transient->response[$plugin_file] = (object) [
-                'id'           => 'scorebar-scheduler/scorebar-scheduler.php',
+                'id'           => $plugin_file,
                 'slug'         => 'scorebar-scheduler',
-                'plugin'       => 'scorebar-scheduler/scorebar-scheduler.php',
+                'plugin'       => $plugin_file,
                 'new_version'  => $remote_version,
-                'url'          => 'https://github.com/AreKS103/Score-Bar-Scheduler',
+                'url'          => 'https://scorebar.vercel.app',
                 'package'      => $download_url,
                 'icons'        => [],
                 'banners'      => [],
@@ -239,6 +281,37 @@ if (!function_exists('schedule_check_for_plugin_update')) {
         return $transient;
     }
 }
+add_filter('pre_set_site_transient_update_plugins', 'schedule_check_for_plugin_update');
+
+// ── Plugin information popup ("View Details" link) ────────────────────────────
+if (!function_exists('schedule_plugin_api_info')) {
+    function schedule_plugin_api_info($result, $action, $args) {
+        if ($action !== 'plugin_information' || ($args->slug ?? '') !== 'scorebar-scheduler') {
+            return $result;
+        }
+
+        $cached = get_transient('scorebar_update_check');
+        if (empty($cached)) {
+            return $result;
+        }
+
+        return (object) [
+            'name'          => 'Scheduler',
+            'slug'          => 'scorebar-scheduler',
+            'version'       => $cached['version'] ?? SCHEDULE_PLUGIN_VERSION,
+            'author'        => '<a href="https://scorebar.vercel.app">Score Bar</a>',
+            'homepage'      => 'https://scorebar.vercel.app',
+            'download_link' => $cached['download_url'] ?? '',
+            'requires'      => $cached['requires']     ?? '6.0',
+            'tested'        => $cached['tested']       ?? '6.7',
+            'requires_php'  => $cached['requires_php'] ?? '7.4',
+            'sections'      => [
+                'description' => 'A sports schedule widget for your website. Display customizable sports schedules and score bars on any WordPress page.',
+            ],
+        ];
+    }
+}
+add_filter('plugins_api', 'schedule_plugin_api_info', 10, 3);
 
 // ── Force-clear update transients ─────────────────────────────────────────────
 // Visit /wp-admin/plugins.php?force-update-check=1 to immediately discard the

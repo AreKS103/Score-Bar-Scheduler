@@ -1,22 +1,29 @@
 /**
- * Release script — builds the plugin zip and pushes it to the GitHub
- * "plugin-latest" release so WordPress sites auto-update via the built-in
+ * Release script — bumps the plugin version, builds the zip, and pushes it to
+ * the GitHub "plugin-latest" release so WordPress sites auto-update via the
  * /api/plugin/update endpoint.
  *
  * Prerequisites:
- *   1. Add GITHUB_TOKEN=ghp_... to .env.local  (needs repo + write:packages scope)
+ *   1. Add GITHUB_TOKEN=ghp_... to .env.local  (needs repo + contents:write scope)
  *   2. npm install  (nothing new — uses only built-in Node modules)
  *
  * Usage:
- *   npm run release:plugin
- *   node scripts/release-plugin.js
+ *   npm run release:plugin              # patch bump  1.2.9 → 1.2.10
+ *   npm run release:plugin -- --minor   # minor bump  1.2.9 → 1.3.0
+ *   npm run release:plugin -- --major   # major bump  1.2.9 → 2.0.0
+ *
+ * Version bump follows Semantic Versioning (https://semver.org):
+ *   MAJOR — incompatible API / breaking changes
+ *   MINOR — new backward-compatible functionality
+ *   PATCH — backward-compatible bug fixes (default)
  *
  * What it does:
- *   1. Reads the version from the "Version:" header in scorebar-scheduler.php
- *   2. Runs build-plugin.js to produce scorebar-scheduler.zip
- *   3. Gets / creates the "plugin-latest" GitHub release
- *   4. Updates the release body to "Plugin version: X.Y.Z"
- *   5. Deletes the old zip asset and uploads the new one
+ *   1. Reads the current version from the "Version:" header in scorebar-scheduler.php
+ *   2. Bumps the version (patch / minor / major) and writes it back to the PHP file
+ *   3. Runs build-plugin.js to produce scorebar-scheduler.zip
+ *   4. Gets / creates the "plugin-latest" GitHub release
+ *   5. Updates the release body to "Plugin version: X.Y.Z"
+ *   6. Deletes the old zip asset and uploads the new one
  *
  * After this runs, WordPress installs will detect the update within 5 minutes
  * (the /api/plugin/update response is cached for 5 min on Vercel).
@@ -109,10 +116,65 @@ function ghRequest(method, apiPath, body, binaryBuffer) {
   });
 }
 
+// ─── Semver bump ─────────────────────────────────────────────────────────────
+
+/**
+ * Increments one segment of a semver string.
+ * @param {string} version  Current version, e.g. "1.2.9"
+ * @param {'major'|'minor'|'patch'} segment
+ * @returns {string}  New version, e.g. "1.2.10"
+ */
+function bumpVersion(version, segment) {
+  const parts = version.split('.').map(Number);
+  while (parts.length < 3) parts.push(0);           // normalise to MAJOR.MINOR.PATCH
+  const [major, minor, patch] = parts;
+  switch (segment) {
+    case 'major': return `${major + 1}.0.0`;
+    case 'minor': return `${major}.${minor + 1}.0`;
+    default:      return `${major}.${minor}.${patch + 1}`;
+  }
+}
+
+/**
+ * Writes a new version string into both version-bearing locations
+ * inside scorebar-scheduler.php:
+ *   - " * Version: X.Y.Z"                (plugin file header)
+ *   - define('SCHEDULE_PLUGIN_VERSION', 'X.Y.Z');  (PHP constant)
+ *
+ * @param {string} src        Full PHP file source
+ * @param {string} oldVersion
+ * @param {string} newVersion
+ * @returns {string}  Updated source
+ */
+function applyVersionToPhp(src, oldVersion, newVersion) {
+  // Plugin file header — e.g. " * Version: 1.2.9"
+  src = src.replace(
+    new RegExp(`(^\\s*\\*\\s*Version:\\s*)${escapeRegex(oldVersion)}`, 'm'),
+    `$1${newVersion}`,
+  );
+  // PHP constant — e.g. define('SCHEDULE_PLUGIN_VERSION', '1.2.9');
+  src = src.replace(
+    new RegExp(`(define\\(\\s*'SCHEDULE_PLUGIN_VERSION'\\s*,\\s*')${escapeRegex(oldVersion)}(')`),
+    `$1${newVersion}$2`,
+  );
+  return src;
+}
+
+/** Escapes a plain string for use inside a RegExp. */
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
   loadEnvLocal();
+
+  // ── Determine bump segment from CLI flags ─────────────────────────────────
+  const args    = process.argv.slice(2);
+  const segment = args.includes('--major') ? 'major'
+                : args.includes('--minor') ? 'minor'
+                : 'patch';
 
   const token = process.env.GITHUB_TOKEN;
   if (!token) {
@@ -124,17 +186,23 @@ async function main() {
     process.exit(1);
   }
 
-  // ── 1. Read version ───────────────────────────────────────────────────────
-  const phpSrc     = fs.readFileSync(PHP_PATH, 'utf8');
-  const verMatch   = phpSrc.match(/^\s*\*\s*Version:\s*([\d.]+)/m);
+  // ── 1. Read current version and bump it ──────────────────────────────────
+  const phpSrc    = fs.readFileSync(PHP_PATH, 'utf8');
+  const verMatch  = phpSrc.match(/^\s*\*\s*Version:\s*([\d.]+)/m);
   if (!verMatch) {
     console.error('❌  Could not find "Version:" header in scorebar-scheduler.php');
     process.exit(1);
   }
-  const version = verMatch[1];
-  console.log(`\n📦  Plugin version: ${version}`);
+  const oldVersion = verMatch[1];
+  const version    = bumpVersion(oldVersion, segment);
 
-  // ── 2. Build zip ──────────────────────────────────────────────────────────
+  console.log(`\n📦  Version: ${oldVersion} → ${version}  (${segment} bump)`);
+
+  const updatedPhp = applyVersionToPhp(phpSrc, oldVersion, version);
+  fs.writeFileSync(PHP_PATH, updatedPhp, 'utf8');
+  console.log(`✏️   scorebar-scheduler.php updated to v${version}`);
+
+  // ── 3. Build zip ──────────────────────────────────────────────────────────
   console.log('\n🔨  Building scorebar-scheduler.zip...\n');
   execSync('node scripts/build-plugin.js', { stdio: 'inherit', cwd: ROOT });
   console.log('');
@@ -146,7 +214,7 @@ async function main() {
   const zipBuffer = fs.readFileSync(ZIP_PATH);
   console.log(`✅  Zip ready (${(zipBuffer.length / 1024).toFixed(1)} KB)`);
 
-  // ── 3. Get or create the plugin-latest release ───────────────────────────
+  // ── 4. Get or create the plugin-latest release ───────────────────────────
   let release;
   try {
     release = await ghRequest('GET', `/repos/${GITHUB_REPO}/releases/tags/${RELEASE_TAG}`);
@@ -163,14 +231,14 @@ async function main() {
     console.log(`✅  Created release (id=${release.id})`);
   }
 
-  // ── 4. Update release body + name with current version ───────────────────
+  // ── 5. Update release body + name with current version ───────────────────
   await ghRequest('PATCH', `/repos/${GITHUB_REPO}/releases/${release.id}`, {
     name: `Plugin (latest) — v${version}`,
     body: `Plugin version: ${version}`,
   });
   console.log(`✏️   Release body updated → "Plugin version: ${version}"`);
 
-  // ── 5. Delete old zip asset(s) ────────────────────────────────────────────
+  // ── 6. Delete old zip asset(s) ────────────────────────────────────────────
   const assets = release.assets ?? [];
   for (const asset of assets) {
     if (asset.name.endsWith('.zip')) {
@@ -179,7 +247,7 @@ async function main() {
     }
   }
 
-  // ── 6. Upload new zip asset ───────────────────────────────────────────────
+  // ── 7. Upload new zip asset ───────────────────────────────────────────────
   console.log('\n⬆️   Uploading scorebar-scheduler.zip to GitHub release...');
   const uploaded = await ghRequest(
     'POST',
@@ -192,6 +260,10 @@ async function main() {
   console.log(`
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🚀  Done!  Plugin v${version} is live on GitHub.
+
+Don't forget to commit the version bump:
+  git add wordpress-plugin/scorebar-scheduler.php
+  git commit -m "chore: release plugin v${version}"
 
 WordPress sites will detect the update within 5 minutes.
 To force an immediate check on a WordPress site:

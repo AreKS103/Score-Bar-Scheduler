@@ -150,60 +150,69 @@ class Schedule_Settings {
         $status     = get_transient('schedule_connection_status');
         $is_connected = is_array($status) && !empty($status['ok']);
         $frontend_url = schedule_get_app_domain();
-        $verify_url   = rtrim(schedule_get_app_domain(), '/') . '/api/plugin/verify';
+        $wizard_url   = $frontend_url . '/onboarding/connect';
         ?>
-        <div class="wrap">
-            <h1>Scheduler</h1>
+        <div class="wrap" style="max-width: 600px;">
+            <h1 style="margin-bottom: 16px;">Scheduler</h1>
 
             <?php if (!$api_key): ?>
-                <div class="notice notice-info" style="padding: 20px; text-align: center; border-left-color: #2271b1; background: #fff; margin-bottom: 20px;">
-                    <h2>Welcome to the Scheduler!</h2>
-                    <p style="font-size: 16px;">To display your custom sports schedules on your WordPress site, you need to connect your account.</p>
-                    <ol style="text-align: left; max-width: 480px; margin: 16px auto; line-height: 1.8;">
-                        <li><a href="<?php echo esc_url($frontend_url . '/login'); ?>" target="_blank">Login or create an account</a> on the Scheduler dashboard.</li>
-                        <li>Open <strong>Settings</strong> (gear icon) and click <strong>Generate API Key</strong>.</li>
-                        <li>Copy the key and paste it below, then click <strong>Save API Key</strong>.</li>
-                    </ol>
-                    <p><a href="<?php echo esc_url($frontend_url . '/login'); ?>" target="_blank" class="button button-primary button-hero">Go to Dashboard</a></p>
+                <div style="background: #fff; border: 1px solid #c3c4c7; border-left: 4px solid #2271b1; padding: 24px 28px; margin-bottom: 20px; border-radius: 2px;">
+                    <h2 style="margin: 0 0 8px 0; font-size: 18px;">Welcome!</h2>
+                    <p style="margin: 0 0 16px 0; color: #50575e;">Connect your site in seconds using the setup wizard.</p>
+                    <a href="<?php echo esc_url($wizard_url); ?>" target="_blank" class="button button-primary button-hero" style="font-size: 15px;">Open Setup Wizard</a>
                 </div>
+
+                <details style="background: #fff; border: 1px solid #c3c4c7; padding: 16px 20px; border-radius: 2px;">
+                    <summary style="cursor: pointer; font-weight: 600; color: #1d2327;">Or connect manually with an API key</summary>
+                    <form method="post" action="" style="margin-top: 12px;">
+                        <?php wp_nonce_field('schedule_save_key', 'schedule_save_key_nonce'); ?>
+                        <label for="schedule_api_key" style="display: block; margin-bottom: 6px; font-weight: 500;">API Key</label>
+                        <input type="password" id="schedule_api_key" name="schedule_api_key" value="" style="width: 100%; max-width: 350px;" />
+                        <p class="description">Paste the API key from your <a href="<?php echo esc_url($frontend_url . '/schedule'); ?>" target="_blank">dashboard settings</a>.</p>
+                        <?php submit_button('Save API Key'); ?>
+                    </form>
+                </details>
+
+            <?php elseif ($is_connected): ?>
+                <div style="background: #fff; border: 1px solid #c3c4c7; border-left: 4px solid #00a32a; padding: 20px 24px; margin-bottom: 20px; border-radius: 2px;">
+                    <h2 style="margin: 0 0 6px 0; font-size: 16px;">&#9989; Connected</h2>
+                    <p style="margin: 0 0 12px 0; color: #50575e;">Use the <code>[schedule]</code> shortcode or the <strong>Scheduler</strong> Elementor widget to display your schedule.</p>
+                    <button type="button" class="button" id="schedule-refresh-token-btn">Refresh Token</button>
+                    <span id="schedule-refresh-result" style="margin-left: 8px;"></span>
+                </div>
+
+                <details style="background: #fff; border: 1px solid #c3c4c7; padding: 16px 20px; border-radius: 2px;">
+                    <summary style="cursor: pointer; font-weight: 600; color: #1d2327;">Update API Key</summary>
+                    <form method="post" action="" style="margin-top: 12px;">
+                        <?php wp_nonce_field('schedule_save_key', 'schedule_save_key_nonce'); ?>
+                        <label for="schedule_api_key" style="display: block; margin-bottom: 6px; font-weight: 500;">API Key</label>
+                        <input type="password" id="schedule_api_key" name="schedule_api_key" value="<?php echo esc_attr($api_key); ?>" style="width: 100%; max-width: 350px;" />
+                        <?php submit_button('Save API Key'); ?>
+                    </form>
+                </details>
+
             <?php else: ?>
-                <?php if ($is_connected): ?>
-                    <div class="notice notice-success" style="padding: 10px 20px; background: #fff; border-left-color: #00a32a; margin-bottom: 20px;">
-                        <h2 style="margin: 0 0 10px 0;">&#9989; Connected</h2>
-                        <p style="margin: 0;">Your account is linked. Use the <strong>Scheduler</strong> Elementor widget or the shortcode <code>[schedule]</code> to display your schedule.</p>
-                        <p style="margin-top: 8px;"><button type="button" class="button" id="schedule-refresh-token-btn">Refresh Token</button> <span id="schedule-refresh-result" style="margin-left: 8px;"></span></p>
-                    </div>
-                <?php else: ?>
-                    <div class="notice notice-warning" style="padding: 10px 20px; background: #fff; border-left-color: #dba617; margin-bottom: 20px;">
-                        <h2 style="margin: 0 0 10px 0;">&#9888;&#65039; Not Verified</h2>
-                        <p style="margin: 0;">
-                            An API key is saved but the connection has not been verified.
-                            <?php if (is_array($status) && !empty($status['message'])): ?>
-                                <br /><strong>Last error:</strong> <?php echo esc_html($status['message']); ?>
-                            <?php endif; ?>
-                        </p>
-                        <p style="margin-top: 8px;"><button type="button" class="button" id="schedule-test-btn">Test Connection</button> <span id="schedule-test-result" style="margin-left: 8px;"></span></p>
-                    </div>
-                <?php endif; ?>
+                <div style="background: #fff; border: 1px solid #c3c4c7; border-left: 4px solid #dba617; padding: 20px 24px; margin-bottom: 20px; border-radius: 2px;">
+                    <h2 style="margin: 0 0 6px 0; font-size: 16px;">&#9888;&#65039; Not Verified</h2>
+                    <p style="margin: 0 0 4px 0; color: #50575e;">An API key is saved but the connection hasn't been verified.</p>
+                    <?php if (is_array($status) && !empty($status['message'])): ?>
+                        <p style="margin: 0 0 12px 0; color: #d63638; font-size: 13px;"><?php echo esc_html($status['message']); ?></p>
+                    <?php endif; ?>
+                    <button type="button" class="button" id="schedule-test-btn">Test Connection</button>
+                    <span id="schedule-test-result" style="margin-left: 8px;"></span>
+                </div>
+
+                <form method="post" action="" style="background: #fff; border: 1px solid #c3c4c7; padding: 16px 20px; border-radius: 2px;">
+                    <?php wp_nonce_field('schedule_save_key', 'schedule_save_key_nonce'); ?>
+                    <?php if ($saved_ok === false): ?>
+                        <div class="notice notice-error inline"><p>Security verification failed. Please refresh and try again.</p></div>
+                    <?php endif; ?>
+                    <label for="schedule_api_key" style="display: block; margin-bottom: 6px; font-weight: 500;">API Key</label>
+                    <input type="password" id="schedule_api_key" name="schedule_api_key" value="<?php echo esc_attr($api_key); ?>" style="width: 100%; max-width: 350px;" />
+                    <p class="description">Paste a new key or <a href="<?php echo esc_url($wizard_url); ?>" target="_blank">re-run the setup wizard</a>.</p>
+                    <?php submit_button('Save API Key'); ?>
+                </form>
             <?php endif; ?>
-
-            <form method="post" action="" style="background: #fff; padding: 20px; box-shadow: 0 1px 1px rgba(0,0,0,.04); max-width: 800px;">
-                <?php wp_nonce_field('schedule_save_key', 'schedule_save_key_nonce'); ?>
-                <?php if ($saved_ok === false): ?>
-                    <div class="notice notice-error inline"><p>Security verification failed. Please refresh and try again.</p></div>
-                <?php endif; ?>
-                <h2 style="margin-top:0">Connect Your Account</h2>
-                <table class="form-table" role="presentation">
-                    <tbody>
-                        <tr>
-                            <th scope="row"><label for="schedule_api_key">API Key</label></th>
-                            <td><?php $this->api_key_callback(); ?></td>
-                        </tr>
-
-                    </tbody>
-                </table>
-                <?php submit_button('Save API Key'); ?>
-            </form>
 
             <?php if ($api_key): ?>
             <script>
