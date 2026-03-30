@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import WPConnectWizard from '@/components/onboarding/WPConnectWizard';
 
-export default function ConnectPage() {
+function ConnectPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
@@ -93,5 +93,17 @@ export default function ConnectPage() {
         />
       </div>
     </div>
+  );
+}
+
+export default function ConnectPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen bg-background text-muted-foreground">
+        Loading…
+      </div>
+    }>
+      <ConnectPageContent />
+    </Suspense>
   );
 }
