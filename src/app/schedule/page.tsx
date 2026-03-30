@@ -44,12 +44,14 @@ const SettingsModal = dynamic(() => import('@/components/SettingsModal'), { ssr:
 const OrgModal = dynamic(() => import('@/components/OrgModal'), { ssr: false });
 import UserProfileMenu from '@/components/UserProfileMenu';
 const BusinessInfoModal = dynamic(() => import('@/components/BusinessInfoModal'), { ssr: false });
+const WPConnectWizard = dynamic(() => import('@/components/onboarding/WPConnectWizard'), { ssr: false });
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useOrgRealtime } from '@/hooks/useOrgRealtime';
 import { useEmbedRealtime } from '@/hooks/useEmbedRealtime';
 import { useTimezoneStore } from '@/lib/timezoneStore';
 import { Separator } from '@/components/ui/separator';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
 interface ScheduleHistoryState {
   events: MatchEvent[];
@@ -187,6 +189,7 @@ export default function SchedulePage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [businessInfoOpen, setBusinessInfoOpen] = useState(false);
   const [orgModalOpen, setOrgModalOpen] = useState(false);
+  const [setupWizardOpen, setSetupWizardOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -533,6 +536,24 @@ export default function SchedulePage() {
     return () => { snapshotCancelled = true; clearInterval(id); };
   }, [publishTarget]);
 
+  // ─── Handle wp-callback redirect params ──────────────────────────────────
+  // When returning from WordPress OAuth, open the wizard with connected state.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const wpConnected = params.get('wp_connected');
+    const wpSite = params.get('site');
+    const wpError = params.get('wp_error');
+    if (wpConnected === 'true' || wpError) {
+      setSetupWizardOpen(true);
+      // Clean URL without triggering navigation
+      const url = new URL(window.location.href);
+      url.searchParams.delete('wp_connected');
+      url.searchParams.delete('site');
+      url.searchParams.delete('wp_error');
+      window.history.replaceState({}, '', url.pathname);
+    }
+  }, []);
+
   // ─── Client-side auth guard ─────────────────────────────────────────────────
   // Redirect to /login if the Supabase session has expired or been revoked.
   useEffect(() => {
@@ -546,6 +567,19 @@ export default function SchedulePage() {
       setUserAvatarUrl(
         (data.user?.user_metadata?.avatar_url as string | undefined) ?? null
       );
+
+      // ─── First-time user detection: auto-show WordPress setup wizard ──────
+      // Show for new users (account created within the last 2 minutes) who haven't
+      // dismissed it before, and handle wp-callback redirect params.
+      if (data.user?.created_at) {
+        const createdAt = new Date(data.user.created_at).getTime();
+        const now = Date.now();
+        const isNewUser = now - createdAt < 2 * 60 * 1000; // within 2 min
+        const dismissed = localStorage.getItem('wp_setup_dismissed') === 'true';
+        if (isNewUser && !dismissed) {
+          setSetupWizardOpen(true);
+        }
+      }
 
       // Lazy-bootstrap org: ensure user has at least one organization
       if (data.user?.id) {
@@ -1759,7 +1793,7 @@ export default function SchedulePage() {
 
         {/* Pinned user profile at bottom */}
         <div className="shrink-0 border-t border-border px-2 py-1.5">
-          <UserProfileMenu email={userEmail} username={userUsername} onLogout={handleLogout} onBusinessInfo={() => setBusinessInfoOpen(true)} onSettings={() => setSettingsOpen(true)} onOrgManage={() => setOrgModalOpen(true)} businessLogoUrl={businessLogoUrl} orgName={orgName} avatarUrl={userAvatarUrl} />
+          <UserProfileMenu email={userEmail} username={userUsername} onLogout={handleLogout} onBusinessInfo={() => setBusinessInfoOpen(true)} onSettings={() => setSettingsOpen(true)} onOrgManage={() => setOrgModalOpen(true)} onSetup={() => setSetupWizardOpen(true)} businessLogoUrl={businessLogoUrl} orgName={orgName} avatarUrl={userAvatarUrl} />
         </div>
       </aside>
 
@@ -2597,7 +2631,31 @@ export default function SchedulePage() {
       />
 
       {/* Settings lightbox */}
-      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} onOpenSetupWizard={() => setSetupWizardOpen(true)} />
+
+      {/* WordPress Setup Wizard dialog */}
+      <Dialog open={setupWizardOpen} onOpenChange={(open) => {
+        setSetupWizardOpen(open);
+        if (!open) {
+          try { localStorage.setItem('wp_setup_dismissed', 'true'); } catch {}
+        }
+      }}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogTitle className="sr-only">WordPress Setup</DialogTitle>
+          <DialogDescription className="sr-only">Connect your WordPress site using the setup wizard.</DialogDescription>
+          <WPConnectWizard
+            onConnected={() => {
+              setSetupWizardOpen(false);
+              try { localStorage.setItem('wp_setup_dismissed', 'true'); } catch {}
+            }}
+            onClose={() => {
+              setSetupWizardOpen(false);
+              try { localStorage.setItem('wp_setup_dismissed', 'true'); } catch {}
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+
       <OrgModal isOpen={orgModalOpen} onClose={() => setOrgModalOpen(false)} onOrgNameChange={name => {
         setOrgName(name);
         // Reload embeds immediately (org members' embeds now included)

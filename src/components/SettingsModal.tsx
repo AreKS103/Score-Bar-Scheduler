@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { X, Wifi, WifiOff, Loader2, ShieldCheck, Server, Navigation, Globe, Copy, CheckCircle, RefreshCw, EyeOff, User, Mail, Phone, KeyRound, Trash2, Search, Link2 } from 'lucide-react';
+import { X, Wifi, WifiOff, Loader2, ShieldCheck, Server, Navigation, Globe, Copy, CheckCircle, RefreshCw, EyeOff, User, Mail, Phone, KeyRound, Trash2, Search, Link2, Plug } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -11,9 +11,10 @@ import { createClient } from '@/lib/supabase/client';
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenSetupWizard?: () => void;
 }
 
-export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
+export default function SettingsModal({ isOpen, onClose, onOpenSetupWizard }: SettingsModalProps) {
   const { timezone, useLocal, setUseLocal, setTimezone } = useTimezoneStore();
   const [detectedTz] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'Unknown');
   const [tzSearch, setTzSearch] = useState('');
@@ -676,6 +677,20 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
+
+              {/* ── Guided Setup Wizard link ───────────────────────────────── */}
+              {isOrgCreator !== false && onOpenSetupWizard && (
+                <button
+                  onClick={() => { onClose(); onOpenSetupWizard(); }}
+                  className="w-full flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/15 hover:bg-primary/10 transition-colors text-left"
+                >
+                  <Plug className="w-5 h-5 text-primary shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">Use Guided Setup Wizard</p>
+                    <p className="text-xs text-muted-foreground">Step-by-step guide to download, install, and connect the WordPress plugin.</p>
+                  </div>
+                </button>
+              )}
 
               {/* ── Non-creator member: read-only view ─────────────────────── */}
               {isOrgCreator === false ? (

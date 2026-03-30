@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState, useEffect } from 'react';
-import { LogOut, Moon, Sun, MoreHorizontal, Building2, Settings, Users } from 'lucide-react';
+import { LogOut, Moon, Sun, MoreHorizontal, Building2, Settings, Users, Plug } from 'lucide-react';
 import { useThemeStore } from '@/lib/themeStore';
 import { cn } from '@/lib/utils';
 
@@ -12,6 +12,7 @@ interface UserProfileMenuProps {
   onBusinessInfo: () => void;
   onSettings: () => void;
   onOrgManage?: () => void;
+  onSetup?: () => void;
   businessLogoUrl?: string | null;
   orgName?: string | null;
   pendingInviteCount?: number;
@@ -30,7 +31,7 @@ function getInitials(email: string | null, username?: string | null): string {
   return email.slice(0, 2).toUpperCase();
 }
 
-export default function UserProfileMenu({ email, username, onLogout, onBusinessInfo, onSettings, onOrgManage, businessLogoUrl, orgName, pendingInviteCount, avatarUrl }: UserProfileMenuProps) {
+export default function UserProfileMenu({ email, username, onLogout, onBusinessInfo, onSettings, onOrgManage, onSetup, businessLogoUrl, orgName, pendingInviteCount, avatarUrl }: UserProfileMenuProps) {
   const [open, setOpen] = useState(false);
   const { theme, toggleTheme } = useThemeStore();
   const isDark = theme === 'dark';
@@ -116,7 +117,7 @@ export default function UserProfileMenu({ email, username, onLogout, onBusinessI
 
           <div className="border-t border-border mx-2" />
 
-          {/* Settings + Business Information */}
+          {/* Settings + WordPress Setup + Business Information */}
           <div className="px-1.5 pt-1.5 space-y-0.5">
             <button
               onClick={() => { setOpen(false); onSettings(); }}
@@ -125,6 +126,15 @@ export default function UserProfileMenu({ email, username, onLogout, onBusinessI
               <Settings className="w-3.5 h-3.5" />
               Settings
             </button>
+            {onSetup && (
+              <button
+                onClick={() => { setOpen(false); onSetup(); }}
+                className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+              >
+                <Plug className="w-3.5 h-3.5" />
+                WordPress Setup
+              </button>
+            )}
             <button
               onClick={() => { setOpen(false); onBusinessInfo(); }}
               className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-all"

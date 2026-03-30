@@ -24,7 +24,7 @@ export default function OnboardingPage() {
       const prefix = (data.user.email ?? 'my').split('@')[0];
       setOrgName(prefix.charAt(0).toUpperCase() + prefix.slice(1) + "'s Organization");
 
-      // Check if user already has orgs
+      // Check if user already has orgs → send to schedule
       try {
         const res = await fetch('/api/org');
         if (res.ok) {
