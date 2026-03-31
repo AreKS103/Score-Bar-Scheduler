@@ -129,11 +129,11 @@ export async function POST(request: NextRequest) {
 
     // ── IP + rate limit ─────────────────────────────────────────────────────
     const ip = getClientIP(request);
-    const { success } = await ratelimit.limit(ip);
+    const { success, remaining } = await ratelimit.limit(ip);
     if (!success) {
       return NextResponse.json(
         { error: 'Rate limit exceeded. Try again tomorrow.' },
-        { status: 429 }
+        { status: 429, headers: { 'X-RateLimit-Remaining': '0' } }
       );
     }
 
@@ -262,7 +262,9 @@ export async function POST(request: NextRequest) {
       output.ids = output.ids.slice(0, totalBudget);
     }
 
-    return NextResponse.json(output);
+    return NextResponse.json(output, {
+      headers: { 'X-RateLimit-Remaining': String(remaining) },
+    });
   } catch (error) {
     console.error('[AI Matches] Error:', error);
     return NextResponse.json(

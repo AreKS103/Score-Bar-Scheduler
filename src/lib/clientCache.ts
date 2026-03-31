@@ -309,7 +309,7 @@ import type { ScreenTag } from '@/types';
 
 export interface SavedSelectionState {
   /** Map of event ID → selection flags */
-  selections: Record<string, { isSelected: boolean; isFeatured: boolean; tags: ScreenTag[] }>;
+  selections: Record<string, { isSelected: boolean; isFeatured: boolean; tags: ScreenTag[]; aiImportance?: string }>;
   /** Preserved league order from the preview sidebar */
   leagueOrder: string[];
   /** Preserved featured leagues (sportId → label override) */

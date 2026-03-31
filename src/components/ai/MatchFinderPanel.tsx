@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { X, Sparkles, AlertCircle, CheckSquare, Square, SlidersHorizontal, Clock, SquarePen } from 'lucide-react';
+import { X, Sparkles, AlertCircle, CheckSquare, Square, SlidersHorizontal, Clock, SquarePen, Loader2 } from 'lucide-react';
 import { useMatchFinder } from './MatchFinderProvider';
 import AIMatchCard from './AIMatchCard';
 import SmartLogo from '@/components/ui/SmartLogo';
@@ -24,7 +24,7 @@ interface MatchFinderPanelProps {
   /** Currently active embed target */
   publishTarget: string;
   /** Callback when user confirms selected AI matches to add */
-  onAddMatches?: (eventIds: string[], embedTarget: string) => void;
+  onAddMatches?: (eventIds: string[], embedTarget: string, ratings: Map<string, string>) => void;
   /** User's display name from profile */
   username?: string | null;
 }
@@ -84,6 +84,7 @@ export default function MatchFinderPanel({
 }: MatchFinderPanelProps) {
   const { isOpen, close } = useMatchFinder();
   const [isLoading, setIsLoading] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ratings, setRatings] = useState<Map<string, MatchRating['importance']>>(new Map());
   const [hasResult, setHasResult] = useState(false);
@@ -99,6 +100,7 @@ export default function MatchFinderPanel({
   });
   const [showCatFilter, setShowCatFilter] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [rateLimitRemaining, setRateLimitRemaining] = useState<number | null>(null);
   const [timeFrom, setTimeFrom] = useState<string>(() => {
     try { return (JSON.parse(localStorage.getItem(TIME_FILTER_KEY) || 'null') as { from?: string } | null)?.from ?? ''; }
     catch { return ''; }
@@ -307,9 +309,16 @@ export default function MatchFinderPanel({
       });
 
       if (!res.ok) {
+        // Still capture rate-limit on 429
+        const rlHeader = res.headers.get('X-RateLimit-Remaining');
+        if (rlHeader !== null) setRateLimitRemaining(parseInt(rlHeader, 10));
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `Request failed (${res.status})`);
       }
+
+      // Capture rate-limit remaining from response header
+      const rlRemaining = res.headers.get('X-RateLimit-Remaining');
+      if (rlRemaining !== null) setRateLimitRemaining(parseInt(rlRemaining, 10));
 
       const data: MatchFinderResponse = await res.json();
 
@@ -357,9 +366,18 @@ export default function MatchFinderPanel({
   }, []);
 
   const handleAddToSchedule = useCallback(() => {
-    if (selectedIds.size === 0 || !onAddMatches) return;
-    onAddMatches(Array.from(selectedIds), targetEmbed);
-  }, [selectedIds, targetEmbed, onAddMatches]);
+    if (selectedIds.size === 0 || !onAddMatches || isAdding) return;
+    setIsAdding(true);
+    // Only pass ratings for the events being added
+    const selectedRatings = new Map<string, string>();
+    for (const id of selectedIds) {
+      const imp = ratings.get(id);
+      if (imp) selectedRatings.set(id, imp);
+    }
+    onAddMatches(Array.from(selectedIds), targetEmbed, selectedRatings);
+    // Brief feedback before auto-closing
+    setTimeout(() => setIsAdding(false), 600);
+  }, [selectedIds, targetEmbed, ratings, onAddMatches, isAdding]);
 
   const handleClose = useCallback(() => {
     setIsClosing(true);
@@ -367,7 +385,7 @@ export default function MatchFinderPanel({
       setIsClosing(false);
       close();
     }, 280);
-  }, [close]);
+  }, [close]); 
 
   const handleNewChat = useCallback(() => {
     setActiveFilter(null);
@@ -402,13 +420,18 @@ export default function MatchFinderPanel({
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border/50 shrink-0 bg-linear-to-r from-primary/5 to-transparent">
+        <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border/50 shrink-0 bg-linear-to-r from-primary/5 to-transparent rounded-t-2xl">
           <div className="flex items-center gap-2">
             <div className="flex items-center justify-center w-7 h-7 rounded-full bg-primary/10">
               <Sparkles className="w-3.5 h-3.5 text-primary" />
             </div>
             <div>
               <h2 className="text-sm font-semibold">AI Match Finder</h2>
+              {rateLimitRemaining !== null && (
+                <p className={cn('text-[10px] leading-tight', rateLimitRemaining <= 5 ? 'text-orange-500' : 'text-muted-foreground/70')}>
+                  {rateLimitRemaining} {rateLimitRemaining === 1 ? 'use' : 'uses'} left today
+                </p>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -752,9 +775,17 @@ export default function MatchFinderPanel({
             <button
               type="button"
               onClick={handleAddToSchedule}
-              className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+              disabled={isAdding}
+              className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm disabled:opacity-70 flex items-center justify-center gap-2"
             >
-              Add {selectedIds.size} match{selectedIds.size !== 1 ? 'es' : ''} to schedule
+              {isAdding ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Adding…
+                </>
+              ) : (
+                <>Add {selectedIds.size} match{selectedIds.size !== 1 ? 'es' : ''} to schedule</>
+              )}
             </button>
           </div>
         )}

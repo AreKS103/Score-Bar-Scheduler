@@ -21,6 +21,7 @@ import {
   Undo2,
   Redo2,
   Star,
+  Printer,
 } from 'lucide-react';
 import { useScheduleStore } from '@/lib/store';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
@@ -45,6 +46,7 @@ import UserProfileMenu from '@/components/UserProfileMenu';
 const BusinessInfoModal = dynamic(() => import('@/components/BusinessInfoModal'), { ssr: false });
 const WPConnectWizard = dynamic(() => import('@/components/onboarding/WPConnectWizard'), { ssr: false });
 const MatchFinderPanel = dynamic(() => import('@/components/ai/MatchFinderPanel'), { ssr: false });
+const PrintScheduleModal = dynamic(() => import('@/components/PrintScheduleModal'), { ssr: false });
 import MatchFinderButton from '@/components/ai/MatchFinderButton';
 import { MatchFinderProvider } from '@/components/ai/MatchFinderProvider';
 import { cn } from '@/lib/utils';
@@ -188,6 +190,7 @@ export default function SchedulePage() {
   // a plain default and set the real viewport-aware width in a useEffect after mount.
   const [panelWidth, setPanelWidth] = useState(700);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [printModalOpen, setPrintModalOpen] = useState(false);
   const [businessInfoOpen, setBusinessInfoOpen] = useState(false);
   const [orgModalOpen, setOrgModalOpen] = useState(false);
   const [setupWizardOpen, setSetupWizardOpen] = useState(false);
@@ -310,6 +313,11 @@ export default function SchedulePage() {
           didAutoSelectEmbed.current = true;
           setPublishTarget(instances[0].embed_id ?? instances[0].display_id);
         }
+        // If no embed instances exist, unblock auto-save immediately since
+        // the initial embed restore effect will never fire.
+        if (instances.length === 0) {
+          initialLoadDoneRef.current = true;
+        }
       })
       .catch(() => {});
   }, []);
@@ -366,7 +374,10 @@ export default function SchedulePage() {
         // If the snapshot effect already applied the published state, defer to it.
         if (snapshotAppliedForTargetRef.current === target) return;
         const stateToApply = bestState ?? loadSelectionState(target);
-        if (!stateToApply || Object.keys(stateToApply.selections).length === 0) return;
+        if (!stateToApply || Object.keys(stateToApply.selections).length === 0) {
+          initialLoadDoneRef.current = true;
+          return;
+        }
         if (stateToApply.leagueOrder.length > 0) setLeagueOrder(stateToApply.leagueOrder);
         if (Object.keys(stateToApply.featuredLeagues).length > 0) {
           setFeaturedLeagues(new Map(Object.entries(stateToApply.featuredLeagues)));
@@ -381,6 +392,7 @@ export default function SchedulePage() {
           });
           setEvents(merged);
         }
+        initialLoadDoneRef.current = true;
       };
       applyInitial();
       return () => { initCancelled = true; };
@@ -499,12 +511,26 @@ export default function SchedulePage() {
           if (isInitial && evts.length > 0) {
             isSwitchingEmbedRef.current = true;
             snapshotAppliedForTargetRef.current = publishTarget;
+
+            // Also load the user_selections state so that post-publish edits
+            // (e.g. selections added after last publish) are preserved and
+            // merged ON TOP of the published snapshot.
+            const userSelState = loadSelectionState(publishTarget);
+            const userSel = userSelState?.selections ?? {};
+            const userSelIsNewer = userSelState && userSelState.savedAt > new Date(schedule.week_label || 0).getTime();
+
             const snapshotById = new Map(evts.map((e: MatchEvent) => [e.id, e]));
             const current = useScheduleStore.getState().events;
             const currentIds = new Set(current.map((e: MatchEvent) => e.id));
-            // Apply snapshot selection/featured/tags state to currently loaded events
+            // Apply snapshot selection/featured/tags state to currently loaded events,
+            // then overlay user_selections if they're newer than the publish.
             const updated = current.map((e: MatchEvent) => {
               const snap = snapshotById.get(e.id);
+              const userEntry = userSel[e.id];
+              // If user_selections has a newer entry for this event, prefer it
+              if (userSelIsNewer && userEntry) {
+                return { ...e, ...userEntry };
+              }
               return {
                 ...e,
                 isSelected: snap ? !!(snap.isSelected) : false,
@@ -521,6 +547,7 @@ export default function SchedulePage() {
             setEvents([...updated, ...snapOnly]);
             if (lo.length > 0) setLeagueOrder(lo);
             if (fl.size > 0) setFeaturedLeagues(fl);
+            initialLoadDoneRef.current = true;
           }
         })
         .catch(() => { if (!snapshotCancelled) setPublishedSnapshot(null); })
@@ -733,6 +760,11 @@ export default function SchedulePage() {
   const hasFetchedRef = useRef(false);
   const prevPreviewContentCountRef = useRef(0);
   const isSwitchingEmbedRef = useRef(false);
+  // Prevents auto-save from overwriting stored selections before the initial
+  // embed selection restore has finished. Without this, the 800ms auto-save
+  // debounce can fire with all-deselected events (from loading with key '')
+  // and overwrite the real saved-selection localStorage entry.
+  const initialLoadDoneRef = useRef(false);
   // Tracks which embed's snapshot has been applied to the editor, so that a  
   // concurrent Supabase fetch in loadEmbedState doesn't overwrite the snapshot.
   const snapshotAppliedForTargetRef = useRef('');
@@ -1110,6 +1142,9 @@ export default function SchedulePage() {
     // haven't loaded yet). Saving to '' would contaminate the global slot and could
     // bleed into other embeds when they fallback-load from that slot.
     if (!effectiveTargetRef.current && embedInstances.length === 0) return;
+    // Don't auto-save until the initial selection restore has finished,
+    // otherwise we'd overwrite the saved selections with an all-deselected state.
+    if (!initialLoadDoneRef.current) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       const selections: SavedSelectionState['selections'] = {};
@@ -1870,10 +1905,18 @@ export default function SchedulePage() {
                   }, 1500);
                 }}
               />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPrintModalOpen(true)}
+                disabled={selectedCount === 0}
+                title="Print / Save as PDF"
+                className="hidden sm:flex"
+              >
+                <Printer className="w-4 h-4" />
+              </Button>
             </div>
           </div>
-
-          {/* ── Row 2 (mobile only): Refresh (left, compact) + Undo/Redo (right) */}
           <div className="flex items-center justify-between gap-2 mt-2 sm:hidden">
             {/* Refresh — small, left-aligned */}
             <Button
@@ -2567,6 +2610,14 @@ export default function SchedulePage() {
       {/* Settings lightbox */}
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} onOpenSetupWizard={() => setSetupWizardOpen(true)} />
 
+      {/* Print / PDF lightbox */}
+      <PrintScheduleModal
+        open={printModalOpen}
+        onOpenChange={setPrintModalOpen}
+        events={events}
+        embedInstances={embedInstances}
+      />
+
       {/* WordPress Setup Wizard dialog */}
       <Dialog open={setupWizardOpen} onOpenChange={(open) => {
         setSetupWizardOpen(open);
@@ -2681,7 +2732,7 @@ export default function SchedulePage() {
         embedInstances={embedInstances}
         publishTarget={publishTarget}
         username={userUsername}
-        onAddMatches={(eventIds, embedTarget) => {
+        onAddMatches={(eventIds, embedTarget, aiRatings) => {
           // ── Batch-select the chosen AI matches ──
           const idSet = new Set(eventIds);
 
@@ -2705,18 +2756,31 @@ export default function SchedulePage() {
             });
           }
 
-          // Persist selection immediately
+          // Persist selection immediately — includes AI importance rating per event
           const allEvents = useScheduleStore.getState().events;
           const selections: SavedSelectionState['selections'] = {};
           for (const e of allEvents) {
             if (e.isSelected || e.isFeatured || e.tags.length > 0) {
-              selections[e.id] = { isSelected: e.isSelected, isFeatured: e.isFeatured, tags: e.tags };
+              selections[e.id] = {
+                isSelected: e.isSelected,
+                isFeatured: e.isFeatured,
+                tags: e.tags,
+                // Preserve existing aiImportance if already set
+                ...(aiRatings.has(e.id) ? { aiImportance: aiRatings.get(e.id) } : {}),
+              };
             }
           }
-          // Force-include AI-selected events
+          // Force-include AI-selected events with their importance rating
           for (const eid of eventIds) {
             if (!selections[eid]) {
-              selections[eid] = { isSelected: true, isFeatured: false, tags: [] };
+              selections[eid] = {
+                isSelected: true,
+                isFeatured: false,
+                tags: [],
+                aiImportance: aiRatings.get(eid),
+              };
+            } else if (aiRatings.has(eid) && !selections[eid].aiImportance) {
+              selections[eid] = { ...selections[eid], aiImportance: aiRatings.get(eid) };
             }
           }
           saveSelectionToSupabase({
