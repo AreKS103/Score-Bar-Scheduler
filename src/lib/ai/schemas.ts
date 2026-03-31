@@ -14,7 +14,8 @@ export type MatchInput = z.infer<typeof MatchInputSchema>;
 // ── AI response: just IDs + importance ratings ──────────────────────────────
 
 export const MatchRatingSchema = z.object({
-  id: z.string().describe('Match ID from input'),
+  // z.coerce.string() accepts both string "5" and integer 5 — Groq returns numeric IDs
+  id: z.coerce.string().describe('Match ID from input'),
   importance: z.enum(['must_watch', 'high', 'medium', 'low']).describe('How important/exciting'),
 });
 

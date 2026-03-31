@@ -56,7 +56,10 @@ high:
 - MotoGP: mid-season rounds, close championship
 
 If a match doesn't clearly fit — EXCLUDE it.
-Return must_watch first, then high. Be generous with marquee matchups.`
+Order by importance: must_watch first, then high. Be generous with marquee matchups.
+
+Respond in JSON using EXACTLY this structure — no other keys:
+{"ids":[{"id":"<match id string>","importance":"must_watch"},{"id":"<match id string>","importance":"high"}]}`
 
 // ── Call AI with provider-specific options ───────────────────────────────────
 
@@ -65,11 +68,15 @@ async function callAI(provider: AIProviderResult, matchData: string) {
     ? { groq: { structuredOutputs: false } satisfies GroqLanguageModelOptions }
     : undefined;
 
+  // Groq requires the word "json" in messages when using response_format json_object
+  // The base SYSTEM_PROMPT already contains "JSON" so no modification needed here
+  const systemPrompt = SYSTEM_PROMPT;
+
   const result = await generateText({
     model: provider.model,
     output: Output.object({ schema: MatchFinderResponseSchema }),
     prompt: matchData,
-    system: SYSTEM_PROMPT,
+    system: systemPrompt,
     temperature: 0.1,
     ...(providerOptions ? { providerOptions } : {}),
   });
@@ -182,7 +189,7 @@ export async function POST(request: NextRequest) {
       });
 
       // ── Total budget cap: prevent overall result bloat ────────────────────
-      const totalBudget = filterType === 'today' ? 20 : filterType === 'month' ? 60 : 40;
+      const totalBudget = filterType === 'today' ? 50 : filterType === 'month' ? 150 : 100;
       output.ids = output.ids.slice(0, totalBudget);
     }
 

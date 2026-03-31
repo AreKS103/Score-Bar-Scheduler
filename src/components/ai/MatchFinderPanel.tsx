@@ -238,8 +238,10 @@ export default function MatchFinderPanel({
         const endStr = endOfWeek.toISOString().split('T')[0];
         filtered = events.filter((e) => e.date >= todayStr && e.date <= endStr);
       } else if (filter === 'This Month') {
-        const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        const endStr = monthEnd.toISOString().split('T')[0];
+        // Use next 30 days so the filter is useful regardless of where we are in the month
+        const next30 = new Date(now);
+        next30.setDate(now.getDate() + 30);
+        const endStr = next30.toISOString().split('T')[0];
         filtered = events.filter((e) => e.date >= todayStr && e.date <= endStr);
       }
 
@@ -525,7 +527,7 @@ export default function MatchFinderPanel({
                 </>
               ) : (
                 <div className="flex flex-col items-center justify-center py-12">
-                  <p className="text-sm text-muted-foreground">No must-watch matches found. Try a different time range!</p>
+                  <p className="text-sm text-muted-foreground">No matches found. Try a different time range!</p>
                 </div>
               )}
             </div>

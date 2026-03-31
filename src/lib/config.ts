@@ -306,29 +306,29 @@ export const LEAGUE_POPULARITY: Record<string, number> = {
 // 10-15 games per day. Elite football leagues get more slots.
 export const LEAGUE_MAX_PICKS: Record<string, number> = {
   // Football — the most watched, give more slots
-  'EPL': 7, 'UCL': 6, 'LLG': 5, 'BUN': 4, 'SEA': 4,
-  'L1F': 4, 'UEL': 4, 'COP': 4, 'UECL': 3, 'FAC': 3,
-  'EFL': 2, 'CC': 2, 'MLS': 3, 'SPFL': 2, 'ERE': 1,
-  'SPL': 1, 'ALE': 1, 'JLG': 1, 'AFCE': 1, 'AFC2': 1,
-  'AFCL': 1, 'AAC': 1, 'AACW': 1, 'CPL': 1, 'L1E': 2,
+  'EPL': 14, 'UCL': 12, 'LLG': 10, 'BUN': 8, 'SEA': 8,
+  'L1F': 8, 'UEL': 8, 'COP': 8, 'UECL': 6, 'FAC': 6,
+  'EFL': 4, 'CC': 4, 'MLS': 6, 'SPFL': 4, 'ERE': 2,
+  'SPL': 2, 'ALE': 2, 'JLG': 2, 'AFCE': 2, 'AFC2': 2,
+  'AFCL': 2, 'AAC': 2, 'AACW': 2, 'CPL': 2, 'L1E': 4,
   // High-volume US sports
-  'NBA': 4, 'NCAAM': 3, 'WNBA': 2, 'NCAAW': 1,
-  'NFL': 4, 'NCAAF': 3,
-  'MLB': 4,
-  'NHL': 4,
+  'NBA': 8, 'NCAAM': 6, 'WNBA': 4, 'NCAAW': 2,
+  'NFL': 8, 'NCAAF': 6,
+  'MLB': 8,
+  'NHL': 8,
   // Cricket
-  'IPL': 3, 'BBL': 1,
+  'IPL': 6, 'BBL': 2,
   // Motorsport — fewer events, keep most
-  'F1': 3, 'MGP': 2, 'IND': 2,
+  'F1': 6, 'MGP': 4, 'IND': 4,
   // Combat Sports
-  'UFC': 3, 'PFL': 1, 'BOX': 2,
+  'UFC': 6, 'PFL': 2, 'BOX': 4,
   // Rugby
-  'SRP': 2, '6N': 3, 'PRU': 1, 'T14': 1, 'URC': 1, 'RCC': 2, 'TRC': 1,
-  'NRL': 2,
-  'AFL': 2,
-  'ATP': 2, 'WTA': 1,
-  'PGA': 1, 'LPGA': 1,
-  'UCI': 1,
+  'SRP': 4, '6N': 6, 'PRU': 2, 'T14': 2, 'URC': 2, 'RCC': 4, 'TRC': 2,
+  'NRL': 4,
+  'AFL': 4,
+  'ATP': 4, 'WTA': 2,
+  'PGA': 2, 'LPGA': 2,
+  'UCI': 2,
 };
 
 /** Get abbreviated league name for AI payloads */
