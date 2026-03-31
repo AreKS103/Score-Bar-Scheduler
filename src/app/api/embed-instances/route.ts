@@ -291,13 +291,6 @@ export async function GET(req: NextRequest) {
     .in('user_id', userIds)
     .order('created_at', { ascending: true });
 
-  // NOTE: No TTL / orphan auto-cleanup here.
-  // Embed instances are permanent registrations managed explicitly by the user.
-  // Silently deleting rows based on last_seen would cascade-delete published
-  // schedules and selections when a page simply hasn't been visited in a few days.
-  // Explicit cleanup is handled by the DELETE endpoint when the user intentionally
-  // removes an embed via the web app UI.
-
   // embed_id is always set for widget-based embeds (numeric "1","2",… or user label).
   // Only legacy null rows (old shortcode embeds) get a fallback auto-label.
   const labeled = (instances ?? []).map((inst, idx) => ({

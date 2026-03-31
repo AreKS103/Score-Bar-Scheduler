@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+// Rate limiter: 20 profile updates per hour per user
+const RATE_LIMIT_MAX = 20;
+const RATE_LIMIT_WINDOW_MS = 3_600_000; // 1 hour
+const userRequests = new Map<string, number[]>();
+
+function isRateLimited(userId: string): boolean {
+  const now = Date.now();
+  const timestamps = (userRequests.get(userId) ?? []).filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+  timestamps.push(now);
+  userRequests.set(userId, timestamps);
+  return timestamps.length > RATE_LIMIT_MAX;
+}
+
 export async function GET() {
   try {
     const supabase = await createClient();
@@ -41,6 +54,10 @@ export async function PATCH(req: NextRequest) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    if (isRateLimited(user.id)) {
+      return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+    }
 
     const { username } = await req.json();
     if (typeof username !== 'string') {

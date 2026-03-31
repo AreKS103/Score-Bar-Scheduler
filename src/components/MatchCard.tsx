@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useState, useEffect } from 'react';
+import { memo } from 'react';
 import { Star } from 'lucide-react';
 import type { MatchEvent } from '@/types';
 import { cn } from '@/lib/utils';
@@ -27,23 +27,9 @@ const MatchCard = memo(function MatchCard({
   event,
   onToggleSelected,
   onToggleFeatured,
-  onSetNote,
+  onSetNote: _onSetNote,
 }: MatchCardProps) {
   const isCombat = ['ufc', 'bellator', 'boxing'].includes(event.sportId);
-  const [localNote, setLocalNote] = useState(event.tags[0] ?? '');
-
-  // Keep local note in sync when the event changes externally
-  useEffect(() => {
-    setLocalNote(event.tags[0] ?? '');
-  }, [event.tags]);
-
-  const handleNoteBlur = () => {
-    const note = localNote.trim();
-    if (note !== (event.tags[0] ?? '')) {
-      onSetNote(event.id, note);
-      if (note && !event.isSelected) onToggleSelected(event.id);
-    }
-  };
   return (
     <div
       onClick={() => onToggleSelected(event.id)}
@@ -125,36 +111,6 @@ const MatchCard = memo(function MatchCard({
         {event.round && (
           <div className="text-[10px] text-muted-foreground mt-0.5">{event.round}</div>
         )}
-
-        {/* Custom note */}
-        <div
-          className="mt-1.5"
-          onClick={(e) => e.stopPropagation()}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          <input
-            type="text"
-            value={localNote}
-            onChange={(e) => setLocalNote(e.target.value)}
-            onBlur={handleNoteBlur}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') e.currentTarget.blur();
-              if (e.key === 'Escape') {
-                setLocalNote(event.tags[0] ?? '');
-                e.currentTarget.blur();
-              }
-            }}
-            placeholder="Add note…"
-            maxLength={100}
-            className={cn(
-              'w-full text-[10px] px-2 py-0.5 rounded border transition-all bg-transparent',
-              localNote
-                ? 'border-amber-500/30 text-amber-400/90'
-                : 'border-dashed border-border/40 text-muted-foreground/50',
-              'placeholder:text-muted-foreground/35 focus:outline-none focus:border-primary/50 focus:text-foreground focus:bg-secondary/30',
-            )}
-          />
-        </div>
       </div>
     </div>
   );

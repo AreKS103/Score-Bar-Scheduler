@@ -226,16 +226,14 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
                     } catch(er) {}
                 }
             });
-            // MutationObserver: fire DELETE to clean up Supabase when this embed's DOM node is removed.
-            // Observe document.body because when Elementor deletes a widget the entire container is
-            // removed — observing the wrapper's parent gets disconnected silently.
+            // MutationObserver: fire DELETE when this embed is permanently removed from the DOM.
+            // Polls every 3s for 30s to survive Elementor re-renders (which transiently remove nodes).
             (function(){
                 var wid = document.getElementById('<?php echo esc_js($uid); ?>');
                 if (!wid || !window.MutationObserver) return;
                 var deleted = false;
                 var stableId = '<?php echo esc_js($widget_id); ?>';
                 var obs = new MutationObserver(function(mutations) {
-                    // Only fire from WordPress context, never from inside the embed iframe
                     try {
                         var _inWpCtx = (
                             (window.elementorFrontend && typeof window.elementorFrontend.isEditMode === 'function' && window.elementorFrontend.isEditMode()) ||
@@ -251,32 +249,29 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
                             if (node.nodeType !== 1) continue;
                             if (node === wid || (node.contains && node.contains(wid))) {
                                 deleted = true;
-                                // Debounce: wait 10s to survive Elementor iframe re-renders (confirmed ~2-3s)
-                                setTimeout(function() {
-                                    var stillExists = false;
+                                var checks = 0;
+                                var iv = setInterval(function() {
+                                    checks++;
+                                    var found = false;
                                     if (stableId) {
-                                        if (document.querySelector('[data-id="' + stableId + '"]')) {
-                                            stillExists = true;
-                                        }
+                                        if (document.querySelector('[data-id="' + stableId + '"]')) found = true;
                                         try {
                                             var pf = window.parent && window.parent.document &&
                                                 window.parent.document.getElementById('elementor-preview-iframe');
                                             if (pf && pf.contentDocument &&
-                                                pf.contentDocument.querySelector('[data-id="' + stableId + '"]')) {
-                                                stillExists = true;
-                                            }
+                                                pf.contentDocument.querySelector('[data-id="' + stableId + '"]')) found = true;
                                         } catch(e) {}
                                     }
-                                    if (stillExists) { deleted = false; return; }
-                                    // Safety guard: if stableId is empty we cannot confirm the
-                                    // widget is really gone (Elementor may have re-rendered it
-                                    // with a new wrapper). Abort to prevent a false-positive DELETE.
-                                    if (!stableId) { deleted = false; return; }
-                                    obs.disconnect();
-                                    var delParams = {};
-                                    <?php if (!empty($widget_id)): ?>delParams.widgetId = '<?php echo esc_js($widget_id); ?>';<?php elseif (!empty($settings['embed_id'])): ?>delParams.embedId = '<?php echo esc_js($settings['embed_id']); ?>';<?php else: ?>delParams.embedId = '__null__';<?php endif; ?>
-                                    if (typeof sbFireDelete === 'function') sbFireDelete(delParams);
-                                }, 10000);
+                                    if (found) { deleted = false; clearInterval(iv); return; }
+                                    if (checks >= 10) {
+                                        clearInterval(iv);
+                                        if (!stableId) { deleted = false; return; }
+                                        obs.disconnect();
+                                        var delParams = {};
+                                        <?php if (!empty($widget_id)): ?>delParams.widgetId = '<?php echo esc_js($widget_id); ?>';<?php elseif (!empty($settings['embed_id'])): ?>delParams.embedId = '<?php echo esc_js($settings['embed_id']); ?>';<?php else: ?>delParams.embedId = '__null__';<?php endif; ?>
+                                        if (typeof sbFireDelete === 'function') sbFireDelete(delParams);
+                                    }
+                                }, 3000);
                                 return;
                             }
                         }

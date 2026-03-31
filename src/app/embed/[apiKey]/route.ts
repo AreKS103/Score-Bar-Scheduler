@@ -436,7 +436,7 @@ export async function GET(
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
         'Content-Security-Policy': 'frame-ancestors *',
-        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=86400, stale-if-error=604800',
+        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300, stale-if-error=3600',
       },
     });
   }
@@ -472,7 +472,7 @@ export async function GET(
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
       'X-Frame-Options': 'ALLOWALL',
-      'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=86400, stale-if-error=604800',
+      'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300, stale-if-error=3600',
     },
   });
   } catch (err) {

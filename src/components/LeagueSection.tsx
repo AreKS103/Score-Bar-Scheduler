@@ -265,11 +265,6 @@ const LeagueSection = memo(function LeagueSection({
         {isLoading && (
           <div className="w-3.5 h-3.5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
         )}
-        {error && (
-          <Badge variant="destructive" className="text-[10px]">
-            {error}
-          </Badge>
-        )}
       </div>
 
       {/* Events grouped by date */}

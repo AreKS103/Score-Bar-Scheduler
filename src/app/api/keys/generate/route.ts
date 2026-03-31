@@ -3,6 +3,19 @@ import { createClient } from '@/lib/supabase/server';
 import { getUserOrgId } from '@/lib/supabase/org';
 import crypto from 'crypto';
 
+// Rate limiter: 10 key generations per 24 hours per user
+const RATE_LIMIT_MAX = 10;
+const RATE_LIMIT_WINDOW_MS = 86_400_000; // 24 hours
+const userRequests = new Map<string, number[]>();
+
+function isRateLimited(userId: string): boolean {
+  const now = Date.now();
+  const timestamps = (userRequests.get(userId) ?? []).filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+  timestamps.push(now);
+  userRequests.set(userId, timestamps);
+  return timestamps.length > RATE_LIMIT_MAX;
+}
+
 export async function POST() {
   try {
     const supabase = await createClient();
@@ -10,6 +23,10 @@ export async function POST() {
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (isRateLimited(user.id)) {
+      return NextResponse.json({ error: 'Too many key generation requests' }, { status: 429 });
     }
 
     // Get user's org if they have one (no auto-creation)

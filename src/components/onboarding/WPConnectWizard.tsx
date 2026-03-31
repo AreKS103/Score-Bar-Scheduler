@@ -27,6 +27,8 @@ interface ConnectedState {
 interface WPConnectWizardProps {
   /** If the user already has a connection, show connected UI */
   existingConnection?: ConnectedState | null;
+  /** Error code from wp-callback redirect (e.g. 'invalid_token', 'denied') */
+  initialError?: string | null;
   /** Called after successful connection */
   onConnected?: () => void;
   /** Called when the user dismisses the wizard (e.g. "Skip for now") */
@@ -288,28 +290,38 @@ function StepConnect({
       // Save the URL in localStorage for persistence
       localStorage.setItem(LS_SITE_URL, trimmed);
 
+      console.log('[WP Connect] Initiating connection to:', trimmed);
+
       const res = await fetch('/api/wp-connect/initiate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ siteUrl: trimmed }),
       });
 
+      console.log('[WP Connect] Initiate response status:', res.status);
+
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        console.error('[WP Connect] Initiate failed:', data);
         throw new Error(data.error || 'Failed to initiate connection.');
       }
 
       const data = await res.json();
+      console.log('[WP Connect] Redirect URL received:', data.redirectUrl ? 'yes' : 'no');
 
       if (data.redirectUrl) {
         // Redirect to WordPress auth page
+        console.log('[WP Connect] Redirecting to WordPress plugin endpoint…');
         window.location.href = data.redirectUrl;
       } else {
         // Direct connection (API key flow)
+        console.log('[WP Connect] Direct connection completed');
         onConnected(trimmed);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Connection failed. Please try again.');
+      const msg = err instanceof Error ? err.message : 'Connection failed. Please try again.';
+      console.error('[WP Connect] Error:', msg);
+      setError(msg);
       setConnecting(false);
     }
   };
@@ -625,8 +637,19 @@ function ManualKeyFallback() {
 }
 
 /* ═══ Main Wizard Component ═════════════════════════════════════════════ */
+
+const WP_ERROR_MESSAGES: Record<string, string> = {
+  missing_params: 'The connection callback was missing required parameters. Please try connecting again.',
+  denied: 'The connection was denied by the WordPress site. Make sure you are logged in as an admin.',
+  invalid_token: 'The connection token was not found. This can happen if you regenerated your API key. Please try connecting again.',
+  update_failed: 'The connection was authorized but could not be saved. Please try again.',
+  internal: 'An internal error occurred during the connection callback. Please try again.',
+  session_expired: 'Your session expired during the connection flow. Please log in and try again.',
+};
+
 export default function WPConnectWizard({
   existingConnection,
+  initialError,
   onConnected,
   onClose,
 }: WPConnectWizardProps) {
@@ -634,6 +657,7 @@ export default function WPConnectWizard({
   const [downloaded, setDownloaded] = useState(false);
   const [installed, setInstalled] = useState(false);
   const [reconfiguring, setReconfiguring] = useState(false);
+  const [callbackError, setCallbackError] = useState<string | null>(initialError ?? null);
   const [connected, setConnected] = useState<ConnectedState | null>(
     existingConnection ?? null,
   );
@@ -739,6 +763,25 @@ export default function WPConnectWizard({
       </div>
 
       <StepIndicator currentStep={step} />
+
+      {/* Connection callback error banner */}
+      {callbackError && (
+        <div className="mb-4 p-3 rounded-lg border border-destructive/40 bg-destructive/10 flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-destructive">Connection failed</p>
+            <p className="text-xs text-destructive/80 mt-0.5">
+              {WP_ERROR_MESSAGES[callbackError] ?? `Unknown error: ${callbackError}. Please try connecting again.`}
+            </p>
+            <button
+              onClick={() => setCallbackError(null)}
+              className="text-xs text-destructive/60 hover:text-destructive mt-1 underline underline-offset-2"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-4">
         {/* Step 1 — always visible */}

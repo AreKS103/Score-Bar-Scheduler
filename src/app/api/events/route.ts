@@ -27,7 +27,22 @@ const CUSTOM_EVENTS_CACHE_TTL = 60 * 1000;
 
 // Fetch locks to prevent thundering herd — keyed by cacheKey so different
 // date ranges never share the same in-flight promise.
-const fetchPromises = new Map<string, Promise<MatchEvent[]>>();
+// Each entry stores the promise AND a timestamp so we can GC orphaned promises
+// that were abandoned after a HMR reload or unexpected crash.
+interface FetchLock { promise: Promise<MatchEvent[]>; startedAt: number }
+const fetchPromises = new Map<string, FetchLock>();
+const FETCH_LOCK_MAX_AGE_MS = 60_000; // 60 s — any in-flight older than this is presumed dead
+
+/** Remove orphaned fetch locks that have been running for too long. */
+function gcStaleFetchLocks() {
+  const now = Date.now();
+  for (const [key, lock] of fetchPromises) {
+    if (now - lock.startedAt > FETCH_LOCK_MAX_AGE_MS) {
+      console.warn(`[Events API] GC stale fetch lock for key "${key}" (age: ${Math.round((now - lock.startedAt) / 1000)}s)`);
+      fetchPromises.delete(key);
+    }
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ESPN API
@@ -1322,6 +1337,9 @@ export async function GET(req: NextRequest) {
   const now = Date.now();
   const cached = CACHE.get(cacheKey);
 
+  // GC any orphaned fetch locks before checking
+  gcStaleFetchLocks();
+
   // Return cached data if fresh
   if (cached && now - cached.timestamp < CACHE_TTL) {
     const customEvents = await getCustomEvents();
@@ -1344,7 +1362,7 @@ export async function GET(req: NextRequest) {
       fetchPromises.delete(cacheKey);
       return cached.data;
     });
-    fetchPromises.set(cacheKey, bgPromise);
+    fetchPromises.set(cacheKey, { promise: bgPromise, startedAt: Date.now() });
 
     const customEvents = await getCustomEvents();
     return NextResponse.json({
@@ -1361,12 +1379,12 @@ export async function GET(req: NextRequest) {
     // Each date range gets its own promise so different-range requests never
     // return each other's data.
     if (fetchPromises.has(cacheKey)) {
-      const [events, customEvents] = await Promise.all([fetchPromises.get(cacheKey)!, getCustomEvents()]);
+      const [events, customEvents] = await Promise.all([fetchPromises.get(cacheKey)!.promise, getCustomEvents()]);
       return NextResponse.json({ events: [...events, ...customEvents], cached: false });
     }
 
     const p = fetchAllEvents(startDate, endDate);
-    fetchPromises.set(cacheKey, p);
+    fetchPromises.set(cacheKey, { promise: p, startedAt: Date.now() });
     const events = await p;
     
     CACHE.set(cacheKey, { data: events, timestamp: Date.now() });

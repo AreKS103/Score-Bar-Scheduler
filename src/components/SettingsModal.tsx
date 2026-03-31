@@ -792,40 +792,42 @@ export default function SettingsModal({ isOpen, onClose, onOpenSetupWizard }: Se
                     )}
                   </div>
 
-                  <div className="bg-secondary/30 rounded-lg p-3 border border-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                    <div>
+                  <div className="bg-secondary/30 rounded-lg p-3 border border-border flex flex-col gap-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <h3 className="font-medium text-sm">Connection Status</h3>
-                      <p className="text-xs text-muted-foreground mt-1 max-w-[250px] truncate">
+                      <div className="flex items-center gap-2 shrink-0">
                         {connectedSite ? (
-                          <>Connected to: <a href={connectedSite} target="_blank" rel="noreferrer" className="text-primary hover:underline">{connectedSite}</a></>
+                          <>
+                            <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-full border border-emerald-500/20">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 block animate-pulse"></span>
+                              Connected
+                            </span>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={handleDisconnect}
+                              disabled={disconnecting}
+                              className="shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10 text-xs h-7 px-2"
+                            >
+                              {disconnecting ? <Loader2 className="w-3 h-3 animate-spin" /> : <><WifiOff className="w-3 h-3 mr-1" />Disconnect</>}
+                            </Button>
+                          </>
                         ) : (
-                          'Not connected yet. Paste your key in your WordPress plugin to establish a connection.'
-                        )}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {connectedSite ? (
-                        <>
-                          <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-full border border-emerald-500/20">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 block animate-pulse"></span>
-                            Connected
+                          <span className="text-xs font-medium text-muted-foreground bg-secondary px-2 py-1 rounded-full border border-border block">
+                            Pending
                           </span>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleDisconnect}
-                            disabled={disconnecting}
-                            className="shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10 text-xs h-7 px-2"
-                          >
-                            {disconnecting ? <Loader2 className="w-3 h-3 animate-spin" /> : <><WifiOff className="w-3 h-3 mr-1" />Disconnect</>}
-                          </Button>
-                        </>
-                      ) : (
-                        <span className="text-xs font-medium text-muted-foreground bg-secondary px-2 py-1 rounded-full border border-border block">
-                          Pending
-                        </span>
-                      )}
+                        )}
+                      </div>
                     </div>
+                    {connectedSite ? (
+                      <p className="text-xs text-muted-foreground truncate">
+                        Connected to: <a href={connectedSite} target="_blank" rel="noreferrer" className="text-primary hover:underline">{connectedSite}</a>
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Not connected yet. Paste your key in your WordPress plugin to establish a connection.
+                      </p>
+                    )}
                   </div>
                 </div>
               )}

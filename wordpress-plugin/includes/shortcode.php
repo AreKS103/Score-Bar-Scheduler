@@ -181,16 +181,14 @@ function schedule_shortcode_render($atts) {
                 try { if (f && e.source === f.contentWindow) { f.style.height = e.data.sbHeight + 'px'; } } catch(err) {}
             }
         });
-        // MutationObserver: fire DELETE to clean up Supabase when this embed is removed from the DOM.
-        // Observe document.body (not the wrapper's parent) because when Elementor deletes a widget
-        // the entire container is removed — if we observed the parent, it gets disconnected silently.
+        // MutationObserver: fire DELETE when this embed is permanently removed from the DOM.
+        // Polls every 3s for 30s to survive Elementor re-renders (which transiently remove nodes).
         (function(){
             var wid = document.getElementById('<?php echo esc_js($uid); ?>');
             if (!wid || !window.MutationObserver) return;
             var deleted = false;
             var widId = '<?php echo esc_js($uid); ?>';
             var obs = new MutationObserver(function(mutations) {
-                // Only fire from WordPress context, never from inside the embed iframe
                 try {
                     var _inWpCtx = (
                         (window.elementorFrontend && typeof window.elementorFrontend.isEditMode === 'function' && window.elementorFrontend.isEditMode()) ||
@@ -206,19 +204,18 @@ function schedule_shortcode_render($atts) {
                         if (node.nodeType !== 1) continue;
                         if (node === wid || (node.contains && node.contains(wid))) {
                             deleted = true;
-                            // Debounce: increased to 10s to match Elementor widget; 2s was too
-                            // short — Elementor re-renders can take 3–7s on a slow host, causing
-                            // the old element to transiently vanish and trigger a false DELETE.
-                            setTimeout(function() {
-                                // Re-check: if the wrapper is back in the DOM, abort.
-                                if (document.getElementById(widId)) { deleted = false; return; }
-                                // Only fire for named embeds. If there's no embed_id we can't
-                                // safely identify which schedule to target and should not fire.
-                                var delParams = {};
-                                <?php if (!empty($atts['embed_id'])): ?>delParams.embedId = '<?php echo esc_js($atts['embed_id']); ?>';<?php else: ?>deleted = false; return;<?php endif; ?>
-                                obs.disconnect();
-                                if (typeof sbFireDelete === 'function') sbFireDelete(delParams);
-                            }, 10000);
+                            var checks = 0;
+                            var iv = setInterval(function() {
+                                checks++;
+                                if (document.getElementById(widId)) { deleted = false; clearInterval(iv); return; }
+                                if (checks >= 10) {
+                                    clearInterval(iv);
+                                    var delParams = {};
+                                    <?php if (!empty($atts['embed_id'])): ?>delParams.embedId = '<?php echo esc_js($atts['embed_id']); ?>';<?php else: ?>deleted = false; return;<?php endif; ?>
+                                    obs.disconnect();
+                                    if (typeof sbFireDelete === 'function') sbFireDelete(delParams);
+                                }
+                            }, 3000);
                             return;
                         }
                     }

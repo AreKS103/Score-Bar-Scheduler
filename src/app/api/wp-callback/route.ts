@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/server';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -15,6 +16,8 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
  *
  * On success, updates the connected_site in user_api_keys and
  * redirects the user back to the onboarding connect page.
+ *
+ * Security: Requires active user session + token must belong to that user.
  */
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
@@ -25,21 +28,43 @@ export async function GET(req: NextRequest) {
   const origin = req.nextUrl.origin;
 
   if (!token || !site) {
+    console.warn('[wp-callback] Missing params — token:', !!token, 'site:', !!site);
     return NextResponse.redirect(
       `${origin}/schedule?wp_error=missing_params`,
     );
   }
 
+  // Validate token format: must be exactly 64 lowercase hex characters
+  if (!/^[0-9a-f]{64}$/.test(token)) {
+    console.warn('[wp-callback] Invalid token format');
+    return NextResponse.redirect(
+      `${origin}/schedule?wp_error=invalid_token`,
+    );
+  }
+
   if (status === 'denied') {
+    console.warn('[wp-callback] Connection denied by WordPress site');
     return NextResponse.redirect(
       `${origin}/schedule?wp_error=denied`,
     );
   }
 
   try {
+    console.log('[wp-callback] Processing callback for site:', site);
+
+    // CSRF protection: require active user session
+    const userSupabase = await createClient();
+    const { data: { user } } = await userSupabase.auth.getUser();
+    if (!user) {
+      console.warn('[wp-callback] No active session — possible CSRF or expired session');
+      return NextResponse.redirect(
+        `${origin}/login?redirect=${encodeURIComponent(`/schedule?wp_error=session_expired`)}`,
+      );
+    }
+
     const supabase = createServiceClient(supabaseUrl, supabaseKey);
 
-    // Find the user by their key_hash and update connected_site
+    // Find the user by their key_hash and verify ownership
     const { data: keyData, error: findErr } = await supabase
       .from('user_api_keys')
       .select('user_id')
@@ -48,6 +73,14 @@ export async function GET(req: NextRequest) {
 
     if (findErr || !keyData) {
       console.error('[wp-callback] Key not found:', findErr);
+      return NextResponse.redirect(
+        `${origin}/schedule?wp_error=invalid_token`,
+      );
+    }
+
+    // Verify the token belongs to the logged-in user (prevents cross-user attacks)
+    if (keyData.user_id !== user.id) {
+      console.warn('[wp-callback] Token does not belong to authenticated user');
       return NextResponse.redirect(
         `${origin}/schedule?wp_error=invalid_token`,
       );
@@ -70,6 +103,8 @@ export async function GET(req: NextRequest) {
         `${origin}/schedule?wp_error=update_failed`,
       );
     }
+
+    console.log('[wp-callback] Connection completed successfully for site:', siteUrl);
 
     // Redirect back to schedule with success
     return NextResponse.redirect(

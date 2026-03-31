@@ -43,31 +43,18 @@ export async function GET(_req: NextRequest) {
       });
     }
 
-    if (res.status === 401) {
-      return NextResponse.json({
-        ok: false,
-        message: 'Authentication failed — check WP_USERNAME and WP_APP_PASSWORD in .env.local.',
-        configured: true,
-      });
-    }
-
-    if (res.status === 404) {
-      return NextResponse.json({
-        ok: false,
-        message: 'Page 327 not found — check your WordPress setup.',
-        configured: true,
-      });
-    }
-
+    // Generic error — don't leak specific HTTP status codes or WordPress internals
+    console.error('[test-connection] WordPress responded with status:', res.status);
     return NextResponse.json({
       ok: false,
-      message: `Unexpected response: ${res.status} ${res.statusText}`,
+      message: 'Connection failed — verify your WordPress site URL, credentials, and plugin installation.',
       configured: true,
     });
   } catch (err) {
+    console.error('[test-connection] Connection error:', err instanceof Error ? err.message : 'Unknown error');
     return NextResponse.json({
       ok: false,
-      message: `Connection error: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      message: 'Could not reach the WordPress site. Check the URL and try again.',
       configured: true,
     });
   }

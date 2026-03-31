@@ -3,6 +3,19 @@ import { createClient } from '@/lib/supabase/server';
 import { getUserOrgId } from '@/lib/supabase/org';
 import crypto from 'crypto';
 
+// Rate limiter: 5 requests per 60s per user
+const RATE_LIMIT_MAX = 5;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const userRequests = new Map<string, number[]>();
+
+function isRateLimited(userId: string): boolean {
+  const now = Date.now();
+  const timestamps = (userRequests.get(userId) ?? []).filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+  timestamps.push(now);
+  userRequests.set(userId, timestamps);
+  return timestamps.length > RATE_LIMIT_MAX;
+}
+
 /**
  * POST /api/wp-connect/initiate
  *
@@ -24,6 +37,17 @@ export async function POST(req: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    // Rate limit per user
+    if (isRateLimited(user.id)) {
+      console.warn('[wp-connect/initiate] Rate limited user:', user.id);
+      return NextResponse.json(
+        { error: 'Too many connection attempts. Please wait a minute and try again.' },
+        { status: 429 },
+      );
+    }
+
+    console.log('[wp-connect/initiate] User:', user.id, 'starting connection flow');
 
     const body = await req.json();
     const rawUrl = body?.siteUrl;
@@ -66,6 +90,7 @@ export async function POST(req: NextRequest) {
 
     if (!keyHash) {
       // Auto-generate a key for the user
+      console.log('[wp-connect/initiate] No existing key, generating new one');
       const orgId = await getUserOrgId(user.id);
       const randomBytes = crypto.randomBytes(24).toString('hex');
       const plainKey = 'sb_live_' + randomBytes;
@@ -110,6 +135,8 @@ export async function POST(req: NextRequest) {
     );
     redirectUrl.searchParams.set('callback', callbackUrl.toString());
     redirectUrl.searchParams.set('token', keyHash);
+
+    console.log('[wp-connect/initiate] Redirect URL constructed for site:', siteUrl, '→', redirectUrl.hostname);
 
     return NextResponse.json({ redirectUrl: redirectUrl.toString() });
   } catch (error) {

@@ -44,6 +44,9 @@ const OrgModal = dynamic(() => import('@/components/OrgModal'), { ssr: false });
 import UserProfileMenu from '@/components/UserProfileMenu';
 const BusinessInfoModal = dynamic(() => import('@/components/BusinessInfoModal'), { ssr: false });
 const WPConnectWizard = dynamic(() => import('@/components/onboarding/WPConnectWizard'), { ssr: false });
+const MatchFinderPanel = dynamic(() => import('@/components/ai/MatchFinderPanel'), { ssr: false });
+import MatchFinderButton from '@/components/ai/MatchFinderButton';
+import { MatchFinderProvider } from '@/components/ai/MatchFinderProvider';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useOrgRealtime } from '@/hooks/useOrgRealtime';
@@ -188,6 +191,8 @@ export default function SchedulePage() {
   const [businessInfoOpen, setBusinessInfoOpen] = useState(false);
   const [orgModalOpen, setOrgModalOpen] = useState(false);
   const [setupWizardOpen, setSetupWizardOpen] = useState(false);
+  const [wpCallbackSite, setWpCallbackSite] = useState<string | null>(null);
+  const [wpCallbackError, setWpCallbackError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -313,14 +318,6 @@ export default function SchedulePage() {
     loadEmbedInstances();
     const id = setInterval(loadEmbedInstances, 120_000);
     return () => clearInterval(id);
-  }, [loadEmbedInstances]);
-
-  // ─── Delete embed instance (manual cleanup from web app) ──────────────────
-  const handleDeleteEmbed = useCallback(async (embedId: string) => {
-    try {
-      await fetch(`/api/embed-instances?embedId=${encodeURIComponent(embedId)}`, { method: 'DELETE' });
-    } catch { /* ignore */ }
-    loadEmbedInstances();
   }, [loadEmbedInstances]);
 
   // ─── Rename embed instance ─────────────────────────────────────────────────
@@ -542,6 +539,12 @@ export default function SchedulePage() {
     const wpSite = params.get('site');
     const wpError = params.get('wp_error');
     if (wpConnected === 'true' || wpError) {
+      if (wpConnected === 'true' && wpSite) {
+        setWpCallbackSite(decodeURIComponent(wpSite));
+      }
+      if (wpError) {
+        setWpCallbackError(wpError);
+      }
       setSetupWizardOpen(true);
       // Clean URL without triggering navigation
       const url = new URL(window.location.href);
@@ -838,7 +841,14 @@ export default function SchedulePage() {
 
     try {
       const url = `/api/events?start=${currentRange.start}&end=${currentRange.end}`;
-      const res = await fetch(url);
+      const ctrl = new AbortController();
+      const timeout = setTimeout(() => ctrl.abort(), 45_000); // 45s safety timeout
+      let res: Response;
+      try {
+        res = await fetch(url, { signal: ctrl.signal });
+      } finally {
+        clearTimeout(timeout);
+      }
       
       if (!res.ok) {
         throw new Error(`API error: ${res.status}`);
@@ -1731,6 +1741,7 @@ export default function SchedulePage() {
   }, [dateRange.end, dateRange.start, publishTarget, setDateRange, setEvents]);
 
   return (
+    <MatchFinderProvider>
     <div className="flex h-dvh bg-background text-foreground">
       {/* ── Mobile sidebar backdrop ───────────────────────────────────────────── */}
       {sidebarOpen && (
@@ -1932,6 +1943,10 @@ export default function SchedulePage() {
             <Button variant="secondary" size="sm" className="sm:text-xs sm:h-7 sm:px-2" onClick={() => setIsAddModalOpen(true)}>
               <Plus className="w-3.5 h-3.5" /> <span className="phone-ls-hide">Add Custom Event</span>
             </Button>
+
+            <Separator orientation="vertical" className="h-5 hidden sm:block" />
+
+            <MatchFinderButton />
           </div>
         </header>
 
@@ -1939,10 +1954,10 @@ export default function SchedulePage() {
         <div className="relative flex-1 overflow-y-auto px-3 sm:px-6 pb-4">
 
           {isFetching && events.length > 0 && (
-            <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/70 backdrop-blur-[1px] pointer-events-none">
-              <div className="flex items-center gap-2 rounded-md border border-border bg-card/90 px-3 py-2 text-sm text-foreground shadow-md">
-                <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                Loading sports events...
+            <div className="sticky top-0 z-20 flex items-center justify-center py-1.5 pointer-events-none">
+              <div className="flex items-center gap-2 rounded-full border border-border bg-card/95 backdrop-blur-sm px-3 py-1.5 text-xs text-muted-foreground shadow-sm">
+                <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                Updating matches...
               </div>
             </div>
           )}
@@ -2145,15 +2160,6 @@ export default function SchedulePage() {
                             >
                               {inst.display_id}
                             </button>
-                            {isOwner && (
-                              <button
-                                onClick={() => { setEmbedDropdownOpen(false); handleDeleteEmbed(inst.embed_id ?? '__null__'); }}
-                                title={`Remove "${inst.display_id}" embed registration`}
-                                className="shrink-0 px-2 py-1.5 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            )}
                           </div>
                         );
                       })}
@@ -2260,6 +2266,13 @@ export default function SchedulePage() {
                               </div>
                             </div>
                           </div>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setEditingEvent(m); }}
+                            className="shrink-0 w-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity border-l border-amber-500/20 hover:bg-amber-400/10"
+                            title="Edit match"
+                          >
+                            <Pencil className="w-3 h-3 text-muted-foreground" />
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -2393,9 +2406,6 @@ export default function SchedulePage() {
                                 </div>
                                 <div className="text-muted-foreground mt-0.5">
                                   {formatDisplayDate(m.date)} · {m.time}
-                                  {m.tags.length > 0 && (
-                                    <span className="ml-1 text-primary/70">{m.tags.join(', ')}</span>
-                                  )}
                                 </div>
                               </div>
                             </div>
@@ -2568,12 +2578,22 @@ export default function SchedulePage() {
           <DialogTitle className="sr-only">WordPress Setup</DialogTitle>
           <DialogDescription className="sr-only">Connect your WordPress site using the setup wizard.</DialogDescription>
           <WPConnectWizard
+            existingConnection={
+              wpCallbackSite
+                ? { siteUrl: wpCallbackSite, connectedAt: new Date().toISOString() }
+                : undefined
+            }
+            initialError={wpCallbackError}
             onConnected={() => {
               setSetupWizardOpen(false);
+              setWpCallbackSite(null);
+              setWpCallbackError(null);
               try { localStorage.setItem('wp_setup_dismissed', 'true'); } catch {}
             }}
             onClose={() => {
               setSetupWizardOpen(false);
+              setWpCallbackSite(null);
+              setWpCallbackError(null);
               try { localStorage.setItem('wp_setup_dismissed', 'true'); } catch {}
             }}
           />
@@ -2654,6 +2674,60 @@ export default function SchedulePage() {
           </button>
         </div>
       )}
+
+      {/* AI Match Finder Panel */}
+      <MatchFinderPanel
+        events={events}
+        embedInstances={embedInstances}
+        publishTarget={publishTarget}
+        username={userUsername}
+        onAddMatches={(eventIds, embedTarget) => {
+          // ── Batch-select the chosen AI matches ──
+          const idSet = new Set(eventIds);
+
+          // If the target embed is different from the current one, switch first
+          if (embedTarget !== effectiveTargetRef.current) {
+            setPublishTarget(embedTarget);
+          }
+
+          // Select them in the store
+          batchSetSelected(eventIds, true);
+
+          // Pin new leagues to the top of league order
+          const newSportIds = new Set<string>();
+          for (const ev of useScheduleStore.getState().events) {
+            if (idSet.has(ev.id)) newSportIds.add(ev.sportId);
+          }
+          if (newSportIds.size > 0) {
+            setLeagueOrder((prev) => {
+              const additions = Array.from(newSportIds).filter((id) => !prev.includes(id));
+              return additions.length > 0 ? [...additions, ...prev] : prev;
+            });
+          }
+
+          // Persist selection immediately
+          const allEvents = useScheduleStore.getState().events;
+          const selections: SavedSelectionState['selections'] = {};
+          for (const e of allEvents) {
+            if (e.isSelected || e.isFeatured || e.tags.length > 0) {
+              selections[e.id] = { isSelected: e.isSelected, isFeatured: e.isFeatured, tags: e.tags };
+            }
+          }
+          // Force-include AI-selected events
+          for (const eid of eventIds) {
+            if (!selections[eid]) {
+              selections[eid] = { isSelected: true, isFeatured: false, tags: [] };
+            }
+          }
+          saveSelectionToSupabase({
+            selections,
+            leagueOrder,
+            featuredLeagues: Object.fromEntries(featuredLeagues),
+            savedAt: Date.now(),
+          }, embedTarget || effectiveTargetRef.current);
+        }}
+      />
     </div>
+    </MatchFinderProvider>
   );
 }

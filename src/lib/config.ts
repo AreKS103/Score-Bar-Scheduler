@@ -204,6 +204,148 @@ export const CATEGORY_LOGOS: Record<string, string> = {
   'Cycling':             'https://r2.thesportsdb.com/images/media/league/badge/igahc11535183469.png',
 };
 
+// ── League abbreviations for AI payloads (saves tokens) ──────────────────────
+// Maps full leagueLabel → short code the AI understands natively
+export const LEAGUE_SHORT: Record<string, string> = {
+  'EPL': 'EPL',
+  'UEFA Champions League': 'UCL',
+  'UEFA Europa League': 'UEL',
+  'Europa Conference League': 'UECL',
+  'FA Cup': 'FAC',
+  'EFL Championship': 'EFL',
+  'League One': 'L1E',
+  'Carabao Cup': 'CC',
+  'Bundesliga': 'BUN',
+  'Ligue 1': 'L1F',
+  'La Liga': 'LLG',
+  'Serie A': 'SEA',
+  'SPFL Scottish Prem': 'SPFL',
+  'Eredivisie': 'ERE',
+  'MLS': 'MLS',
+  'A-League': 'ALE',
+  'Saudi Pro League': 'SPL',
+  'J-League': 'JLG',
+  'AFC Champions League Elite': 'AFCE',
+  'AFC Champions League Two': 'AFC2',
+  'AFC Challenge League': 'AFCL',
+  'AFC Asian Cup': 'AAC',
+  'Asian Cup Women': 'AACW',
+  'Copa Libertadores': 'COP',
+  'Cambodian Premier League': 'CPL',
+  'NBA': 'NBA',
+  'WNBA': 'WNBA',
+  "NCAA Men's Basketball": 'NCAAM',
+  "NCAA Women's Basketball": 'NCAAW',
+  'NFL': 'NFL',
+  'NCAA Football': 'NCAAF',
+  'MLB': 'MLB',
+  'NHL': 'NHL',
+  'IPL': 'IPL',
+  'Big Bash League': 'BBL',
+  'Formula 1': 'F1',
+  'MotoGP': 'MGP',
+  'IndyCar': 'IND',
+  'UFC / MMA': 'UFC',
+  'PFL / Bellator': 'PFL',
+  'Boxing': 'BOX',
+  'Super Rugby Pacific': 'SRP',
+  'Six Nations': '6N',
+  'Premiership Rugby': 'PRU',
+  'Top 14': 'T14',
+  'United Rugby Championship': 'URC',
+  'Champions Cup': 'RCC',
+  'The Rugby Championship': 'TRC',
+  'NRL': 'NRL',
+  'AFL': 'AFL',
+  'ATP Tour': 'ATP',
+  'WTA Tour': 'WTA',
+  'PGA Tour': 'PGA',
+  'LPGA Tour': 'LPGA',
+  'UCI World Tour': 'UCI',
+};
+
+// ── League popularity scores (higher = more globally watched) ────────────────
+// Used to rank leagues in AI results: Football first, then by global viewership
+export const LEAGUE_POPULARITY: Record<string, number> = {
+  // Football — highest global viewership
+  'EPL': 100, 'UCL': 99, 'LLG': 95, 'BUN': 93, 'SEA': 92,
+  'L1F': 90, 'UEL': 88, 'COP': 85, 'UECL': 82, 'FAC': 80,
+  'EFL': 70, 'CC': 68, 'MLS': 65, 'SPFL': 60, 'ERE': 58,
+  'SPL': 55, 'ALE': 50, 'JLG': 48, 'AFCE': 45, 'AFC2': 40,
+  'AFCL': 38, 'AAC': 42, 'AACW': 35, 'CPL': 30, 'L1E': 55,
+  // Basketball
+  'NBA': 90, 'NCAAM': 65, 'WNBA': 55, 'NCAAW': 50,
+  // American Football
+  'NFL': 88, 'NCAAF': 60,
+  // Baseball
+  'MLB': 70,
+  // Ice Hockey
+  'NHL': 72,
+  // Cricket
+  'IPL': 80, 'BBL': 55,
+  // Motorsport
+  'F1': 88, 'MGP': 60, 'IND': 55,
+  // Combat Sports
+  'UFC': 78, 'PFL': 45, 'BOX': 72,
+  // Rugby
+  'SRP': 50, '6N': 65, 'PRU': 48, 'T14': 47, 'URC': 45, 'RCC': 55, 'TRC': 50,
+  // Rugby League
+  'NRL': 52,
+  // Australian Football
+  'AFL': 50,
+  // Tennis
+  'ATP': 70, 'WTA': 60,
+  // Golf
+  'PGA': 62, 'LPGA': 45,
+  // Cycling
+  'UCI': 40,
+};
+
+// ── Per-league max picks (hard cap after AI scoring) ─────────────────────────
+// High-volume leagues (MLB, NHL, NBA) are capped tighter because they have
+// 10-15 games per day. Elite football leagues get more slots.
+export const LEAGUE_MAX_PICKS: Record<string, number> = {
+  // Football — the most watched, give more slots
+  'EPL': 7, 'UCL': 6, 'LLG': 5, 'BUN': 4, 'SEA': 4,
+  'L1F': 4, 'UEL': 4, 'COP': 4, 'UECL': 3, 'FAC': 3,
+  'EFL': 2, 'CC': 2, 'MLS': 3, 'SPFL': 2, 'ERE': 1,
+  'SPL': 1, 'ALE': 1, 'JLG': 1, 'AFCE': 1, 'AFC2': 1,
+  'AFCL': 1, 'AAC': 1, 'AACW': 1, 'CPL': 1, 'L1E': 2,
+  // High-volume US sports
+  'NBA': 4, 'NCAAM': 3, 'WNBA': 2, 'NCAAW': 1,
+  'NFL': 4, 'NCAAF': 3,
+  'MLB': 4,
+  'NHL': 4,
+  // Cricket
+  'IPL': 3, 'BBL': 1,
+  // Motorsport — fewer events, keep most
+  'F1': 3, 'MGP': 2, 'IND': 2,
+  // Combat Sports
+  'UFC': 3, 'PFL': 1, 'BOX': 2,
+  // Rugby
+  'SRP': 2, '6N': 3, 'PRU': 1, 'T14': 1, 'URC': 1, 'RCC': 2, 'TRC': 1,
+  'NRL': 2,
+  'AFL': 2,
+  'ATP': 2, 'WTA': 1,
+  'PGA': 1, 'LPGA': 1,
+  'UCI': 1,
+};
+
+/** Get abbreviated league name for AI payloads */
+export function getLeagueAbbrev(label: string): string {
+  return LEAGUE_SHORT[label] ?? label.slice(0, 6);
+}
+
+/** Get popularity score for a league abbreviation (0-100, default 30) */
+export function getLeaguePopularity(abbrev: string): number {
+  return LEAGUE_POPULARITY[abbrev] ?? 30;
+}
+
+/** Get max picks allowed for a league abbreviation */
+export function getLeagueMaxPicks(abbrev: string): number {
+  return LEAGUE_MAX_PICKS[abbrev] ?? 2;
+}
+
 export function getSportConfig(sportId: string): SportConfig | undefined {
   return SPORTS_CONFIG.find(s => s.id === sportId);
 }

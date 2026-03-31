@@ -83,6 +83,16 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: 'timezone is required' }, { status: 400 });
     }
 
+    // Validate timezone string length and format
+    if (timezone.length > 100) {
+      return NextResponse.json({ error: 'Invalid timezone' }, { status: 400 });
+    }
+    try {
+      Intl.DateTimeFormat(undefined, { timeZone: timezone });
+    } catch {
+      return NextResponse.json({ error: 'Invalid timezone identifier' }, { status: 400 });
+    }
+
     // Verify user is the org creator
     const { data: membership } = await admin
       .from('organization_members')
