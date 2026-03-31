@@ -145,7 +145,7 @@ export async function POST(request: NextRequest) {
       console.error(`[AI Matches] Primary (${primary.provider}) failed:`, primaryError);
 
       const fallback = getFallbackModel();
-      if (!fallback || fallback.provider === primary.provider) throw primaryError;
+      if (!fallback || fallback.modelId === primary.modelId) throw primaryError;
 
       output = await callAI(fallback, condensed);
     }

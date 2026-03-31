@@ -61,6 +61,7 @@
     "packages/*"
   ],
   "overrides": {
-    "flatted": ">=3.4.2"
+    "flatted": ">=3.4.2",
+    "glob": ">=11.0.0"
   }
 }

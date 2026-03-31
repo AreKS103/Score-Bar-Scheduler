@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { X, Sparkles, AlertCircle, CheckSquare, Square, Loader2, SlidersHorizontal } from 'lucide-react';
+import { X, Sparkles, AlertCircle, CheckSquare, Square, SlidersHorizontal } from 'lucide-react';
 import { useMatchFinder } from './MatchFinderProvider';
 import AIMatchCard from './AIMatchCard';
 import SmartLogo from '@/components/ui/SmartLogo';
@@ -97,8 +97,10 @@ export default function MatchFinderPanel({
     } catch { return new Set(); }
   });
   const [showCatFilter, setShowCatFilter] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const handleCloseRef = useRef<() => void>(() => {});
 
   const greeting = useMemo(() => getGreeting(username), [username]);
 
@@ -149,7 +151,7 @@ export default function MatchFinderPanel({
   // Close on Escape
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape' && isOpen) close();
+      if (e.key === 'Escape' && isOpen) handleCloseRef.current();
     }
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
@@ -159,7 +161,7 @@ export default function MatchFinderPanel({
   useEffect(() => {
     function onMouseDown(e: MouseEvent) {
       if (isOpen && panelRef.current && !panelRef.current.contains(e.target as Node)) {
-        close();
+        handleCloseRef.current();
       }
     }
     document.addEventListener('mousedown', onMouseDown);
@@ -326,6 +328,15 @@ export default function MatchFinderPanel({
     onAddMatches(Array.from(selectedIds), targetEmbed);
   }, [selectedIds, targetEmbed, onAddMatches]);
 
+  const handleClose = useCallback(() => {
+    setIsClosing(true);
+    setTimeout(() => {
+      setIsClosing(false);
+      close();
+    }, 280);
+  }, [close]);
+  handleCloseRef.current = handleClose;
+
   if (!isOpen) return null;
 
   const allSelected = ratedEvents.length > 0 && selectedIds.size === ratedEvents.length;
@@ -334,12 +345,18 @@ export default function MatchFinderPanel({
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 z-200 bg-black/20 backdrop-blur-[2px] transition-opacity" />
+      <div className={cn(
+        'fixed inset-0 z-200 bg-black/20 backdrop-blur-[2px] transition-opacity duration-280',
+        isClosing && 'opacity-0'
+      )} />
 
       {/* Panel */}
       <div
         ref={panelRef}
-        className="fixed z-201 top-4 right-4 bottom-4 w-[calc(100vw-2rem)] sm:w-110 flex flex-col rounded-2xl border border-border bg-card/95 backdrop-blur-xl shadow-2xl animate-in slide-in-from-right duration-300"
+        className={cn(
+          'fixed z-201 top-4 right-4 bottom-4 w-[calc(100vw-2rem)] sm:w-110 flex flex-col rounded-2xl border border-border bg-card/95 backdrop-blur-xl shadow-2xl duration-300',
+          isClosing ? 'animate-out slide-out-to-right fill-mode-forwards' : 'animate-in slide-in-from-right'
+        )}
       >
         {/* Header */}
         <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border/50 shrink-0 bg-linear-to-r from-primary/5 to-transparent">
@@ -353,7 +370,7 @@ export default function MatchFinderPanel({
           </div>
           <button
             type="button"
-            onClick={close}
+            onClick={handleClose}
             className="rounded-full p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
             aria-label="Close"
           >
@@ -366,13 +383,38 @@ export default function MatchFinderPanel({
           {/* Hero — centered greeting + quick filters (before interaction) */}
           {!activeFilter && !isLoading && (
             <div className="flex flex-col items-center justify-center h-full text-center px-6 animate-in fade-in duration-500">
-              <div className="mb-8">
+              <div className="mb-5">
                 <h1 className="text-2xl font-semibold tracking-tight text-foreground">
                   {greeting.prefix}, {greeting.name}!
                 </h1>
                 <p className="text-[13px] text-muted-foreground mt-2.5 max-w-70 mx-auto leading-relaxed">
                   I&apos;ll find the best matches worth putting on the big screen.
                 </p>
+              </div>
+              {/* Category filter — toggle unwanted sports before scanning */}
+              <div className="flex flex-wrap justify-center gap-1 mb-6 max-w-xs mx-auto">
+                {CATEGORY_ORDER.map((cat) => {
+                  const isExcluded = excludedCategories.has(cat);
+                  const logoUrl = CATEGORY_LOGOS[cat];
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => toggleCategory(cat)}
+                      className={cn(
+                        'rounded-full border px-2 py-0.5 text-[10px] font-medium transition-all flex items-center gap-1',
+                        isExcluded
+                          ? 'bg-muted/30 border-border/40 text-muted-foreground/40 line-through'
+                          : 'bg-accent/50 border-primary/20 text-foreground'
+                      )}
+                    >
+                      {logoUrl && (
+                        <SmartLogo logo={logoUrl} alt="" className="w-3 h-3 object-contain" />
+                      )}
+                      {cat}
+                    </button>
+                  );
+                })}
               </div>
               <div className="flex flex-wrap items-center justify-center gap-2">
                 {QUICK_FILTERS.map((f) => (
@@ -393,17 +435,30 @@ export default function MatchFinderPanel({
                   className="rounded-full border border-border bg-muted/50 px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground hover:border-primary/30 transition-all disabled:opacity-40 flex items-center gap-1.5"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
-                  All {filteredEvents.length}
+                  All {filteredEvents.length} matches
                 </button>
               </div>
             </div>
           )}
 
-          {/* Loading state */}
+          {/* Loading skeleton */}
           {isLoading && (
-            <div className="flex flex-col items-center justify-center h-full gap-3 animate-in fade-in duration-300">
-              <Loader2 className="w-6 h-6 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">Analyzing matches...</p>
+            <div className="px-4 py-3 space-y-2 animate-in fade-in duration-200">
+              <div className="h-3 w-40 rounded bg-muted/60 animate-pulse mb-3" />
+              {([3, 2, 2] as const).map((rows, i) => (
+                <div key={i} className="rounded-xl border border-border/50 overflow-hidden">
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/30 border-b border-border/30">
+                    <div className="w-4 h-4 rounded bg-muted/70 animate-pulse" />
+                    <div className={cn('h-2.5 rounded bg-muted/70 animate-pulse', i === 0 ? 'w-16' : i === 1 ? 'w-20' : 'w-24')} />
+                    <div className="ml-auto h-2 w-10 rounded bg-muted/50 animate-pulse" />
+                  </div>
+                  <div className="p-1.5 space-y-1">
+                    {Array.from({ length: rows }).map((_, j) => (
+                      <div key={j} className="rounded-lg bg-muted/40 h-11 animate-pulse" />
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
@@ -552,7 +607,7 @@ export default function MatchFinderPanel({
                 )}
               >
                 <Sparkles className="w-3 h-3" />
-                All {filteredEvents.length}
+                All {filteredEvents.length} matches
               </button>
             </div>
 
