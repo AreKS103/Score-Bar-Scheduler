@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { format, isValid, parse } from 'date-fns';
 import { CalendarDays, Clock3, ImagePlus, Pencil, Trash2 } from 'lucide-react';
-import type { MatchEvent, ScreenTag } from '@/types';
-import { SPORTS_CONFIG, ALL_SCREEN_TAGS } from '@/lib/config';
+import type { MatchEvent } from '@/types';
+import { SPORTS_CONFIG } from '@/lib/config';
 import { cn } from '@/lib/utils';
 import {
   Dialog,
@@ -40,7 +40,7 @@ export default function EditMatchModal({ event, onClose, onSave }: EditMatchModa
   const [home, setHome] = useState('');
   const [away, setAway] = useState('');
   const [round, setRound] = useState('');
-  const [tags, setTags] = useState<ScreenTag[]>([]);
+  const [note, setNote] = useState('');
   const [isFeatured, setIsFeatured] = useState(false);
   const [homeCountry, setHomeCountry] = useState('');
   const [awayCountry, setAwayCountry] = useState('');
@@ -149,18 +149,12 @@ export default function EditMatchModal({ event, onClose, onSave }: EditMatchModa
     setHome(event.home);
     setAway(event.away);
     setRound(event.round);
-    setTags([...event.tags]);
+    setNote(event.tags[0] ?? '');
     setIsFeatured(event.isFeatured);
     setHomeCountry(event.homeCountry ?? '');
     setAwayCountry(event.awayCountry ?? '');
     setUploadError('');
   }, [event]);
-
-  const toggleTag = (tag: ScreenTag) => {
-    setTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
-    );
-  };
 
   const setHour = (hour: string) => {
     const minute = time ? time.split(':')[1] : '00';
@@ -199,7 +193,7 @@ export default function EditMatchModal({ event, onClose, onSave }: EditMatchModa
       home,
       away,
       round,
-      tags,
+      tags: note.trim() ? [note.trim()] : [],
       isFeatured,
       homeCountry: homeCountry.trim().toUpperCase() || undefined,
       awayCountry: awayCountry.trim().toUpperCase() || undefined,
@@ -463,24 +457,15 @@ export default function EditMatchModal({ event, onClose, onSave }: EditMatchModa
           </div>
 
           <div>
-            <Label className="mb-2 block">Screen Tags</Label>
-            <div className="flex flex-wrap gap-2">
-              {ALL_SCREEN_TAGS.map((tag) => (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() => toggleTag(tag)}
-                  className={cn(
-                    'text-xs px-2.5 py-1 rounded-full border transition-all',
-                    tags.includes(tag)
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'bg-secondary text-muted-foreground border-border hover:text-foreground'
-                  )}
-                >
-                  {tag}
-                </button>
-              ))}
-            </div>
+            <Label className="mb-1.5 block">Custom Note <span className="text-muted-foreground font-normal">(optional)</span></Label>
+            <Input
+              type="text"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder='e.g. "Opening at 8AM"'
+              maxLength={100}
+              className="mt-1.5"
+            />
           </div>
 
           <div className="flex items-center gap-2">

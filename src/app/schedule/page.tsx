@@ -7,7 +7,6 @@ import {
   Plus,
   CheckSquare,
   Square,
-  Tag,
   Loader2,
   RefreshCw,
   X,
@@ -28,9 +27,9 @@ import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { useFavoritesStore } from '@/lib/favoritesStore';
 import { getCachedEvents, setCachedEvents, appendCachedEvent, removeCachedEvent, saveLocalCustomEvent, loadLocalCustomEvents, removeLocalCustomEvent, syncLocalCustomEventsToSupabase, saveSelectionToSupabase, loadSelectionFromSupabase, loadSelectionState, saveSelectionState, pruneStaleSelectionKeys, loadCustomLeagueLogo, type SavedSelectionState } from '@/lib/clientCache';
 import { generateHTML } from '@/lib/generateHTML';
-import { SPORTS_CONFIG, getCategories, ALL_SCREEN_TAGS } from '@/lib/config';
+import { SPORTS_CONFIG, getCategories } from '@/lib/config';
 import { formatDisplayDate } from '@/lib/timezone';
-import type { ScreenTag, MatchEvent } from '@/types';
+import type { MatchEvent } from '@/types';
 import SportFilter from '@/components/SportFilter';
 import LeagueSection from '@/components/LeagueSection';
 const AddMatchModal = dynamic(() => import('@/components/AddMatchModal'), { ssr: false });
@@ -160,7 +159,7 @@ export default function SchedulePage() {
     removeEvent,
     toggleSelected,
     toggleFeatured,
-    toggleTag,
+    setNote,
     updateEvent,
     selectAll,
     deselectAll,
@@ -176,7 +175,6 @@ export default function SchedulePage() {
   const [editingEvent, setEditingEvent] = useState<MatchEvent | null>(null);
   const [isFetching, setIsFetching] = useState(true);
   const [isRestoringSchedule, setIsRestoringSchedule] = useState(false);
-  const [bulkTagOpen, setBulkTagOpen] = useState(false);
   const [searchFilterIds, setSearchFilterIds] = useState<Set<string> | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -413,7 +411,7 @@ export default function SchedulePage() {
         ...e,
         isSelected: false,
         isFeatured: false,
-        tags: [] as ScreenTag[],
+        tags: [] as string[],
       }));
 
       // Apply the new embed's saved selections (fast, synchronous from localStorage)
@@ -1571,27 +1569,6 @@ export default function SchedulePage() {
   useEffect(() => { if (html) htmlRef.current = html; }, [html]);
   const getHTML = useCallback(() => htmlRef.current || generateHTML(events, undefined, featuredLeagues), [events, featuredLeagues]);
 
-  const activeBulkTags = useMemo(() => {
-    const sel = events.filter((e) => e.isSelected);
-    if (sel.length === 0) return new Set<ScreenTag>();
-    const result = new Set<ScreenTag>();
-    for (const tag of ALL_SCREEN_TAGS) {
-      if (sel.every((e) => e.tags.includes(tag))) result.add(tag);
-    }
-    return result;
-  }, [events]);
-
-  const handleBulkTag = useCallback((tag: ScreenTag) => {
-    const sel = events.filter((e) => e.isSelected);
-    const isActive = activeBulkTags.has(tag);
-    sel.forEach((e) => {
-      const hasTag = e.tags.includes(tag);
-      if (isActive && hasTag) toggleTag(e.id, tag);   // remove from all
-      if (!isActive && !hasTag) toggleTag(e.id, tag); // add to all
-    });
-    // dialog stays open for further tagging
-  }, [events, toggleTag, activeBulkTags]);
-
   const handleCopyHTML = useCallback(async () => {
     const content = getHTML();
     try {
@@ -1952,59 +1929,6 @@ export default function SchedulePage() {
 
             <Separator orientation="vertical" className="h-5 hidden sm:block" />
 
-            {/* Bulk tag */}
-            <div className="relative">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setBulkTagOpen(!bulkTagOpen)}
-                className={cn("sm:text-xs sm:h-7 sm:px-2", bulkTagOpen && 'bg-accent')}
-              >
-                <Tag className="w-3.5 h-3.5" /> <span className="phone-ls-hide">Bulk Tag</span>
-              </Button>
-              {bulkTagOpen && (
-                <div className="absolute top-full left-0 mt-1 bg-popover border border-border rounded-lg shadow-xl z-20 p-3 min-w-57.5">
-                  <div className="flex items-center justify-between mb-2.5">
-                    <span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">
-                      Tag selected matches
-                    </span>
-                    <button
-                      onClick={() => setBulkTagOpen(false)}
-                      className="text-muted-foreground hover:text-foreground"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {ALL_SCREEN_TAGS.map((tag) => {
-                      const isActive = activeBulkTags.has(tag);
-                      return (
-                        <button
-                          key={tag}
-                          onClick={() => handleBulkTag(tag)}
-                          className={cn(
-                            'text-xs px-2.5 py-1 rounded-full border transition-all',
-                            isActive
-                              ? 'bg-primary/15 border-primary/50 text-primary'
-                              : 'bg-transparent border-border text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground'
-                          )}
-                        >
-                          {tag}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {selectedCount === 0 && (
-                    <p className="text-[11px] text-muted-foreground mt-2 text-center">
-                      Select matches first to tag them
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <Separator orientation="vertical" className="h-5 hidden sm:block" />
-
             <Button variant="secondary" size="sm" className="sm:text-xs sm:h-7 sm:px-2" onClick={() => setIsAddModalOpen(true)}>
               <Plus className="w-3.5 h-3.5" /> <span className="phone-ls-hide">Add Custom Event</span>
             </Button>
@@ -2063,7 +1987,7 @@ export default function SchedulePage() {
               error={fetchStatuses[sportId]?.error}
               onToggleSelected={handleToggleSelected}
               onToggleFeatured={toggleFeatured}
-              onToggleTag={toggleTag}
+              onSetNote={setNote}
               isFeaturedLeague={featuredLeagues.has(sportId)}
               onToggleFeaturedLeague={toggleFeaturedLeague}
               onBulkSelectLeague={bulkSelectLeague}

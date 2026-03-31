@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { format, isValid, parse } from 'date-fns';
 import { CalendarDays, Clock3, ImagePlus, Pencil, Plus, Trash2 } from 'lucide-react';
-import type { MatchEvent, ScreenTag } from '@/types';
-import { SPORTS_CONFIG, ALL_SCREEN_TAGS } from '@/lib/config';
+import type { MatchEvent } from '@/types';
+import { SPORTS_CONFIG } from '@/lib/config';
 import { cn } from '@/lib/utils';
 import {
   Dialog,
@@ -40,7 +40,7 @@ export default function AddMatchModal({ isOpen, onClose, onAdd }: AddMatchModalP
   const [home, setHome] = useState('');
   const [away, setAway] = useState('');
   const [round, setRound] = useState('');
-  const [tags, setTags] = useState<ScreenTag[]>([]);
+  const [note, setNote] = useState('');
   const [isFeatured, setIsFeatured] = useState(false);
   const [homeCountry, setHomeCountry] = useState('');
   const [awayCountry, setAwayCountry] = useState('');
@@ -139,12 +139,6 @@ export default function AddMatchModal({ isOpen, onClose, onAdd }: AddMatchModalP
     setUploadError('');
   }, [isOpen]);
 
-  const toggleTag = (tag: ScreenTag) => {
-    setTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
-    );
-  };
-
   const setHour = (hour: string) => {
     const minute = time ? time.split(':')[1] : '00';
     setTime(`${hour}:${minute}`);
@@ -196,7 +190,7 @@ export default function AddMatchModal({ isOpen, onClose, onAdd }: AddMatchModalP
       home,
       away,
       round,
-      tags,
+      tags: note.trim() ? [note.trim()] : [],
       isFeatured,
       isSelected: true,
       homeCountry: homeCountry.trim().toUpperCase() || undefined,
@@ -209,7 +203,7 @@ export default function AddMatchModal({ isOpen, onClose, onAdd }: AddMatchModalP
       setHome('');
       setAway('');
       setRound('');
-      setTags([]);
+      setNote('');
       setIsFeatured(false);
       setHomeCountry('');
       setAwayCountry('');
@@ -485,24 +479,15 @@ export default function AddMatchModal({ isOpen, onClose, onAdd }: AddMatchModalP
           </div>
 
           <div>
-            <Label className="mb-2 block">Screen Tags</Label>
-            <div className="flex flex-wrap gap-2">
-              {ALL_SCREEN_TAGS.map((tag) => (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() => toggleTag(tag)}
-                  className={cn(
-                    'text-xs px-3 py-1.5 rounded-full border transition-all',
-                    tags.includes(tag)
-                      ? 'bg-primary/15 border-primary/40 text-primary'
-                      : 'bg-transparent border-border text-muted-foreground hover:border-muted-foreground/50'
-                  )}
-                >
-                  {tag}
-                </button>
-              ))}
-            </div>
+            <Label className="mb-1.5 block">Custom Note <span className="text-muted-foreground font-normal">(optional)</span></Label>
+            <Input
+              type="text"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder='e.g. "Opening at 8AM"'
+              maxLength={100}
+              className="mt-1.5"
+            />
           </div>
 
           <div className="flex items-center gap-3">

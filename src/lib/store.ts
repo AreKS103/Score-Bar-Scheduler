@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { MatchEvent, ScreenTag, ScheduleStore, FetchStatus } from '@/types';
+import type { MatchEvent, ScheduleStore, FetchStatus } from '@/types';
 import { today, daysFromToday } from '@/lib/timezone';
 
 export const useScheduleStore = create<ScheduleStore>((set, get) => ({
@@ -51,16 +51,12 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
       return { events: updated };
     }),
 
-  toggleTag: (id: string, tag: ScreenTag) =>
+  setNote: (id: string, note: string) =>
     set((state) => {
       const idx = state.events.findIndex((e) => e.id === id);
       if (idx === -1) return state;
-      const event = state.events[idx];
-      const newTags = event.tags.includes(tag)
-        ? event.tags.filter((t) => t !== tag)
-        : [...event.tags, tag];
       const updated = [...state.events];
-      updated[idx] = { ...updated[idx], tags: newTags };
+      updated[idx] = { ...updated[idx], tags: note.trim() ? [note.trim()] : [] };
       return { events: updated };
     }),
 
@@ -92,16 +88,6 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
       return {
         events: state.events.map((e) =>
           idSet.has(e.id) ? { ...e, isSelected: false, isFeatured: false, tags: [] } : e
-        ),
-      };
-    }),
-
-  bulkSetTags: (ids: string[], tags: ScreenTag[]) =>
-    set((state) => {
-      const idSet = new Set(ids);
-      return {
-        events: state.events.map((e) =>
-          idSet.has(e.id) ? { ...e, tags } : e
         ),
       };
     }),

@@ -58,6 +58,7 @@ export default function SettingsModal({ isOpen, onClose, onOpenSetupWizard }: Se
   const [loadingKey, setLoadingKey] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
   const supabase = createClient();
 
   // Account section state
@@ -194,6 +195,24 @@ export default function SettingsModal({ isOpen, onClose, onOpenSetupWizard }: Se
       ? (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')
       : timezone;
     syncOrgTimezone(resolved);
+  };
+
+  const handleDisconnect = async () => {
+    if (!confirm('Disconnect your WordPress site? The embed will stop receiving data until you reconnect.')) return;
+    setDisconnecting(true);
+    try {
+      const res = await fetch('/api/wp-connect/disconnect', { method: 'DELETE' });
+      if (res.ok) {
+        setConnectedSite(null);
+        setCreatorConnectedSite(null);
+      } else {
+        alert('Failed to disconnect. Please try again.');
+      }
+    } catch {
+      alert('Failed to disconnect. Please try again.');
+    } finally {
+      setDisconnecting(false);
+    }
   };
 
   const generateKey = async () => {
@@ -784,12 +803,23 @@ export default function SettingsModal({ isOpen, onClose, onOpenSetupWizard }: Se
                         )}
                       </p>
                     </div>
-                    <div>
+                    <div className="flex items-center gap-2 shrink-0">
                       {connectedSite ? (
-                        <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-full border border-emerald-500/20">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 block animate-pulse"></span>
-                          Connected
-                        </span>
+                        <>
+                          <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-full border border-emerald-500/20">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 block animate-pulse"></span>
+                            Connected
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleDisconnect}
+                            disabled={disconnecting}
+                            className="shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10 text-xs h-7 px-2"
+                          >
+                            {disconnecting ? <Loader2 className="w-3 h-3 animate-spin" /> : <><WifiOff className="w-3 h-3 mr-1" />Disconnect</>}
+                          </Button>
+                        </>
                       ) : (
                         <span className="text-xs font-medium text-muted-foreground bg-secondary px-2 py-1 rounded-full border border-border block">
                           Pending

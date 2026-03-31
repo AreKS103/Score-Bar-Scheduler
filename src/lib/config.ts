@@ -186,14 +186,6 @@ export const FOOTBALL_LEAGUE_ORDER = [
   'soccer-copam',
 ];
 
-export const ALL_SCREEN_TAGS: Array<import('@/types').ScreenTag> = [
-  'Live Big Screen',
-  'Recorded',
-  'Sound On',
-  'TV Only',
-  'No Sound',
-];
-
 /** Category logo URLs — used in sidebar instead of emojis */
 export const CATEGORY_LOGOS: Record<string, string> = {
   'Football':            'https://a.espncdn.com/combiner/i?img=/i/teamlogos/soccer/500/default-team-logo-500.png&w=24&h=24',

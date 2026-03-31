@@ -387,13 +387,15 @@ function StepConnect({
   );
 }
 
-/* ─── Connected success state ───────────────────────────────────────────── */
-function ConnectedState({
+/* ─── Already set up (condensed summary) state ──────────────────────────── */
+function AlreadySetUpState({
   siteUrl,
   connectedAt,
+  onReconfigure,
 }: {
   siteUrl: string;
   connectedAt: string;
+  onReconfigure: () => void;
 }) {
   const router = useRouter();
   const hostname = (() => {
@@ -407,58 +409,96 @@ function ConnectedState({
   const formattedDate = (() => {
     try {
       return new Date(connectedAt).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
+        month: 'short',
         day: 'numeric',
+        year: 'numeric',
       });
     } catch {
       return connectedAt;
     }
   })();
 
+  const steps = [
+    { label: 'Download Plugin', detail: 'Plugin downloaded' },
+    { label: 'Install & Activate', detail: 'Plugin installed on WordPress' },
+  ];
+
   return (
-    <div className="space-y-6">
-      <Card className="border-emerald-500/30 bg-emerald-500/5">
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
-              <CheckCircle className="w-6 h-6 text-emerald-500" />
-            </div>
-            <div>
-              <h3 className="text-base font-semibold text-foreground">
-                Successfully connected!
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                {hostname} · Connected {formattedDate}
-              </p>
+    <div className="space-y-4">
+      {/* Condensed step summary */}
+      <Card>
+        <CardContent className="pt-4 pb-3">
+          <div className="space-y-2">
+            {steps.map((s, i) => (
+              <div key={i} className="flex items-center gap-3 py-1">
+                <div className="w-6 h-6 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
+                  <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-medium text-foreground">{s.label}</span>
+                  <span className="text-xs text-muted-foreground ml-2">{s.detail}</span>
+                </div>
+              </div>
+            ))}
+
+            {/* Step 3 — Authorize Connection: shows Connected status */}
+            <div className="flex items-center gap-3 py-1">
+              <div className="w-6 h-6 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <span className="text-sm font-medium text-foreground">Authorize Connection</span>
+                <span className="text-xs text-muted-foreground ml-2 truncate">
+                  <a
+                    href={siteUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    {hostname}
+                  </a>
+                </span>
+              </div>
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 block animate-pulse" />
+                Connected
+              </span>
             </div>
           </div>
 
-          <div className="border-t border-border pt-4 mt-4">
-            <p className="text-sm font-medium text-foreground mb-3">
-              Next steps:
-            </p>
-            <div className="space-y-2">
-              <a
-                href={`${siteUrl}/wp-admin/`}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-2 text-sm text-primary hover:underline"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                Open WordPress Editor
-              </a>
-              <button
-                onClick={() => router.push('/schedule')}
-                className="flex items-center gap-2 text-sm text-primary hover:underline"
-              >
-                <ArrowRight className="w-3.5 h-3.5" />
-                Publish your first schedule
-              </button>
-            </div>
-          </div>
+          <p className="text-[11px] text-muted-foreground mt-3 pt-3 border-t border-border">
+            Connected {formattedDate}
+          </p>
         </CardContent>
       </Card>
+
+      {/* Quick actions */}
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => router.push('/schedule')}
+          className="flex items-center gap-1.5 text-sm text-primary hover:underline"
+        >
+          <ArrowRight className="w-3.5 h-3.5" />
+          Go to Schedule
+        </button>
+        <span className="text-muted-foreground">·</span>
+        <a
+          href={`${siteUrl}/wp-admin/`}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-1.5 text-sm text-primary hover:underline"
+        >
+          <ExternalLink className="w-3.5 h-3.5" />
+          WordPress Admin
+        </a>
+        <span className="text-muted-foreground">·</span>
+        <button
+          onClick={onReconfigure}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Reconfigure
+        </button>
+      </div>
     </div>
   );
 }
@@ -593,6 +633,7 @@ export default function WPConnectWizard({
   const [step, setStep] = useState(1);
   const [downloaded, setDownloaded] = useState(false);
   const [installed, setInstalled] = useState(false);
+  const [reconfiguring, setReconfiguring] = useState(false);
   const [connected, setConnected] = useState<ConnectedState | null>(
     existingConnection ?? null,
   );
@@ -640,6 +681,7 @@ export default function WPConnectWizard({
   const completeConnect = (siteUrl: string) => {
     const now = new Date().toISOString();
     setConnected({ siteUrl, connectedAt: now });
+    setReconfiguring(false);
     // Clean up progress
     try {
       localStorage.removeItem(LS_STEP);
@@ -650,13 +692,27 @@ export default function WPConnectWizard({
     onConnected?.();
   };
 
-  // Already connected — skip wizard
-  if (connected) {
+  // Already connected — show condensed "already set up" summary
+  if (connected && !reconfiguring) {
     return (
       <div>
-        <ConnectedState
+        <div className="text-center mb-6">
+          <h1 className="text-xl font-bold text-foreground">
+            WordPress Site Connected
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Your WordPress site is set up and ready.
+          </p>
+        </div>
+        <AlreadySetUpState
           siteUrl={connected.siteUrl}
           connectedAt={connected.connectedAt}
+          onReconfigure={() => {
+            setReconfiguring(true);
+            setStep(1);
+            setDownloaded(false);
+            setInstalled(false);
+          }}
         />
         <ManualKeyFallback />
       </div>
@@ -672,6 +728,14 @@ export default function WPConnectWizard({
         <p className="text-sm text-muted-foreground mt-1">
           Follow these steps to connect your WordPress site with Score Scheduler.
         </p>
+        {reconfiguring && connected && (
+          <button
+            onClick={() => setReconfiguring(false)}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors mt-2 underline underline-offset-2"
+          >
+            ← Back to summary
+          </button>
+        )}
       </div>
 
       <StepIndicator currentStep={step} />

@@ -1,6 +1,6 @@
 // ─── Core Data Model ─────────────────────────────────────────────────────────
 
-export type ScreenTag = 'Live Big Screen' | 'Recorded' | 'Sound On' | 'TV Only' | 'No Sound';
+export type ScreenTag = string; // free-text custom note per match
 
 export interface MatchEvent {
   id: string;
@@ -186,12 +186,11 @@ export interface ScheduleStore {
   updateEvent: (id: string, updates: Partial<MatchEvent>) => void;
   toggleSelected: (id: string) => void;
   toggleFeatured: (id: string) => void;
-  toggleTag: (id: string, tag: ScreenTag) => void;
+  setNote: (id: string, note: string) => void;
   selectAll: () => void;
   deselectAll: () => void;
   batchSetSelected: (ids: string[], selected: boolean) => void;
   batchClearAll: (ids: string[]) => void;
-  bulkSetTags: (ids: string[], tags: ScreenTag[]) => void;
   setFetchStatus: (key: string, status: FetchStatus) => void;
   setFetchStatuses: (statuses: Record<string, FetchStatus>) => void;
   setDateRange: (start: string, end: string) => void;

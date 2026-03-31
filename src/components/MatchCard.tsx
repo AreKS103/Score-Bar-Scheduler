@@ -1,9 +1,8 @@
 'use client';
 
-import { memo } from 'react';
+import { memo, useState, useEffect } from 'react';
 import { Star } from 'lucide-react';
-import type { MatchEvent, ScreenTag } from '@/types';
-import { ALL_SCREEN_TAGS } from '@/lib/config';
+import type { MatchEvent } from '@/types';
 import { cn } from '@/lib/utils';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
@@ -21,16 +20,30 @@ interface MatchCardProps {
   event: MatchEvent;
   onToggleSelected: (id: string) => void;
   onToggleFeatured: (id: string) => void;
-  onToggleTag: (id: string, tag: ScreenTag) => void;
+  onSetNote: (id: string, note: string) => void;
 }
 
 const MatchCard = memo(function MatchCard({
   event,
   onToggleSelected,
   onToggleFeatured,
-  onToggleTag,
+  onSetNote,
 }: MatchCardProps) {
   const isCombat = ['ufc', 'bellator', 'boxing'].includes(event.sportId);
+  const [localNote, setLocalNote] = useState(event.tags[0] ?? '');
+
+  // Keep local note in sync when the event changes externally
+  useEffect(() => {
+    setLocalNote(event.tags[0] ?? '');
+  }, [event.tags]);
+
+  const handleNoteBlur = () => {
+    const note = localNote.trim();
+    if (note !== (event.tags[0] ?? '')) {
+      onSetNote(event.id, note);
+      if (note && !event.isSelected) onToggleSelected(event.id);
+    }
+  };
   return (
     <div
       onClick={() => onToggleSelected(event.id)}
@@ -113,29 +126,34 @@ const MatchCard = memo(function MatchCard({
           <div className="text-[10px] text-muted-foreground mt-0.5">{event.round}</div>
         )}
 
-        {/* Screen tags */}
-        <div className="flex flex-wrap gap-1 mt-1.5">
-          {ALL_SCREEN_TAGS.map((tag) => {
-            const isActive = event.tags.includes(tag);
-            return (
-              <button
-                key={tag}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleTag(event.id, tag);
-                  if (!event.isSelected) onToggleSelected(event.id);
-                }}
-                className={cn(
-                  'text-[11px] sm:text-[10px] px-2.5 sm:px-1.5 py-1 sm:py-0.5 rounded-full border transition-all',
-                  isActive
-                    ? 'bg-primary/15 border-primary/40 text-primary'
-                    : 'bg-transparent border-border text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground/70'
-                )}
-              >
-                {tag}
-              </button>
-            );
-          })}
+        {/* Custom note */}
+        <div
+          className="mt-1.5"
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <input
+            type="text"
+            value={localNote}
+            onChange={(e) => setLocalNote(e.target.value)}
+            onBlur={handleNoteBlur}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+              if (e.key === 'Escape') {
+                setLocalNote(event.tags[0] ?? '');
+                e.currentTarget.blur();
+              }
+            }}
+            placeholder="Add note…"
+            maxLength={100}
+            className={cn(
+              'w-full text-[10px] px-2 py-0.5 rounded border transition-all bg-transparent',
+              localNote
+                ? 'border-amber-500/30 text-amber-400/90'
+                : 'border-dashed border-border/40 text-muted-foreground/50',
+              'placeholder:text-muted-foreground/35 focus:outline-none focus:border-primary/50 focus:text-foreground focus:bg-secondary/30',
+            )}
+          />
         </div>
       </div>
     </div>
