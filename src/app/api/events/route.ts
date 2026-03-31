@@ -74,7 +74,6 @@ const ESPN_SECONDARY_LEAGUES = [
   { id: 'soccer-leagueone', slug: 'soccer/eng.3' },
   { id: 'soccer-carabao', slug: 'soccer/eng.league_cup' },
   { id: 'soccer-ligue1', slug: 'soccer/fra.1' },
-  { id: 'soccer-belgian', slug: 'soccer/bel.1' },
   { id: 'soccer-spfl', slug: 'soccer/sco.1' },
   { id: 'soccer-eredivisie', slug: 'soccer/ned.1' },
   // Americas & Asia
@@ -126,7 +125,6 @@ const LEAGUE_METADATA: Record<string, { label: string; category: string; logo: s
   'soccer-ligue1': { label: 'Ligue 1', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/9.png' },
   'soccer-laliga': { label: 'La Liga', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/15480.png' },
   'soccer-seriea': { label: 'Serie A', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/12.png' },
-  'soccer-belgian': { label: 'Belgian Pro League', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/34.png' },
   'soccer-spfl': { label: 'SPFL Scottish Prem', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/55.png' },
   'soccer-eredivisie': { label: 'Eredivisie', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/11.png' },
   'soccer-mls': { label: 'MLS', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/19.png' },
@@ -846,6 +844,7 @@ const SPORTSDB_ONLY_LEAGUES = [
   { id: 'soccer-asian-cup-women', sportsdbId: '5179', label: 'Asian Cup Women', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/m0scwf1726416187.png' },
   { id: 'motogp', sportsdbId: '4407', label: 'MotoGP', category: 'Motorsport', logo: 'https://r2.thesportsdb.com/images/media/league/badge/gg3c201768486075.png' },
   { id: 'boxing', sportsdbId: '4445', label: 'Boxing', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/6enin21740228549.png' },
+  { id: 'cycling-uci', sportsdbId: '4465', label: 'UCI World Tour', category: 'Cycling', logo: 'https://r2.thesportsdb.com/images/media/league/badge/igahc11535183469.png' },
 ];
 
 interface SportsDBEvent {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { X, Sparkles, AlertCircle, CheckSquare, Square, SlidersHorizontal } from 'lucide-react';
+import { X, Sparkles, AlertCircle, CheckSquare, Square, SlidersHorizontal, Clock, SquarePen } from 'lucide-react';
 import { useMatchFinder } from './MatchFinderProvider';
 import AIMatchCard from './AIMatchCard';
 import SmartLogo from '@/components/ui/SmartLogo';
@@ -32,6 +32,7 @@ interface MatchFinderPanelProps {
 const QUICK_FILTERS = ['Today', 'This Week', 'This Month'] as const;
 const SESSION_KEY = 'ai-match-finder';
 const EXCLUDED_CATS_KEY = 'ai-excluded-categories';
+const TIME_FILTER_KEY = 'ai-time-filter';
 
 const TIME_PREFIXES = {
   morning: [
@@ -98,6 +99,14 @@ export default function MatchFinderPanel({
   });
   const [showCatFilter, setShowCatFilter] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [timeFrom, setTimeFrom] = useState<string>(() => {
+    try { return (JSON.parse(localStorage.getItem(TIME_FILTER_KEY) || 'null') as { from?: string } | null)?.from ?? ''; }
+    catch { return ''; }
+  });
+  const [timeTo, setTimeTo] = useState<string>(() => {
+    try { return (JSON.parse(localStorage.getItem(TIME_FILTER_KEY) || 'null') as { to?: string } | null)?.to ?? ''; }
+    catch { return ''; }
+  });
   const panelRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const handleCloseRef = useRef<() => void>(() => {});
@@ -110,6 +119,14 @@ export default function MatchFinderPanel({
       localStorage.setItem(EXCLUDED_CATS_KEY, JSON.stringify(Array.from(excludedCategories)));
     } catch { /* ignore */ }
   }, [excludedCategories]);
+
+  // Persist time filter
+  useEffect(() => {
+    try {
+      if (timeFrom || timeTo) localStorage.setItem(TIME_FILTER_KEY, JSON.stringify({ from: timeFrom, to: timeTo }));
+      else localStorage.removeItem(TIME_FILTER_KEY);
+    } catch { /* ignore */ }
+  }, [timeFrom, timeTo]);
 
   // Filter events by excluded categories
   const filteredEvents = useMemo(
@@ -231,18 +248,32 @@ export default function MatchFinderPanel({
       const todayStr = now.toISOString().split('T')[0];
 
       if (filter === 'Today') {
-        filtered = events.filter((e) => e.date === todayStr);
+        filtered = filteredEvents.filter((e) => e.date === todayStr);
       } else if (filter === 'This Week') {
         const endOfWeek = new Date(now);
         endOfWeek.setDate(now.getDate() + (7 - now.getDay()));
         const endStr = endOfWeek.toISOString().split('T')[0];
-        filtered = events.filter((e) => e.date >= todayStr && e.date <= endStr);
+        filtered = filteredEvents.filter((e) => e.date >= todayStr && e.date <= endStr);
       } else if (filter === 'This Month') {
         // Use next 30 days so the filter is useful regardless of where we are in the month
         const next30 = new Date(now);
         next30.setDate(now.getDate() + 30);
         const endStr = next30.toISOString().split('T')[0];
-        filtered = events.filter((e) => e.date >= todayStr && e.date <= endStr);
+        filtered = filteredEvents.filter((e) => e.date >= todayStr && e.date <= endStr);
+      }
+
+      // ── Time-of-day filter (pre-AI) ─────────────────────────────────────
+      if (timeFrom || timeTo) {
+        filtered = filtered.filter((e) => {
+          if (!e.time) return true;
+          const t = e.time;
+          if (timeFrom && timeTo) {
+            // Overnight range (e.g. 22:00 → 02:00) wraps around midnight
+            return timeTo >= timeFrom ? t >= timeFrom && t <= timeTo : t >= timeFrom || t <= timeTo;
+          }
+          if (timeFrom) return t >= timeFrom;
+          return t <= timeTo;
+        });
       }
 
       if (filtered.length === 0) {
@@ -337,6 +368,16 @@ export default function MatchFinderPanel({
       close();
     }, 280);
   }, [close]);
+
+  const handleNewChat = useCallback(() => {
+    setActiveFilter(null);
+    setHasResult(false);
+    setRatings(new Map());
+    setSelectedIds(new Set());
+    setError(null);
+    try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
+  }, []);
+
   handleCloseRef.current = handleClose;
 
   if (!isOpen) return null;
@@ -370,14 +411,28 @@ export default function MatchFinderPanel({
               <h2 className="text-sm font-semibold">AI Match Finder</h2>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="rounded-full p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            aria-label="Close"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            {activeFilter && (
+              <button
+                type="button"
+                onClick={handleNewChat}
+                className="rounded-full p-1.5 pr-2.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex items-center gap-1.5 text-xs font-medium"
+                aria-label="New chat"
+                title="New chat"
+              >
+                <SquarePen className="w-4 h-4" />
+                New chat
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleClose}
+              className="rounded-full p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              aria-label="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Main content area */}
@@ -393,6 +448,37 @@ export default function MatchFinderPanel({
                   I&apos;ll find the best matches worth putting on the big screen.
                 </p>
               </div>
+              {/* Time-of-day filter */}
+              <div className="flex items-center justify-center gap-2 mb-4 text-xs text-muted-foreground">
+                <Clock className="w-3.5 h-3.5 shrink-0 text-muted-foreground/70" />
+                <span className="shrink-0">Hours</span>
+                <input
+                  type="time"
+                  value={timeFrom}
+                  onChange={(e) => setTimeFrom(e.target.value)}
+                  className="bg-muted/50 border border-border/60 rounded-md px-2 py-0.5 text-xs text-foreground w-24 focus:outline-none focus:border-primary/50"
+                  aria-label="From time"
+                />
+                <span className="shrink-0 text-muted-foreground/60">→</span>
+                <input
+                  type="time"
+                  value={timeTo}
+                  onChange={(e) => setTimeTo(e.target.value)}
+                  className="bg-muted/50 border border-border/60 rounded-md px-2 py-0.5 text-xs text-foreground w-24 focus:outline-none focus:border-primary/50"
+                  aria-label="To time"
+                />
+                {(timeFrom || timeTo) && (
+                  <button
+                    type="button"
+                    onClick={() => { setTimeFrom(''); setTimeTo(''); }}
+                    className="text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+                    aria-label="Clear time filter"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+
               {/* Category filter — toggle unwanted sports before scanning */}
               <div className="flex flex-wrap justify-center gap-1 mb-6 max-w-xs mx-auto">
                 {CATEGORY_ORDER.map((cat) => {
@@ -490,8 +576,8 @@ export default function MatchFinderPanel({
                       }
 
                       return (
-                        <div key={sportId} className="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm overflow-hidden">
-                          <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/30 border-b border-border/30">
+                        <div key={sportId} className="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm">
+                          <div className="sticky top-0 z-10 flex items-center gap-2 px-3 py-1.5 bg-card/95 backdrop-blur-md rounded-t-xl border-b border-border/30">
                             {config?.logo && (
                               <SmartLogo logo={config.logo} alt={config.label} className="h-4 w-4" />
                             )}

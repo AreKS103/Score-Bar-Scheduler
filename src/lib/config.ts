@@ -188,7 +188,7 @@ export const FOOTBALL_LEAGUE_ORDER = [
 
 /** Category logo URLs — used in sidebar instead of emojis */
 export const CATEGORY_LOGOS: Record<string, string> = {
-  'Football':            'https://a.espncdn.com/combiner/i?img=/i/teamlogos/soccer/500/default-team-logo-500.png&w=24&h=24',
+  'Football':            '/league-logos/soccer-laliga.png',
   'Basketball':          'https://a.espncdn.com/i/teamlogos/leagues/500/nba.png',
   'American Football':   'https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png',
   'Baseball':            'https://a.espncdn.com/i/teamlogos/leagues/500/mlb.png',
@@ -305,30 +305,31 @@ export const LEAGUE_POPULARITY: Record<string, number> = {
 // High-volume leagues (MLB, NHL, NBA) are capped tighter because they have
 // 10-15 games per day. Elite football leagues get more slots.
 export const LEAGUE_MAX_PICKS: Record<string, number> = {
-  // Football — the most watched, give more slots
-  'EPL': 14, 'UCL': 12, 'LLG': 10, 'BUN': 8, 'SEA': 8,
-  'L1F': 8, 'UEL': 8, 'COP': 8, 'UECL': 6, 'FAC': 6,
-  'EFL': 4, 'CC': 4, 'MLS': 6, 'SPFL': 4, 'ERE': 2,
-  'SPL': 2, 'ALE': 2, 'JLG': 2, 'AFCE': 2, 'AFC2': 2,
-  'AFCL': 2, 'AAC': 2, 'AACW': 2, 'CPL': 2, 'L1E': 4,
-  // High-volume US sports
-  'NBA': 8, 'NCAAM': 6, 'WNBA': 4, 'NCAAW': 2,
-  'NFL': 8, 'NCAAF': 6,
+  // ── Tier 1: Premium leagues — high cap ──────────────────────────────────
+  'EPL': 50, 'UCL': 40, 'LLG': 40, 'BUN': 30, 'SEA': 30,
+  'L1F': 30, 'UEL': 30, 'COP': 30, 'UECL': 20, 'FAC': 25,
+  // ── Tier 2: Good leagues — moderate cap ─────────────────────────────────
+  'EFL': 10, 'CC': 10, 'MLS': 15, 'SPFL': 8, 'ERE': 10,
+  'SPL': 8, 'ALE': 8, 'JLG': 8, 'AFCE': 8, 'AFC2': 6,
+  'AFCL': 6, 'AAC': 6, 'AACW': 6, 'CPL': 6, 'L1E': 5,
+  // ── Tier 3: High-volume US sports — tight cap ──────────────────────────
+  'NBA': 8, 'NCAAM': 6, 'WNBA': 6, 'NCAAW': 4,
+  'NFL': 12, 'NCAAF': 8,
   'MLB': 8,
   'NHL': 8,
   // Cricket
-  'IPL': 6, 'BBL': 2,
-  // Motorsport — fewer events, keep most
-  'F1': 6, 'MGP': 4, 'IND': 4,
+  'IPL': 20, 'BBL': 10,
+  // Motorsport — small calendars, show all
+  'F1': 30, 'MGP': 20, 'IND': 20,
   // Combat Sports
-  'UFC': 6, 'PFL': 2, 'BOX': 4,
+  'UFC': 20, 'PFL': 10, 'BOX': 15,
   // Rugby
-  'SRP': 4, '6N': 6, 'PRU': 2, 'T14': 2, 'URC': 2, 'RCC': 4, 'TRC': 2,
-  'NRL': 4,
-  'AFL': 4,
-  'ATP': 4, 'WTA': 2,
-  'PGA': 2, 'LPGA': 2,
-  'UCI': 2,
+  'SRP': 12, '6N': 20, 'PRU': 8, 'T14': 8, 'URC': 8, 'RCC': 12, 'TRC': 8,
+  'NRL': 12,
+  'AFL': 12,
+  'ATP': 12, 'WTA': 8,
+  'PGA': 8, 'LPGA': 8,
+  'UCI': 15,
 };
 
 /** Get abbreviated league name for AI payloads */
