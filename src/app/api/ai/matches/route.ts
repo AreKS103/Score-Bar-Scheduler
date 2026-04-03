@@ -98,21 +98,22 @@ high — Strong regional/global interest. Dedicated fanbases. Bars show them on 
 ═══════════════════════════════════════════════════════════
 
 FOOTBALL (Soccer):
-- Premier League: all matches (3.2B cumulative global viewers — the world's most-watched league)
-- La Liga: all matches (huge in Spain, Latin America, Asia)
-- Bundesliga: all matches (strong European following)
-- Serie A: all matches (historic league, strong in Italy and growing globally)
-- Ligue 1: top-half clashes and PSG matches
-- EFL Championship: playoff matches and top-table clashes (massive in UK)
-- FA Cup: all rounds (historic competition, giant-killings draw crowds)
-- Carabao Cup: semi-finals and final
-- UEFA Europa League: group stage and early knockout rounds
-- UEFA Conference League: knockout rounds
-- MLS: playoffs, finals, and matches with Messi/Inter Miami or other star players
-- Eredivisie: top-4 clashes (Ajax, PSV, Feyenoord)
-- Scottish Premiership: Old Firm (Celtic v Rangers) is must_watch, other matches are high
-- AFC competitions: knockout rounds
-- Saudi Pro League: matches with globally recognisable stars (Ronaldo, Neymar, Benzema)
+- Premier League: matches involving top-6 teams (Man City, Arsenal, Liverpool, Man Utd, Chelsea, Tottenham, Newcastle, Aston Villa). Mid-table clashes (e.g. Bournemouth v Brentford, Wolves v Crystal Palace) = EXCLUDE.
+- La Liga: matches involving Real Madrid, Barcelona, Atletico Madrid, Real Sociedad, Athletic Club, Villarreal, Real Betis. Mid/lower-table clashes (e.g. Getafe v Celta Vigo, Valencia v Espanyol, Levante v Alaves) = EXCLUDE.
+- Bundesliga: matches involving Bayern Munich, Borussia Dortmund, RB Leipzig, Bayer Leverkusen. Mid-table clashes (e.g. Hoffenheim v Mainz, Werder Bremen v Augsburg) = EXCLUDE.
+- Serie A: matches involving Inter, AC Milan, Juventus, Napoli, Roma, Lazio, Atalanta, Fiorentina. Mid/lower-table clashes (e.g. Sassuolo v Cagliari, Lecce v Empoli, Verona v Monza) = EXCLUDE.
+- Ligue 1: PSG matches and top-4 clashes only. Mid-table = EXCLUDE.
+- EFL Championship: playoff matches, top-2 clashes, and matches involving historically big clubs (Leeds, Leicester, Southampton, Sunderland). Mid-table = EXCLUDE.
+- FA Cup: rounds from quarter-finals onwards, or giant-killings (lower-league team beating top-flight opponent)
+- Carabao Cup: semi-finals and final only
+- UEFA Europa League: knockout rounds from quarter-finals onwards
+- UEFA Conference League: semi-finals and final only
+- MLS: playoffs, finals, and matches with Messi/Inter Miami or other globally recognisable stars
+- Eredivisie: matches involving Ajax, PSV, or Feyenoord only
+- Scottish Premiership: Old Firm (Celtic v Rangers) is must_watch, matches involving Celtic or Rangers are high, all others = EXCLUDE
+- AFC competitions: semi-finals and final only
+- Saudi Pro League: matches with globally recognisable stars (Ronaldo, Neymar, Benzema, Kante) only
+- Copa Libertadores: matches involving Boca Juniors, River Plate, Flamengo, Palmeiras, Fluminense only. Obscure club clashes = EXCLUDE.
 - Cambodian leagues (CPL, Hun Sen Cup): include if within the user's selected leagues
 
 BASKETBALL:
@@ -211,7 +212,20 @@ async function callAI(provider: AIProviderResult, matchData: string): Promise<Ma
   try {
     raw = JSON.parse(jsonMatch[0]);
   } catch {
-    throw new Error('AI returned malformed JSON. Raw: ' + text.slice(0, 200));
+    // Try to fix common JSON issues (trailing commas, unescaped chars)
+    let fixed = jsonMatch[0]
+      .replace(/,\s*}/g, '}')  // trailing commas before }
+      .replace(/,\s*]/g, ']')  // trailing commas before ]
+      .replace(/"importance"\s*:\s*"([^"]*?)"/g, (m, v) => {
+        // Normalize importance values
+        const valid = ['must_watch', 'high', 'medium', 'low'];
+        return `"importance":"${valid.includes(v) ? v : 'high'}"`;
+      });
+    try {
+      raw = JSON.parse(fixed);
+    } catch {
+      throw new Error('AI returned malformed JSON. Raw: ' + text.slice(0, 200));
+    }
   }
 
   const parsed = MatchFinderResponseSchema.safeParse(raw);
@@ -261,7 +275,7 @@ export async function POST(request: NextRequest) {
     // Build token-efficient plain-text prompt grouped by league
     const lines: string[] = [];
     let matchCount = 0;
-    const maxMatches = scanMode ? 1000 : 500; // scan mode processes more matches
+    const maxMatches = 500; // keep under token limit to avoid JSON parse errors
 
     for (const [league, matches] of Object.entries(groups)) {
       if (!Array.isArray(matches)) continue;
@@ -285,8 +299,9 @@ export async function POST(request: NextRequest) {
     // ── Scan mode: append instruction to be more inclusive ──────────────────
     // When user clicks "Scan All Matches", they want a thorough sweep — show
     // every match worth watching, not just the absolute elite tier.
+    // But still EXCLUDE mid-table/no-stakes games — the bar for "high" hasn't changed.
     const userPrompt = scanMode
-      ? `${condensed}\n\nSCAN MODE: You are doing a comprehensive sweep. Be more inclusive than usual — include ALL matches that a sports fan would genuinely want to watch. Don't be overly restrictive. If a match has any real sporting interest, include it as "high" at minimum. Still exclude truly meaningless games (e.g. two bottom-table teams with no stakes, preseason friendlies with no stars), but cast a wider net than the default curated mode.`
+      ? `${condensed}\n\nSCAN MODE: Do a comprehensive sweep across ALL leagues provided. Be thorough — don't miss any genuinely interesting matches. But still follow the exclusion rules above: mid-table clashes with no stakes, no-name teams, and routine fixtures should still be EXCLUDED. The difference from curated mode is that you should look at EVERY league carefully, not just the big ones. Include anything that meets the "high" criteria above.`
       : condensed;
 
     // ── Try primary → fallback ──────────────────────────────────────────────
@@ -398,9 +413,9 @@ export async function POST(request: NextRequest) {
       });
 
       // ── Total budget cap ───────────────────────────────────────────────────
-      // Scan mode uses a much higher budget — user wants to see ALL good matches
+      // Scan mode uses a higher budget but still capped to avoid flooding
       const totalBudget = scanMode
-        ? 500  // comprehensive sweep
+        ? 100  // comprehensive but still curated
         : filterType === 'today' ? 80 : filterType === 'month' ? 250 : 150;
       output.ids = output.ids.slice(0, totalBudget);
     }
