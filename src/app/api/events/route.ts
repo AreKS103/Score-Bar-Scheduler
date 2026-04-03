@@ -1240,7 +1240,15 @@ async function fetchHSCFanout(
   startDate: string,
   endDate: string
 ): Promise<MatchEvent[]> {
+  // Derive the cross-year season string from startDate (e.g. Apr 2026 → "2025-2026")
+  const year = parseInt(startDate.slice(0, 4), 10);
+  const month = parseInt(startDate.slice(5, 7), 10);
+  const season = month >= 8 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
+
   const allCalls: Promise<SportsDBEvent[]>[] = [
+    // Season endpoint is most reliable: returns all cup fixtures including future rounds
+    // (next/last per-team endpoints miss HSC games when a team's next game is in C-League)
+    sdbFetch(`eventsseason.php?id=${league.sportsdbId}&s=${season}`),
     sdbFetch(`eventsnextleague.php?id=${league.sportsdbId}`),
     sdbFetch(`eventspastleague.php?id=${league.sportsdbId}`),
     ...HSC_TEAM_IDS.flatMap(id => [
