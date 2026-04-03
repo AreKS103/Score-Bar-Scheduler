@@ -237,39 +237,83 @@ async function callAI(provider: AIProviderResult, matchData: string): Promise<Ma
   return parsed.data;
 }
 
-// ── Extract user patterns from historical published schedules ───────────────
-// Reads existing published_schedules from Supabase — no new storage needed.
-// Analyzes patterns across time: which leagues, teams, and match types the user
-// consistently selects. The more publishes, the richer the pattern data.
-//
-// Uses exponential weighted moving average (EWMA) for match count preference —
-// more recent publishes get higher weight. This is a standard technique in
-// recommendation systems and time series analysis for adaptive learning.
-async function extractUserPatterns(): Promise<{
-  leaguePrefs: { league: string; count: number; selectionRate: number }[];
-  teamPrefs: { team: string; count: number }[];
+// ── User pattern types ──────────────────────────────────────────────────────
+
+interface LeaguePref {
+  league: string;
+  count: number;
+  selectionRate: number;
+  avgPicksPerPublish: number; // How many from this league per schedule
+}
+
+interface LeagueExclusion {
+  league: string;
+  totalAvailable: number; // How many times this league appeared across schedules
+  timesSkipped: number; // How many times user picked ZERO from it
+  skipRate: number; // timesSkipped / schedulesWhereAvailable
+}
+
+interface TeamPref {
+  team: string;
+  count: number;
+  featured: number; // How many times this team was starred/featured
+}
+
+interface TimeSlotPref {
+  slot: string; // 'morning' | 'afternoon' | 'evening' | 'latenight'
+  selectionRate: number;
+}
+
+interface UserPatterns {
+  leaguePrefs: LeaguePref[];
+  leagueExclusions: LeagueExclusion[]; // Leagues user consistently skips
+  teamPrefs: TeamPref[];
+  teamExclusions: string[]; // Teams available 5+ times but never picked
+  timeSlotPrefs: TimeSlotPref[];
   avgMatchesPerPublish: number;
   targetMatchCount: number;
   matchCountStdDev: number;
   totalPublishes: number;
-} | null> {
+  confidence: 'low' | 'medium' | 'high'; // How much to trust the data
+  perLeagueBudget: Map<string, number>; // Learned per-league pick count
+}
+
+// ── Extract user patterns from historical published schedules ───────────────
+// Reads existing published_schedules from Supabase — no new storage needed.
+// Analyzes patterns across time: which leagues, teams, and match types the user
+// consistently selects AND consistently skips. Tracks featured matches, time
+// preferences, and per-league budgets. The more publishes, the richer the data.
+//
+// Uses EWMA (Exponential Weighted Moving Average) with correct temporal
+// ordering: oldest entries first so recent publishes get more weight.
+
+async function extractUserPatterns(): Promise<UserPatterns | null> {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
-    // Fetch up to 20 most recent published schedules
+    // Fetch up to 30 most recent published schedules for richer patterns
     const { data: schedules, error } = await supabase
       .from('published_schedules')
       .select('events_snapshot, league_order, featured_leagues, published_at')
       .eq('user_id', user.id)
       .order('published_at', { ascending: false })
-      .limit(20);
+      .limit(30);
 
     if (error || !schedules?.length) return null;
 
-    const leagueCounts = new Map<string, { total: number; selected: number }>();
-    const teamCounts = new Map<string, number>();
+    // ── Aggregate counters ───────────────────────────────────────────────────
+    const leagueStats = new Map<string, {
+      total: number; // total appearances across all schedules
+      selected: number; // times user picked a match from this league
+      featured: number; // times user starred a match from this league
+      schedulesPresent: number; // in how many schedules did this league appear
+      schedulesSkipped: number; // in how many did user pick ZERO from it
+      picksPerSchedule: number[]; // match count per publish for per-league EWMA
+    }>();
+    const teamStats = new Map<string, { selected: number; available: number; featured: number }>();
+    const timeSlotStats = new Map<string, { total: number; selected: number }>();
     let totalSelected = 0;
 
     // Track selected match count per schedule for EWMA calculation
@@ -281,79 +325,191 @@ async function extractUserPatterns(): Promise<{
         leagueLabel?: string;
         home?: string;
         away?: string;
+        time?: string;
         isSelected?: boolean;
+        isFeatured?: boolean;
       }>;
 
       let scheduleSelected = 0;
+      // Track per-league picks within THIS schedule
+      const scheduleLeagues = new Map<string, { available: number; picked: number }>();
+      // Track teams seen in this schedule
+      const scheduleTeams = new Set<string>();
 
       for (const e of events) {
         const league = e.leagueLabel ?? 'Unknown';
-        const entry = leagueCounts.get(league) ?? { total: 0, selected: 0 };
-        entry.total++;
-        if (e.isSelected) {
-          entry.selected++;
-          totalSelected++;
-          scheduleSelected++;
 
-          // Count teams from selected matches
-          if (e.home) {
-            for (const team of e.home.split(' v ')) {
-              const t = team.trim();
-              if (t) teamCounts.set(t, (teamCounts.get(t) ?? 0) + 1);
-            }
-          }
-          if (e.away) {
-            teamCounts.set(e.away, (teamCounts.get(e.away) ?? 0) + 1);
+        // ── League tracking ────────────────────────────────────────────────
+        const ls = leagueStats.get(league) ?? {
+          total: 0, selected: 0, featured: 0,
+          schedulesPresent: 0, schedulesSkipped: 0, picksPerSchedule: [],
+        };
+        ls.total++;
+        leagueStats.set(league, ls);
+
+        // Per-schedule league counter
+        const sl = scheduleLeagues.get(league) ?? { available: 0, picked: 0 };
+        sl.available++;
+        scheduleLeagues.set(league, sl);
+
+        // ── Time slot tracking ─────────────────────────────────────────────
+        if (e.time) {
+          const hour = parseInt(e.time.split(':')[0], 10);
+          let slot: string;
+          if (hour >= 5 && hour < 12) slot = 'morning';
+          else if (hour >= 12 && hour < 17) slot = 'afternoon';
+          else if (hour >= 17 && hour < 21) slot = 'evening';
+          else slot = 'latenight';
+          const ts = timeSlotStats.get(slot) ?? { total: 0, selected: 0 };
+          ts.total++;
+          if (e.isSelected) ts.selected++;
+          timeSlotStats.set(slot, ts);
+        }
+
+        // ── Team tracking (both selected AND available — for exclusion detection) ─
+        const teams: string[] = [];
+        if (e.home) {
+          for (const part of e.home.split(' v ')) {
+            const t = part.trim();
+            if (t) { teams.push(t); scheduleTeams.add(t); }
           }
         }
-        leagueCounts.set(league, entry);
+        if (e.away) {
+          const t = e.away.trim();
+          if (t) { teams.push(t); scheduleTeams.add(t); }
+        }
+        for (const t of teams) {
+          const ts = teamStats.get(t) ?? { selected: 0, available: 0, featured: 0 };
+          ts.available++;
+          if (e.isSelected) ts.selected++;
+          if (e.isFeatured) ts.featured++;
+          teamStats.set(t, ts);
+        }
+
+        if (e.isSelected) {
+          ls.selected++;
+          sl.picked++;
+          totalSelected++;
+          scheduleSelected++;
+          if (e.isFeatured) ls.featured++;
+        }
+      }
+
+      // ── Per-league schedule-level analysis ─────────────────────────────────
+      for (const [league, sl] of scheduleLeagues) {
+        const ls = leagueStats.get(league)!;
+        ls.schedulesPresent++;
+        ls.picksPerSchedule.push(sl.picked);
+        if (sl.picked === 0 && sl.available >= 2) {
+          // User had multiple options and picked none — strong skip signal
+          ls.schedulesSkipped++;
+        }
       }
 
       matchCounts.push(scheduleSelected);
     }
 
-    // Build league preferences sorted by selection rate (not just count)
-    // A league with 80% selection rate is more meaningful than one with 10%
-    const leaguePrefs = [...leagueCounts.entries()]
-      .map(([league, stats]) => ({
+    // ── Build league preferences (positive signals) ──────────────────────────
+    const leaguePrefs = [...leagueStats.entries()]
+      .filter(([, s]) => s.selected >= 2)
+      .map(([league, s]) => ({
         league,
-        count: stats.selected,
-        selectionRate: stats.total > 0 ? stats.selected / stats.total : 0,
+        count: s.selected,
+        selectionRate: s.total > 0 ? s.selected / s.total : 0,
+        avgPicksPerPublish: s.schedulesPresent > 0
+          ? Math.round((s.picksPerSchedule.reduce((a, b) => a + b, 0) / s.schedulesPresent) * 10) / 10
+          : 0,
       }))
-      .filter(l => l.count >= 2) // at least 2 selections across all publishes
       .sort((a, b) => b.selectionRate * b.count - a.selectionRate * a.count)
-      .slice(0, 12);
+      .slice(0, 15);
 
-    const teamPrefs = [...teamCounts.entries()]
-      .map(([team, count]) => ({ team, count }))
-      .filter(t => t.count >= 2)
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 20);
+    // ── Build league exclusions (negative signals) ───────────────────────────
+    // If user skips a league in 70%+ of schedules where it appeared, that's a
+    // strong "don't want" signal. Requires at least 3 schedules for reliability.
+    const leagueExclusions = [...leagueStats.entries()]
+      .filter(([, s]) => s.schedulesPresent >= 3 && s.schedulesSkipped / s.schedulesPresent >= 0.7)
+      .map(([league, s]) => ({
+        league,
+        totalAvailable: s.total,
+        timesSkipped: s.schedulesSkipped,
+        skipRate: Math.round((s.schedulesSkipped / s.schedulesPresent) * 100) / 100,
+      }))
+      .sort((a, b) => b.skipRate - a.skipRate)
+      .slice(0, 10);
 
-    // ── Exponential Weighted Moving Average (EWMA) for match count ────────
-    // More recent publishes get exponentially higher weight.
-    // Alpha (smoothing factor) = 0.3 — balances responsiveness vs stability.
-    // This is the standard approach used in recommendation systems for
-    // learning user preferences over time without storing explicit models.
-    // Reference: "Exponential Smoothing for Time Series" (Hyndman & Athanasopoulos)
+    // ── Build team preferences (with featured bonus) ─────────────────────────
+    const teamPrefs = [...teamStats.entries()]
+      .filter(([, s]) => s.selected >= 2)
+      .map(([team, s]) => ({ team, count: s.selected, featured: s.featured }))
+      .sort((a, b) => {
+        // Featured teams get a 2x weight boost in sorting
+        const scoreA = a.count + a.featured * 2;
+        const scoreB = b.count + b.featured * 2;
+        return scoreB - scoreA;
+      })
+      .slice(0, 25);
+
+    // ── Build team exclusions ────────────────────────────────────────────────
+    // Teams that appeared 5+ times across schedules but were NEVER picked
+    const teamExclusions = [...teamStats.entries()]
+      .filter(([, s]) => s.available >= 5 && s.selected === 0)
+      .map(([team]) => team)
+      .slice(0, 15);
+
+    // ── Time slot preferences ────────────────────────────────────────────────
+    const timeSlotPrefs = [...timeSlotStats.entries()]
+      .map(([slot, s]) => ({
+        slot,
+        selectionRate: s.total > 0 ? Math.round((s.selected / s.total) * 100) / 100 : 0,
+      }))
+      .sort((a, b) => b.selectionRate - a.selectionRate);
+
+    // ── EWMA for total match count (corrected temporal ordering) ─────────
+    // schedules is newest-first, so reverse to iterate oldest → newest.
+    // This gives MORE weight to recent publishes as intended.
     const alpha = 0.3;
-    let ewma = matchCounts[0] ?? 0;
-    for (let i = 1; i < matchCounts.length; i++) {
-      ewma = alpha * matchCounts[i] + (1 - alpha) * ewma;
+    const reversed = [...matchCounts].reverse(); // oldest first
+    let ewma = reversed[0] ?? 0;
+    for (let i = 1; i < reversed.length; i++) {
+      ewma = alpha * reversed[i] + (1 - alpha) * ewma;
     }
 
-    // Calculate standard deviation to understand variance
+    // ── Per-league budget via EWMA ───────────────────────────────────────────
+    const perLeagueBudget = new Map<string, number>();
+    for (const [league, s] of leagueStats) {
+      if (s.picksPerSchedule.length < 3) continue; // need enough data
+      const rev = [...s.picksPerSchedule].reverse();
+      let leagueEwma = rev[0];
+      for (let i = 1; i < rev.length; i++) {
+        leagueEwma = alpha * rev[i] + (1 - alpha) * leagueEwma;
+      }
+      // Round up to give a small buffer over user's average
+      perLeagueBudget.set(league, Math.ceil(leagueEwma * 1.3));
+    }
+
+    // ── Standard deviation for match count variance ──────────────────────────
     const mean = matchCounts.reduce((a, b) => a + b, 0) / matchCounts.length;
     const variance = matchCounts.reduce((sum, count) => sum + Math.pow(count - mean, 2), 0) / matchCounts.length;
     const stddev = Math.sqrt(variance);
 
+    // ── Confidence level — how much to trust the pattern data ────────────────
+    let confidence: 'low' | 'medium' | 'high';
+    if (schedules.length >= 10) confidence = 'high';
+    else if (schedules.length >= 5) confidence = 'medium';
+    else confidence = 'low';
+
     return {
       leaguePrefs,
+      leagueExclusions,
       teamPrefs,
+      teamExclusions,
+      timeSlotPrefs,
       avgMatchesPerPublish: schedules.length > 0 ? Math.round(totalSelected / schedules.length) : 0,
-      targetMatchCount: Math.round(ewma), // EWMA-weighted target — what the user typically selects
+      targetMatchCount: Math.round(ewma),
       matchCountStdDev: Math.round(stddev),
       totalPublishes: schedules.length,
+      confidence,
+      perLeagueBudget,
     };
   } catch {
     return null; // Gracefully degrade if auth or DB fails
@@ -451,17 +607,69 @@ export async function POST(request: NextRequest) {
     const targetMin = Math.max(5, baseTarget + variance - 5);
     const targetMax = baseTarget + variance + 5;
 
-    if (userPatterns && (userPatterns.leaguePrefs.length || userPatterns.teamPrefs.length)) {
+    if (userPatterns && userPatterns.confidence !== 'low' &&
+        (userPatterns.leaguePrefs.length || userPatterns.teamPrefs.length || userPatterns.leagueExclusions.length)) {
+
+      // ── Positive signals: leagues and teams the user actively picks ──────
       const topLeagues = userPatterns.leaguePrefs
-        .map(l => `${l.league} (${l.count} selections, ${Math.round(l.selectionRate * 100)}% pick rate)`)
+        .map(l => `${l.league} (${Math.round(l.selectionRate * 100)}% pick rate, ~${l.avgPicksPerPublish}/schedule)`)
         .join(', ');
       const topTeams = userPatterns.teamPrefs
-        .map(t => `${t.team} (${t.count}x)`)
+        .slice(0, 20)
+        .map(t => {
+          const suffix = t.featured > 0 ? ` ⭐${t.featured}x starred` : '';
+          return `${t.team} (${t.count}x${suffix})`;
+        })
         .join(', ');
 
-      // Match count guidance: blend historical EWMA with sensible defaults.
-      // If the user's historical average is very low (< 25), nudge toward the default.
-      // This prevents new users with sparse data from getting too few recommendations.
+      // ── Negative signals: leagues the user consistently skips ────────────
+      let exclusionSection = '';
+      if (userPatterns.leagueExclusions.length > 0) {
+        const excludedLeagues = userPatterns.leagueExclusions
+          .map(l => `${l.league} (skipped ${Math.round(l.skipRate * 100)}% of the time)`)
+          .join(', ');
+        exclusionSection = `\n\nLEAGUES THIS USER CONSISTENTLY SKIPS — DEPRIORITIZE (${userPatterns.confidence} confidence):\n${excludedLeagues}\n` +
+          `These leagues appeared across multiple schedules but the user almost never picks matches from them. ` +
+          (userPatterns.confidence === 'high'
+            ? `EXCLUDE matches from these leagues unless they are genuine must_watch events (finals, rivalries, mega-events). The user has clearly shown they don't want these.`
+            : `Lean toward excluding matches from these leagues, but still include genuine must_watch moments.`);
+      }
+
+      // ── Team exclusions — teams user never picks despite availability ─────
+      let teamExclusionSection = '';
+      if (userPatterns.teamExclusions.length > 0) {
+        teamExclusionSection = `\n\nTEAMS THIS USER NEVER PICKS: ${userPatterns.teamExclusions.join(', ')}.\n` +
+          `Skip matches involving these teams unless the match itself is a must_watch event.`;
+      }
+
+      // ── Per-league budget hints ──────────────────────────────────────────
+      let budgetHints = '';
+      if (userPatterns.perLeagueBudget.size > 0) {
+        const hints = [...userPatterns.perLeagueBudget.entries()]
+          .filter(([, count]) => count > 0)
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 12)
+          .map(([league, count]) => `${league}: ~${count}`)
+          .join(', ');
+        budgetHints = `\n\nPER-LEAGUE PICK TARGETS (learned from history): ${hints}.\n` +
+          `Try to match these counts per league — the user has a consistent preference for this distribution.`;
+      }
+
+      // ── Time-of-day preference ───────────────────────────────────────────
+      let timeSection = '';
+      if (userPatterns.timeSlotPrefs.length > 0) {
+        const preferred = userPatterns.timeSlotPrefs.filter(t => t.selectionRate >= 0.5);
+        const avoided = userPatterns.timeSlotPrefs.filter(t => t.selectionRate < 0.2 && t.selectionRate >= 0);
+        if (preferred.length > 0 || avoided.length > 0) {
+          const prefStr = preferred.map(t => `${t.slot} (${Math.round(t.selectionRate * 100)}% pick rate)`).join(', ');
+          const avoidStr = avoided.map(t => `${t.slot} (only ${Math.round(t.selectionRate * 100)}% pick rate)`).join(', ');
+          timeSection = '\n\nTIME PREFERENCES:';
+          if (prefStr) timeSection += ` Prefers ${prefStr} matches.`;
+          if (avoidStr) timeSection += ` Rarely picks ${avoidStr} matches.`;
+        }
+      }
+
+      // ── Match count guidance with EWMA ───────────────────────────────────
       const historicalTarget = userPatterns.targetMatchCount > 0
         ? userPatterns.targetMatchCount
         : userPatterns.avgMatchesPerPublish;
@@ -471,12 +679,27 @@ export async function POST(request: NextRequest) {
       const effectiveMax = effectiveTarget + variance + 8;
 
       const matchCountGuidance = `\nAim for ${effectiveMin}–${effectiveMax} match recommendations for this view.` +
-        (historicalTarget > 0 ? ` (Your recent average is ~${historicalTarget} matches per publish across ${userPatterns.totalPublishes} schedules.)` : '');
+        (historicalTarget > 0 ? ` (User's recent average is ~${historicalTarget} matches per publish across ${userPatterns.totalPublishes} schedules.)` : '');
 
-      preferenceContext = `\n\nUSER HISTORICAL PREFERENCES (learned from ${userPatterns.totalPublishes} published schedules):\n` +
-        `You have consistently selected matches from these leagues: ${topLeagues}.\n` +
-        `You frequently follow these teams: ${topTeams}.${matchCountGuidance}\n` +
-        `Prioritize matches from these leagues and involving these teams. If a match involves a league or team the user has shown strong preference for, lean toward including it.`;
+      // ── Confidence preamble ──────────────────────────────────────────────
+      const confidenceNote = userPatterns.confidence === 'high'
+        ? `HIGH CONFIDENCE — based on ${userPatterns.totalPublishes} published schedules. Follow these patterns closely.`
+        : `MEDIUM CONFIDENCE — based on ${userPatterns.totalPublishes} published schedules. Use these as guidelines but don't over-fit.`;
+
+      preferenceContext = `\n\nUSER PROFILE (${confidenceNote}):\n` +
+        `Preferred leagues: ${topLeagues}.\n` +
+        `Preferred teams: ${topTeams}.${matchCountGuidance}` +
+        `${exclusionSection}${teamExclusionSection}${budgetHints}${timeSection}\n\n` +
+        `Prioritize matches from preferred leagues/teams. If a match involves a league or team the user has shown strong preference for, lean toward including it.`;
+    } else if (userPatterns && userPatterns.confidence === 'low' && userPatterns.leaguePrefs.length > 0) {
+      // Low confidence — give soft hints only, don't exclude anything
+      const topLeagues = userPatterns.leaguePrefs
+        .slice(0, 8)
+        .map(l => l.league)
+        .join(', ');
+      preferenceContext = `\n\nEARLY USER PROFILE (only ${userPatterns.totalPublishes} publishes — treat as soft hints):\n` +
+        `This user seems to prefer: ${topLeagues}. Give these leagues slight priority but don't exclude anything yet.\n` +
+        `Aim for ${targetMin}–${targetMax} match recommendations for this view.`;
     } else if (userPreferences.selectedLeagues?.length || userPreferences.selectedTeams?.length) {
       // Fallback to current session preferences if no historical data
       preferenceContext = `\n\nUSER PREFERENCES (current session): You tend to follow these leagues: ${userPreferences.selectedLeagues?.join(', ') ?? 'none'}. And these teams: ${userPreferences.selectedTeams?.join(', ') ?? 'none'}. Prioritize matches from these leagues and involving these teams.\n` +
@@ -513,16 +736,27 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // ── Build set of leagues user has explicitly shown they don't want ──────
+    // Used to suppress auto-promotions for leagues the user consistently skips.
+    const userExcludedLeagues = new Set<string>();
+    if (userPatterns && userPatterns.confidence !== 'low') {
+      for (const excl of userPatterns.leagueExclusions) {
+        userExcludedLeagues.add(excl.league);
+      }
+    }
+
     // ── Auto-promote sparse live-sport categories ────────────────────────────
     // MotoGP, UFC, Boxing, Cycling have so few events per window that every
     // one is worth showing. Inject any the AI missed as must_watch.
     // F1 is special: always include the Grand Prix race, but let the AI decide
     // on qualifying/sprint sessions (they're lower priority than the race itself).
+    // RESPECTS user exclusions: if user consistently skips a sport, don't force it.
     const ALWAYS_INCLUDE_ABBREVS = new Set(['MGP', 'UFC', 'BOX', 'UCI']);
     if (output && Array.isArray(output.ids)) {
       const selectedIds = new Set(output.ids.map((r: { id: string }) => r.id));
       for (const [abbrev, matches] of Object.entries(groups)) {
         if (!ALWAYS_INCLUDE_ABBREVS.has(abbrev)) continue;
+        if (userExcludedLeagues.has(abbrev)) continue; // Respect user's exclusion
         if (!Array.isArray(matches)) continue;
         for (const m of matches) {
           const idx = String(m).split(':')[0];
@@ -537,7 +771,7 @@ export async function POST(request: NextRequest) {
     // ── F1 race auto-promote ────────────────────────────────────────────────
     // Grand Prix races are always must_watch. Qualifying/sprint sessions are
     // only auto-included if the AI already rated them (they're lower priority).
-    if (output && Array.isArray(output.ids)) {
+    if (output && Array.isArray(output.ids) && !userExcludedLeagues.has('F1')) {
       const selectedIds = new Set(output.ids.map((r: { id: string }) => r.id));
       const f1Matches = Array.isArray(groups['F1']) ? groups['F1'] : [];
       for (const m of f1Matches) {
@@ -556,14 +790,22 @@ export async function POST(request: NextRequest) {
     // ── NBA marquee-team auto-promotion ─────────────────────────────────────
     // NBA has too many games for the AI to reliably pick; ensure big-market
     // teams always appear so the panel isn't football-only.
-    const NBA_MARQUEE = ['Lakers', 'Celtics', 'Warriors', 'Rockets', 'Bulls',
+    // Uses learned team preferences when available, falls back to default marquee list.
+    const NBA_DEFAULT_MARQUEE = ['Lakers', 'Celtics', 'Warriors', 'Rockets', 'Bulls',
       'Raptors', 'Knicks', 'Heat', 'Bucks', 'Nuggets', 'Mavericks'];
-    if (output && Array.isArray(output.ids)) {
+    // If user has team preferences, use those as marquee teams for NBA instead
+    const nbaMarquee = userPatterns?.teamPrefs.length
+      ? [...new Set([
+          ...userPatterns.teamPrefs.slice(0, 10).map(t => t.team),
+          ...NBA_DEFAULT_MARQUEE, // Still include defaults as fallback
+        ])]
+      : NBA_DEFAULT_MARQUEE;
+    if (output && Array.isArray(output.ids) && !userExcludedLeagues.has('NBA')) {
       const selectedIds = new Set(output.ids.map((r: { id: string }) => r.id));
       for (const m of (Array.isArray(groups['NBA']) ? groups['NBA'] : [])) {
         const idx = String(m).split(':')[0];
         const title = String(m).slice(idx.length + 1);
-        if (NBA_MARQUEE.some((t) => title.includes(t)) && !selectedIds.has(idx)) {
+        if (nbaMarquee.some((t) => title.includes(t)) && !selectedIds.has(idx)) {
           output.ids.push({ id: idx, importance: 'must_watch' as const });
           selectedIds.add(idx);
         }
@@ -571,6 +813,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Per-league caps: prevent any single league from flooding results ────
+    // Now uses learned per-league budgets when available.
     if (output && Array.isArray(output.ids)) {
       // Map each AI id back to its league from the original groups
       const idToLeague = new Map<string, string>();
@@ -588,8 +831,26 @@ export async function POST(request: NextRequest) {
       const leagueCounts = new Map<string, number>();
       output.ids = output.ids.filter((r: { id: string; importance: string }) => {
         const league = idToLeague.get(r.id) ?? '';
+
+        // Determine per-league cap: learned budget → config default → 2
+        let baseMax: number;
+        if (userPatterns?.perLeagueBudget.has(league)) {
+          // Use learned budget — the user consistently picks this many
+          baseMax = Math.max(userPatterns.perLeagueBudget.get(league)!, LEAGUE_MAX_PICKS[league] ?? 2);
+        } else {
+          baseMax = LEAGUE_MAX_PICKS[league] ?? 2;
+        }
+
+        // For excluded leagues with high confidence: slash the cap hard
+        // Still allow 1-2 for genuine must_watch events
+        if (userExcludedLeagues.has(league) && r.importance !== 'must_watch') {
+          const current = leagueCounts.get(league) ?? 0;
+          if (current >= 1) return false; // Allow max 1 from excluded leagues (only if must_watch sneaked through)
+          leagueCounts.set(league, current + 1);
+          return true;
+        }
+
         // Scan mode doubles per-league caps so good matches aren't artificially cut off
-        const baseMax = LEAGUE_MAX_PICKS[league] ?? 2;
         const maxPicks = scanMode ? baseMax * 2 : baseMax;
         const current = leagueCounts.get(league) ?? 0;
         if (current >= maxPicks) return false;
