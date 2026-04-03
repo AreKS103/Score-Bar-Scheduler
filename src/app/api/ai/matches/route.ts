@@ -241,10 +241,16 @@ async function callAI(provider: AIProviderResult, matchData: string): Promise<Ma
 // Reads existing published_schedules from Supabase — no new storage needed.
 // Analyzes patterns across time: which leagues, teams, and match types the user
 // consistently selects. The more publishes, the richer the pattern data.
+//
+// Uses exponential weighted moving average (EWMA) for match count preference —
+// more recent publishes get higher weight. This is a standard technique in
+// recommendation systems and time series analysis for adaptive learning.
 async function extractUserPatterns(): Promise<{
   leaguePrefs: { league: string; count: number; selectionRate: number }[];
   teamPrefs: { team: string; count: number }[];
   avgMatchesPerPublish: number;
+  targetMatchCount: number;
+  matchCountStdDev: number;
   totalPublishes: number;
 } | null> {
   try {
@@ -266,6 +272,9 @@ async function extractUserPatterns(): Promise<{
     const teamCounts = new Map<string, number>();
     let totalSelected = 0;
 
+    // Track selected match count per schedule for EWMA calculation
+    const matchCounts: number[] = [];
+
     for (const schedule of schedules) {
       const events = (schedule.events_snapshot ?? []) as Array<{
         id: string;
@@ -275,6 +284,8 @@ async function extractUserPatterns(): Promise<{
         isSelected?: boolean;
       }>;
 
+      let scheduleSelected = 0;
+
       for (const e of events) {
         const league = e.leagueLabel ?? 'Unknown';
         const entry = leagueCounts.get(league) ?? { total: 0, selected: 0 };
@@ -282,6 +293,7 @@ async function extractUserPatterns(): Promise<{
         if (e.isSelected) {
           entry.selected++;
           totalSelected++;
+          scheduleSelected++;
 
           // Count teams from selected matches
           if (e.home) {
@@ -296,6 +308,8 @@ async function extractUserPatterns(): Promise<{
         }
         leagueCounts.set(league, entry);
       }
+
+      matchCounts.push(scheduleSelected);
     }
 
     // Build league preferences sorted by selection rate (not just count)
@@ -316,10 +330,29 @@ async function extractUserPatterns(): Promise<{
       .sort((a, b) => b.count - a.count)
       .slice(0, 20);
 
+    // ── Exponential Weighted Moving Average (EWMA) for match count ────────
+    // More recent publishes get exponentially higher weight.
+    // Alpha (smoothing factor) = 0.3 — balances responsiveness vs stability.
+    // This is the standard approach used in recommendation systems for
+    // learning user preferences over time without storing explicit models.
+    // Reference: "Exponential Smoothing for Time Series" (Hyndman & Athanasopoulos)
+    const alpha = 0.3;
+    let ewma = matchCounts[0] ?? 0;
+    for (let i = 1; i < matchCounts.length; i++) {
+      ewma = alpha * matchCounts[i] + (1 - alpha) * ewma;
+    }
+
+    // Calculate standard deviation to understand variance
+    const mean = matchCounts.reduce((a, b) => a + b, 0) / matchCounts.length;
+    const variance = matchCounts.reduce((sum, count) => sum + Math.pow(count - mean, 2), 0) / matchCounts.length;
+    const stddev = Math.sqrt(variance);
+
     return {
       leaguePrefs,
       teamPrefs,
       avgMatchesPerPublish: schedules.length > 0 ? Math.round(totalSelected / schedules.length) : 0,
+      targetMatchCount: Math.round(ewma), // EWMA-weighted target — what the user typically selects
+      matchCountStdDev: Math.round(stddev),
       totalPublishes: schedules.length,
     };
   } catch {
@@ -414,10 +447,14 @@ export async function POST(request: NextRequest) {
         .map(t => `${t.team} (${t.count}x)`)
         .join(', ');
 
+      // Match count guidance using EWMA — tells the AI how many matches to target
+      const matchCountGuidance = userPatterns.targetMatchCount > 0
+        ? `\nYou typically select ~${userPatterns.targetMatchCount} matches per schedule (recent trend, ±${userPatterns.matchCountStdDev} variance). Aim for a similar number of recommendations.`
+        : `\nOn average, you select ~${userPatterns.avgMatchesPerPublish} matches per publish.`;
+
       preferenceContext = `\n\nUSER HISTORICAL PREFERENCES (learned from ${userPatterns.totalPublishes} published schedules):\n` +
         `You have consistently selected matches from these leagues: ${topLeagues}.\n` +
-        `You frequently follow these teams: ${topTeams}.\n` +
-        `On average, you select ~${userPatterns.avgMatchesPerPublish} matches per publish.\n` +
+        `You frequently follow these teams: ${topTeams}.${matchCountGuidance}\n` +
         `Prioritize matches from these leagues and involving these teams. If a match involves a league or team the user has shown strong preference for, lean toward including it.`;
     } else if (userPreferences.selectedLeagues?.length || userPreferences.selectedTeams?.length) {
       // Fallback to current session preferences if no historical data
