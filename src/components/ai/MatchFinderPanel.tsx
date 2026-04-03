@@ -302,10 +302,13 @@ export default function MatchFinderPanel({
         : filter === 'This Month' ? 'month'
         : 'week';
 
+      // "All matches" triggers scan mode — more inclusive AI sweep
+      const scanMode = filter === 'all';
+
       const res = await fetch('/api/ai/matches', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ groups, filterType }),
+        body: JSON.stringify({ groups, filterType, scanMode }),
       });
 
       if (!res.ok) {

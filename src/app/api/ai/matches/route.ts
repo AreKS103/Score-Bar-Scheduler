@@ -249,6 +249,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const groups: Record<string, string[]> | undefined = body.groups;
     const filterType: string = body.filterType ?? 'week'; // 'today' | 'week' | 'month'
+    const scanMode: boolean = body.scanMode ?? false; // 'all matches' scan — more inclusive
 
     if (!groups || typeof groups !== 'object' || Object.keys(groups).length === 0) {
       return NextResponse.json(
@@ -260,12 +261,13 @@ export async function POST(request: NextRequest) {
     // Build token-efficient plain-text prompt grouped by league
     const lines: string[] = [];
     let matchCount = 0;
+    const maxMatches = scanMode ? 1000 : 500; // scan mode processes more matches
 
     for (const [league, matches] of Object.entries(groups)) {
       if (!Array.isArray(matches)) continue;
       lines.push(`[${String(league)}]`);
       for (const m of matches) {
-        if (matchCount >= 500) break;
+        if (matchCount >= maxMatches) break;
         lines.push(String(m));
         matchCount++;
       }
@@ -280,19 +282,26 @@ export async function POST(request: NextRequest) {
 
     const condensed = lines.join('\n');
 
+    // ── Scan mode: append instruction to be more inclusive ──────────────────
+    // When user clicks "Scan All Matches", they want a thorough sweep — show
+    // every match worth watching, not just the absolute elite tier.
+    const userPrompt = scanMode
+      ? `${condensed}\n\nSCAN MODE: You are doing a comprehensive sweep. Be more inclusive than usual — include ALL matches that a sports fan would genuinely want to watch. Don't be overly restrictive. If a match has any real sporting interest, include it as "high" at minimum. Still exclude truly meaningless games (e.g. two bottom-table teams with no stakes, preseason friendlies with no stars), but cast a wider net than the default curated mode.`
+      : condensed;
+
     // ── Try primary → fallback ──────────────────────────────────────────────
     const primary = getAIModel();
     let output;
 
     try {
-      output = await callAI(primary, condensed);
+      output = await callAI(primary, userPrompt);
     } catch (primaryError) {
       console.error(`[AI Matches] Primary (${primary.provider}) failed:`, primaryError);
 
       const fallback = getFallbackModel();
       if (!fallback || fallback.modelId === primary.modelId) throw primaryError;
 
-      output = await callAI(fallback, condensed);
+      output = await callAI(fallback, userPrompt);
     }
 
     // ── Zod safeParse + strip low/medium — only return high & must_watch ───
@@ -379,7 +388,9 @@ export async function POST(request: NextRequest) {
       const leagueCounts = new Map<string, number>();
       output.ids = output.ids.filter((r: { id: string; importance: string }) => {
         const league = idToLeague.get(r.id) ?? '';
-        const maxPicks = LEAGUE_MAX_PICKS[league] ?? 2;
+        // Scan mode doubles per-league caps so good matches aren't artificially cut off
+        const baseMax = LEAGUE_MAX_PICKS[league] ?? 2;
+        const maxPicks = scanMode ? baseMax * 2 : baseMax;
         const current = leagueCounts.get(league) ?? 0;
         if (current >= maxPicks) return false;
         leagueCounts.set(league, current + 1);
@@ -387,7 +398,10 @@ export async function POST(request: NextRequest) {
       });
 
       // ── Total budget cap ───────────────────────────────────────────────────
-      const totalBudget = filterType === 'today' ? 80 : filterType === 'month' ? 250 : 150;
+      // Scan mode uses a much higher budget — user wants to see ALL good matches
+      const totalBudget = scanMode
+        ? 500  // comprehensive sweep
+        : filterType === 'today' ? 80 : filterType === 'month' ? 250 : 150;
       output.ids = output.ids.slice(0, totalBudget);
     }
 
