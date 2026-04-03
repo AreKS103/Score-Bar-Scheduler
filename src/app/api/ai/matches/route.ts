@@ -60,7 +60,7 @@ FOOTBALL (Soccer):
 - Any rivalry/derby listed above
 
 MOTORSPORT:
-- F1: Grand Prix RACES only — always must_watch (~70M+ viewers per race globally). Qualifying and Sprint are secondary (see "high" below).
+- F1: Grand Prix RACES and Qualifying — always must_watch (~70M+ viewers per race globally). Sprint Races and Practice are secondary (see "high" below).
 - MotoGP: RACES only — always must_watch (~300M+ cumulative viewers globally). Practice and qualifying are secondary.
 
 COMBAT SPORTS:
@@ -137,7 +137,7 @@ ICE HOCKEY:
 - IIHF World Championship: knockout rounds
 
 MOTORSPORT:
-- F1: Qualifying sessions and Sprint races — high but secondary to the Grand Prix race itself
+- F1: Sprint races and Practice Sessions — high but secondary to the Grand Prix race itself
 - MotoGP: Qualifying sessions and practice — secondary to the race
 - IndyCar: ALL races and qualifying sessions (strong US following, ~2M+ viewers per race)
 
@@ -439,6 +439,18 @@ export async function POST(request: NextRequest) {
     // ── Build user preference context from historical patterns ────────────
     let preferenceContext = '';
 
+    // Default target match counts per filter type — used when no historical data exists.
+    // Add small random variance (±15%) so the target isn't always the exact same number.
+    const defaultTargets: Record<string, number> = {
+      month: 55,
+      week: 30,
+      today: 18,
+    };
+    const baseTarget = defaultTargets[filterType] ?? 30;
+    const variance = Math.round(baseTarget * 0.15 * (Math.random() * 2 - 1)); // ±15%
+    const targetMin = Math.max(5, baseTarget + variance - 5);
+    const targetMax = baseTarget + variance + 5;
+
     if (userPatterns && (userPatterns.leaguePrefs.length || userPatterns.teamPrefs.length)) {
       const topLeagues = userPatterns.leaguePrefs
         .map(l => `${l.league} (${l.count} selections, ${Math.round(l.selectionRate * 100)}% pick rate)`)
@@ -458,7 +470,11 @@ export async function POST(request: NextRequest) {
         `Prioritize matches from these leagues and involving these teams. If a match involves a league or team the user has shown strong preference for, lean toward including it.`;
     } else if (userPreferences.selectedLeagues?.length || userPreferences.selectedTeams?.length) {
       // Fallback to current session preferences if no historical data
-      preferenceContext = `\n\nUSER PREFERENCES (current session): You tend to follow these leagues: ${userPreferences.selectedLeagues?.join(', ') ?? 'none'}. And these teams: ${userPreferences.selectedTeams?.join(', ') ?? 'none'}. Prioritize matches from these leagues and involving these teams.`;
+      preferenceContext = `\n\nUSER PREFERENCES (current session): You tend to follow these leagues: ${userPreferences.selectedLeagues?.join(', ') ?? 'none'}. And these teams: ${userPreferences.selectedTeams?.join(', ') ?? 'none'}. Prioritize matches from these leagues and involving these teams.\n` +
+        `Aim for ${targetMin}–${targetMax} match recommendations for this view.`;
+    } else {
+      // No data at all — new user. Give a sensible default target.
+      preferenceContext = `\n\nRECOMMENDED: Aim for ${targetMin}–${targetMax} match recommendations for this view. Be selective — only include matches a sports-bar crowd would genuinely care about.`;
     }
 
     // Combine everything into the final prompt
