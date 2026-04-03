@@ -232,6 +232,7 @@ function getLeagueAbbrev(sportId: string, label: string): string {
     'soccer-afccl': 'AFC CL',
     'soccer-copam': 'Libertadores',
     'soccer-cpl': 'CPL',
+    'soccer-hun-sen-cup': 'Hun Sen Cup',
     'basketball-nba': 'NBA',
     'basketball-wnba': 'WNBA',
     'basketball-ncaam': 'NCAAM',

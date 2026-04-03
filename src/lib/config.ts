@@ -81,6 +81,7 @@ export const SPORTS_CONFIG: SportConfig[] = [
   { id: 'soccer-asian-cup-women', label: 'Asian Cup Women',                   category: 'Football',    espnSlug: null,                        sportsdbId: '5179', logo: 'https://r2.thesportsdb.com/images/media/league/badge/m0scwf1726416187.png' },
   { id: 'soccer-copam',          label: 'Copa Libertadores',                  category: 'Football',    espnSlug: 'soccer/conmebol.libertadores', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/26.png' },
   { id: 'soccer-cpl',            label: 'Cambodian Premier League',           category: 'Football',    espnSlug: null,                        sportsdbId: '4793', logo: '/CPL.png', publishLogo: 'https://r2.thesportsdb.com/images/media/league/badge/fdhux61655121747.png' },
+  { id: 'soccer-hun-sen-cup',    label: 'Cambodian Hun Sen Cup',              category: 'Football',    espnSlug: null,                        sportsdbId: '5859', logo: 'https://www.thesportsdb.com/images/media/league/badge/4motr51774278480.png' },
 
   // ── Basketball ─────────────────────────────────────────────────────────────
   { id: 'basketball-nba',        label: 'NBA',                                category: 'Basketball',  espnSlug: 'basketball/nba',            logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/nba.png' },
@@ -232,6 +233,7 @@ export const LEAGUE_SHORT: Record<string, string> = {
   'Asian Cup Women': 'AACW',
   'Copa Libertadores': 'COP',
   'Cambodian Premier League': 'CPL',
+  'Cambodian Hun Sen Cup': 'HSC',
   'NBA': 'NBA',
   'WNBA': 'WNBA',
   "NCAA Men's Basketball": 'NCAAM',
@@ -272,7 +274,7 @@ export const LEAGUE_POPULARITY: Record<string, number> = {
   'L1F': 90, 'UEL': 88, 'COP': 85, 'UECL': 82, 'FAC': 80,
   'EFL': 70, 'CC': 68, 'MLS': 65, 'SPFL': 60, 'ERE': 58,
   'SPL': 55, 'ALE': 50, 'JLG': 48, 'AFCE': 45, 'AFC2': 40,
-  'AFCL': 38, 'AAC': 42, 'AACW': 35, 'CPL': 30, 'L1E': 55,
+  'AFCL': 38, 'AAC': 42, 'AACW': 35, 'CPL': 30, 'HSC': 28, 'L1E': 55,
   // Basketball
   'NBA': 90, 'NCAAM': 65, 'WNBA': 55, 'NCAAW': 50,
   // American Football
@@ -311,7 +313,7 @@ export const LEAGUE_MAX_PICKS: Record<string, number> = {
   // ── Tier 2: Good leagues — moderate cap ─────────────────────────────────
   'EFL': 10, 'CC': 10, 'MLS': 15, 'SPFL': 8, 'ERE': 10,
   'SPL': 8, 'ALE': 8, 'JLG': 8, 'AFCE': 8, 'AFC2': 6,
-  'AFCL': 6, 'AAC': 6, 'AACW': 6, 'CPL': 6, 'L1E': 5,
+  'AFCL': 6, 'AAC': 6, 'AACW': 6, 'CPL': 6, 'HSC': 6, 'L1E': 5,
   // ── Tier 3: High-volume US sports — tight cap ──────────────────────────
   'NBA': 8, 'NCAAM': 6, 'WNBA': 6, 'NCAAW': 4,
   'NFL': 12, 'NCAAF': 8,

@@ -1,7 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { MatchEvent } from '@/types';
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { normalizeTournamentGame, MARCH_MADNESS_LOGO, MARCH_MADNESS_WOMEN_LOGO } from '@/lib/marchMadness';
+
+// ── Supabase service-role client for SportsDB endpoint cache ────────────────
+// Created lazily so we don't throw at module load if env vars are absent.
+let _sdbCacheDb: ReturnType<typeof createServiceClient> | null = null;
+function getSdbCacheDb(): ReturnType<typeof createServiceClient> | null {
+  if (_sdbCacheDb) return _sdbCacheDb;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (url && key) _sdbCacheDb = createServiceClient(url, key);
+  return _sdbCacheDb;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SERVER-SIDE CACHE — Stores fetched events in memory with TTL
@@ -845,6 +857,7 @@ const SPORTSDB_ONLY_LEAGUES = [
   { id: 'motogp', sportsdbId: '4407', label: 'MotoGP', category: 'Motorsport', logo: 'https://r2.thesportsdb.com/images/media/league/badge/gg3c201768486075.png' },
   { id: 'boxing', sportsdbId: '4445', label: 'Boxing', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/6enin21740228549.png' },
   { id: 'cycling-uci', sportsdbId: '4465', label: 'UCI World Tour', category: 'Cycling', logo: 'https://r2.thesportsdb.com/images/media/league/badge/igahc11535183469.png' },
+  { id: 'soccer-hun-sen-cup', sportsdbId: '5859', label: 'Cambodian Hun Sen Cup', category: 'Football', logo: 'https://www.thesportsdb.com/images/media/league/badge/4motr51774278480.png' },
 ];
 
 interface SportsDBEvent {
@@ -862,10 +875,48 @@ interface SportsDBEvent {
   strRound?: string;
 }
 
-// C-League team IDs — all 10 clubs in the 2025-26 season
-const CPL_TEAM_IDS = [139406, 139402, 147520, 139397, 149110, 152838, 139410, 139405, 139401, 139407];
+// C-League team IDs — all 11 clubs in the 2025-26 season
+const CPL_TEAM_IDS = [139406, 139402, 147520, 139397, 149110, 152838, 139410, 139405, 139401, 139407, 139403];
+
+// ── Per-endpoint SportsDB cache (two layers) ────────────────────────────
+// SportsDB endpoints (eventsnextleague, eventsnext, eventslast, etc.) are
+// NOT parameterised by date — the same URL returns the same events no
+// matter what date range the user selects.  Two-layer caching prevents
+// re-fetching (and 429s) even across Vercel cold starts:
+//   Layer 1: in-process Map  — fastest; lives only within the current Node instance
+//   Layer 2: Supabase table  — persistent; survives Vercel restarts; 7-day TTL
+interface SdbEndpointEntry { data: SportsDBEvent[]; ts: number }
+const SDB_ENDPOINT_CACHE = new Map<string, SdbEndpointEntry>();
+const SDB_ENDPOINT_TTL = 10 * 60 * 1000; // 10 min in-memory
+const SDB_DB_CACHE_TTL_DAYS = 7;
 
 async function sdbFetch(endpoint: string, responseKey: 'events' | 'results' = 'events'): Promise<SportsDBEvent[]> {
+  const ck = `${endpoint}|${responseKey}`;
+
+  // ── Layer 1: in-process memory ──────────────────────────────────────────
+  const hit = SDB_ENDPOINT_CACHE.get(ck);
+  if (hit && Date.now() - hit.ts < SDB_ENDPOINT_TTL) return hit.data;
+
+  // ── Layer 2: Supabase persistent cache ──────────────────────────────────
+  const db = getSdbCacheDb();
+  if (db) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: row } = await (db as any)
+        .from('sportsdb_events_cache')
+        .select('response_data')
+        .eq('endpoint', ck)
+        .gt('expires_at', new Date().toISOString())
+        .maybeSingle();
+      if (row) {
+        const cached = (row as { response_data: SportsDBEvent[] }).response_data;
+        SDB_ENDPOINT_CACHE.set(ck, { data: cached, ts: Date.now() }); // backfill L1
+        return cached;
+      }
+    } catch { /* db unavailable — fall through to live fetch */ }
+  }
+
+  // ── Layer 3: live SportsDB fetch ─────────────────────────────────────────
   try {
     const res = await fetch(`${SPORTSDB_BASE}/${endpoint}`, {
       signal: AbortSignal.timeout(8_000),
@@ -876,9 +927,20 @@ async function sdbFetch(endpoint: string, responseKey: 'events' | 'results' = 'e
         'Referer':         'https://www.thesportsdb.com/',
       },
     });
-    if (!res.ok) return [];
+    if (!res.ok) return []; // 429 / 5xx — do NOT cache failures
     const json = await res.json();
-    return (json[responseKey] as SportsDBEvent[]) ?? [];
+    const data = (json[responseKey] as SportsDBEvent[]) ?? [];
+
+    // Store in both caches
+    SDB_ENDPOINT_CACHE.set(ck, { data, ts: Date.now() });
+    if (db) {
+      const expiresAt = new Date(Date.now() + SDB_DB_CACHE_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      void (db as any).from('sportsdb_events_cache')
+        .upsert({ endpoint: ck, response_data: data, fetched_at: new Date().toISOString(), expires_at: expiresAt });
+    }
+
+    return data;
   } catch {
     return [];
   }
@@ -1059,13 +1121,15 @@ async function fetchCPLFanout(
   const settled = await Promise.all(allCalls);
   const allRaw = settled.flat();
 
-  // Deduplicate by idEvent; keep only C-League fixtures
+  // Deduplicate by idEvent; keep only C-League fixtures (exclude Hun Sen Cup)
   const seen = new Set<string>();
   const deduped = allRaw.filter(e => {
     if (!e?.idEvent) return false;
     if (seen.has(e.idEvent)) return false;
     seen.add(e.idEvent);
     const lg = (e.strLeague ?? '').toLowerCase();
+    // Exclude Hun Sen Cup events — they're fetched separately via their own league entry
+    if (lg.includes('hun sen')) return false;
     return !lg || lg.includes('cambodia') || lg.includes('c-league') || lg.includes('c league');
   });
 
@@ -1164,6 +1228,50 @@ async function fetchSportsDBCombatBySeason(
   return mapped;
 }
 
+// Hun Sen Cup team IDs — 8 teams in the 2025-26 season
+const HSC_TEAM_IDS = [139402, 147520, 139397, 139410, 139405, 139401, 139407, 139403];
+
+/**
+ * Hun Sen Cup fan-out: league next+past + per-team eventsnext/eventslast.
+ * Same approach as CPL but with fewer teams and strict league-name filtering.
+ */
+async function fetchHSCFanout(
+  league: typeof SPORTSDB_ONLY_LEAGUES[0],
+  startDate: string,
+  endDate: string
+): Promise<MatchEvent[]> {
+  const allCalls: Promise<SportsDBEvent[]>[] = [
+    sdbFetch(`eventsnextleague.php?id=${league.sportsdbId}`),
+    sdbFetch(`eventspastleague.php?id=${league.sportsdbId}`),
+    ...HSC_TEAM_IDS.flatMap(id => [
+      sdbFetch(`eventsnext.php?id=${id}`),
+      sdbFetch(`eventslast.php?id=${id}`, 'results'),
+    ]),
+  ];
+
+  const settled = await Promise.all(allCalls);
+  const allRaw = settled.flat();
+
+  const seen = new Set<string>();
+  const deduped = allRaw.filter(e => {
+    if (!e?.idEvent) return false;
+    if (seen.has(e.idEvent)) return false;
+    seen.add(e.idEvent);
+    const lg = (e.strLeague ?? '').toLowerCase();
+    return lg.includes('hun sen');
+  });
+
+  console.log(`[SportsDB] ${league.label} fan-out: ${deduped.length} unique Hun Sen Cup events`);
+
+  const mapped = deduped
+    .filter(e => (e.strPostponed ?? 'no').toLowerCase() !== 'yes')
+    .map(e => mapSDBEvent(e, league))
+    .filter(e => e.date >= startDate && e.date <= endDate);
+
+  console.log(`[SportsDB] ✓ ${league.label}: ${mapped.length} events in date range`);
+  return mapped;
+}
+
 async function fetchSportsDBLeague(
   league: typeof SPORTSDB_ONLY_LEAGUES[0],
   startDate: string,
@@ -1171,6 +1279,9 @@ async function fetchSportsDBLeague(
 ): Promise<MatchEvent[]> {
   if (league.id === 'soccer-cpl') {
     return fetchCPLFanout(league, startDate, endDate);
+  }
+  if (league.id === 'soccer-hun-sen-cup') {
+    return fetchHSCFanout(league, startDate, endDate);
   }
   // Combat sports use season-based fetch (ESPN is primary; SportsDB is fallback)
   if (COMBAT_SPORT_IDS.has(league.sportsdbId)) {
@@ -1183,21 +1294,21 @@ async function fetchSportsDBLeague(
 async function fetchAllSportsDB(startDate: string, endDate: string): Promise<MatchEvent[]> {
   const results: MatchEvent[] = [];
 
-  // Phase 1: CPL uses a heavy fan-out strategy (22 requests) — run it first alone
-  const cplLeague = SPORTSDB_ONLY_LEAGUES.find(l => l.id === 'soccer-cpl');
-  if (cplLeague) {
+  // Phase 1: Cambodian leagues use heavy fan-out strategies — run them first
+  const cambodianLeagues = SPORTSDB_ONLY_LEAGUES.filter(l => l.id === 'soccer-cpl' || l.id === 'soccer-hun-sen-cup');
+  for (const league of cambodianLeagues) {
     try {
-      const cplEvents = await fetchSportsDBLeague(cplLeague, startDate, endDate);
-      results.push(...cplEvents);
+      const events = await fetchSportsDBLeague(league, startDate, endDate);
+      results.push(...events);
     } catch (err) {
-      console.warn('[SportsDB] CPL fetch failed:', err);
+      console.warn(`[SportsDB] ${league.label} fetch failed:`, err);
     }
     await sleep(150);
   }
 
-  // Phase 2: Remaining leagues in batches of 3 (each uses ≤2-4 API calls)
+  // Phase 2: Remaining leagues in batches (each uses ≤2-4 API calls)
   // This avoids overwhelming TheSportsDB's rate limiter.
-  const otherLeagues = SPORTSDB_ONLY_LEAGUES.filter(l => l.id !== 'soccer-cpl');
+  const otherLeagues = SPORTSDB_ONLY_LEAGUES.filter(l => l.id !== 'soccer-cpl' && l.id !== 'soccer-hun-sen-cup');
   const BATCH_SIZE = 5;
 
   for (let i = 0; i < otherLeagues.length; i += BATCH_SIZE) {
@@ -1232,10 +1343,13 @@ async function fetchAllEvents(startDate: string, endDate: string): Promise<Match
   const startTime = Date.now();
 
   // Fetch ESPN and SportsDB in parallel, but don't let a slow SportsDB pass
-  // block first paint for the schedule page.
+  // block the response indefinitely.
+  // 15 s accommodates the CPL + Hun Sen Cup fan-outs (~40 parallel requests)
+  // plus 9 other league batches.  The old 6 s cap was too tight and silently
+  // dropped ALL SportsDB events on wider date ranges when Node was busy.
   const sportsDBBounded = Promise.race<MatchEvent[] | null>([
     fetchAllSportsDB(startDate, endDate),
-    sleep(2_500).then(() => null),
+    sleep(15_000).then(() => null),
   ]);
 
   const [espnEvents, sportsDBEvents] = await Promise.allSettled([

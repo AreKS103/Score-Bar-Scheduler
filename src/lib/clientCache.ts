@@ -305,11 +305,11 @@ function legacySelectionsKey(embedTarget: string): string {
   return safe ? `sportglobe_selections_v2:${safe}` : 'sportglobe_selections_v2';
 }
 
-import type { ScreenTag } from '@/types';
+import type { MatchEvent, ScreenTag } from '@/types';
 
 export interface SavedSelectionState {
-  /** Map of event ID → selection flags */
-  selections: Record<string, { isSelected: boolean; isFeatured: boolean; tags: ScreenTag[]; aiImportance?: string }>;
+  /** Map of event ID → selection flags + optional full-event snapshot for SportsDB events */
+  selections: Record<string, { isSelected: boolean; isFeatured: boolean; tags: ScreenTag[]; aiImportance?: string; snapshot?: MatchEvent }>;
   /** Preserved league order from the preview sidebar */
   leagueOrder: string[];
   /** Preserved featured leagues (sportId → label override) */
@@ -476,7 +476,9 @@ export function saveSelectionToSupabase(state: SavedSelectionState, embedTarget 
     } catch (e) {
       console.warn('[SelectionSync] Failed to save to Supabase:', e);
     }
-  }, 2000));
+  // 300 ms — batches rapid clicks while still saving well before a typical reload.
+  // Combined with the 800 ms outer debounce in page.tsx: total latency ~1.1 s.
+  }, 300));
 }
 
 /**

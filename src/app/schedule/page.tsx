@@ -491,7 +491,7 @@ export default function SchedulePage() {
       setSnapshotLoading(true);
       fetch(`/api/schedule-history?target=${encodeURIComponent(publishTarget)}`)
         .then((r) => r.json())
-        .then(({ schedule }: { schedule: { events_snapshot: MatchEvent[]; league_order: string[]; featured_leagues: Record<string, string>; week_label: string } | null }) => {
+        .then(async ({ schedule }: { schedule: { events_snapshot: MatchEvent[]; league_order: string[]; featured_leagues: Record<string, string>; week_label: string; published_at: string } | null }) => {
           if (snapshotCancelled) return;
           if (!schedule) { setPublishedSnapshot(null); return; }
           const evts = (schedule.events_snapshot ?? []) as MatchEvent[];
@@ -509,27 +509,40 @@ export default function SchedulePage() {
           // Background polls (isInitial=false) do NOT re-sync so in-progress edits
           // made since the last publish are preserved.
           if (isInitial && evts.length > 0) {
+            // Mark snapshot as applying BEFORE the async Supabase load so that
+            // applyInitial() (from isInitialEmbedRef effect) bails correctly if it
+            // races against us.
             isSwitchingEmbedRef.current = true;
             snapshotAppliedForTargetRef.current = publishTarget;
 
-            // Also load the user_selections state so that post-publish edits
-            // (e.g. selections added after last publish) are preserved and
-            // merged ON TOP of the published snapshot.
-            const userSelState = loadSelectionState(publishTarget);
+            // Load from Supabase (cross-device) with localStorage as fallback.
+            // BUG FIX: was using loadSelectionState (localStorage-only) which
+            // ignored edits made from another device / browser.
+            const userSelState = await loadSelectionFromSupabase(publishTarget);
+            if (snapshotCancelled) return; // embed may have switched while awaiting
+
             const userSel = userSelState?.selections ?? {};
-            const userSelIsNewer = userSelState && userSelState.savedAt > new Date(schedule.week_label || 0).getTime();
+            // BUG FIX: was comparing against schedule.week_label (e.g. "Apr 2–8")
+            // which produces an Invalid Date → NaN → comparison always false →
+            // userSelIsNewer always false → snapshot always overwrote user edits.
+            const publishedAt = schedule.published_at ? new Date(schedule.published_at).getTime() : 0;
+            const userSelIsNewer = !!userSelState && userSelState.savedAt > publishedAt;
 
             const snapshotById = new Map(evts.map((e: MatchEvent) => [e.id, e]));
             const current = useScheduleStore.getState().events;
             const currentIds = new Set(current.map((e: MatchEvent) => e.id));
-            // Apply snapshot selection/featured/tags state to currently loaded events,
-            // then overlay user_selections if they're newer than the publish.
+
+            // When user state is newer, it is fully authoritative:
+            //   - events in userSel → apply user's selection flags
+            //   - events NOT in userSel → deselect (user explicitly removed them)
+            // When snapshot is newer, apply snapshot selection state to all events.
             const updated = current.map((e: MatchEvent) => {
               const snap = snapshotById.get(e.id);
               const userEntry = userSel[e.id];
-              // If user_selections has a newer entry for this event, prefer it
-              if (userSelIsNewer && userEntry) {
-                return { ...e, ...userEntry };
+              if (userSelIsNewer) {
+                if (userEntry) return { ...e, ...userEntry };
+                // Event was in snapshot but user removed it after publish
+                return { ...e, isSelected: false, isFeatured: false, tags: [] as string[] };
               }
               return {
                 ...e,
@@ -538,15 +551,29 @@ export default function SchedulePage() {
                 tags: snap ? (snap.tags ?? []) : [],
               };
             });
-            // Include published events that fall within the current date range
-            // but aren't in the current API data (e.g. custom events).
+
+            // Published custom events not in current API response:
+            // - When snapshot is authoritative: include all in-range published events
+            // - When user state is authoritative: only include ones user had selected
+            //   (prevents deleted custom events from reappearing)
             const { dateRange: dr } = useScheduleStore.getState();
-            const snapOnly = evts.filter((e: MatchEvent) =>
-              !currentIds.has(e.id) && e.date >= dr.start && e.date <= dr.end
-            );
+            const snapOnly = evts.filter((e: MatchEvent) => {
+              if (currentIds.has(e.id) || e.date < dr.start || e.date > dr.end) return false;
+              return userSelIsNewer ? !!userSel[e.id] : true;
+            });
+
             setEvents([...updated, ...snapOnly]);
-            if (lo.length > 0) setLeagueOrder(lo);
-            if (fl.size > 0) setFeaturedLeagues(fl);
+
+            // Apply league order + featured leagues — prefer user state when newer
+            if (userSelIsNewer && userSelState) {
+              if (userSelState.leagueOrder.length > 0) setLeagueOrder(userSelState.leagueOrder);
+              // Apply user's featured leagues (even if empty — user may have cleared them)
+              setFeaturedLeagues(new Map(Object.entries(userSelState.featuredLeagues ?? {})));
+            } else {
+              if (lo.length > 0) setLeagueOrder(lo);
+              if (fl.size > 0) setFeaturedLeagues(fl);
+            }
+
             initialLoadDoneRef.current = true;
           }
         })
@@ -913,8 +940,30 @@ export default function SchedulePage() {
         return e;
       });
 
+      // ── Preserve selected events missing from fresh API response ──────
+      // When SportsDB times out, selected events would vanish because the
+      // merge above only iterates events the API returned.  Fall back to
+      // the in-memory events (manual refresh) or localStorage event cache
+      // (page refresh where the closure captures events=[]).
+      const prevForFallback = events.length > 0
+        ? events
+        : (getCachedEvents(currentRange) ?? []);
+      const prevById = new Map(prevForFallback.map(e => [e.id, e]));
+      const preserved: MatchEvent[] = [];
+      for (const [id, sel] of Object.entries(savedSel)) {
+        if (!mergedRawById.has(id) && (sel.isSelected || sel.isFeatured)) {
+          // Prefer snapshot (full event survives Supabase round-trip) over prev cache
+          const eventData = sel.snapshot ?? prevById.get(id);
+          if (eventData) preserved.push({ ...eventData, isSelected: sel.isSelected, isFeatured: sel.isFeatured, tags: sel.tags });
+        }
+      }
+      if (preserved.length > 0) {
+        console.log(`[Schedule] Preserved ${preserved.length} selected events not in fresh API response`);
+        allEvents.push(...preserved);
+      }
+
       setEvents(allEvents);
-      setCachedEvents(currentRange, mergedRaw);
+      setCachedEvents(currentRange, [...mergedRaw, ...preserved.map(e => ({ ...e, isSelected: false, isFeatured: false, tags: [] as string[] }))]);
       
       setFetchStatuses(
         Object.fromEntries(
@@ -1150,7 +1199,11 @@ export default function SchedulePage() {
       const selections: SavedSelectionState['selections'] = {};
       for (const e of events) {
         if (e.isSelected || e.isFeatured || e.tags.length > 0) {
-          selections[e.id] = { isSelected: e.isSelected, isFeatured: e.isFeatured, tags: e.tags };
+          const entry: SavedSelectionState['selections'][string] = { isSelected: e.isSelected, isFeatured: e.isFeatured, tags: e.tags };
+          // Save full event data for SportsDB events so they can be resurrected
+          // after a refresh even when TheSportsDB is rate-limited.
+          if (e.id.startsWith('sportsdb-')) entry.snapshot = e;
+          selections[e.id] = entry;
         }
       }
       saveSelectionToSupabase({
@@ -1172,7 +1225,9 @@ export default function SchedulePage() {
       const selections: SavedSelectionState['selections'] = {};
       for (const e of events) {
         if (e.isSelected || e.isFeatured || e.tags.length > 0) {
-          selections[e.id] = { isSelected: e.isSelected, isFeatured: e.isFeatured, tags: e.tags };
+          const entry: SavedSelectionState['selections'][string] = { isSelected: e.isSelected, isFeatured: e.isFeatured, tags: e.tags };
+          if (e.id.startsWith('sportsdb-')) entry.snapshot = e;
+          selections[e.id] = entry;
         }
       }
       saveSelectionState({
