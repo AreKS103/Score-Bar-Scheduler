@@ -5,7 +5,7 @@
  * then refreshes in the background from the server API.
  */
 
-import type { MatchEvent } from '@/types';
+import type { MatchEvent, ScreenTag } from '@/types';
 
 const CACHE_KEY = 'scorebar_events_cache';
 const LEGACY_CACHE_KEY = 'sportglobe_events_cache';
@@ -304,8 +304,6 @@ function legacySelectionsKey(embedTarget: string): string {
   const safe = embedTarget.replace(/[^a-zA-Z0-9_#-]/g, '_');
   return safe ? `sportglobe_selections_v2:${safe}` : 'sportglobe_selections_v2';
 }
-
-import type { MatchEvent, ScreenTag } from '@/types';
 
 export interface SavedSelectionState {
   /** Map of event ID → selection flags + optional full-event snapshot for SportsDB events */
