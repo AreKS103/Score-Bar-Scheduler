@@ -439,7 +439,7 @@ export async function POST(request: NextRequest) {
     // ── Build user preference context from historical patterns ────────────
     let preferenceContext = '';
 
-    // Default target match counts per filter type — used when no historical data exists.
+    // Default target match counts per filter type — baseline for all users.
     // Add small random variance (±15%) so the target isn't always the exact same number.
     const defaultTargets: Record<string, number> = {
       month: 55,
@@ -459,10 +459,19 @@ export async function POST(request: NextRequest) {
         .map(t => `${t.team} (${t.count}x)`)
         .join(', ');
 
-      // Match count guidance using EWMA — tells the AI how many matches to target
-      const matchCountGuidance = userPatterns.targetMatchCount > 0
-        ? `\nYou typically select ~${userPatterns.targetMatchCount} matches per schedule (recent trend, ±${userPatterns.matchCountStdDev} variance). Aim for a similar number of recommendations.`
-        : `\nOn average, you select ~${userPatterns.avgMatchesPerPublish} matches per publish.`;
+      // Match count guidance: blend historical EWMA with sensible defaults.
+      // If the user's historical average is very low (< 25), nudge toward the default.
+      // This prevents new users with sparse data from getting too few recommendations.
+      const historicalTarget = userPatterns.targetMatchCount > 0
+        ? userPatterns.targetMatchCount
+        : userPatterns.avgMatchesPerPublish;
+      const hasStrongHistory = userPatterns.totalPublishes >= 5 && historicalTarget >= 25;
+      const effectiveTarget = hasStrongHistory ? historicalTarget : Math.max(historicalTarget, Math.round(baseTarget * 0.7));
+      const effectiveMin = Math.max(5, effectiveTarget + variance - 8);
+      const effectiveMax = effectiveTarget + variance + 8;
+
+      const matchCountGuidance = `\nAim for ${effectiveMin}–${effectiveMax} match recommendations for this view.` +
+        (historicalTarget > 0 ? ` (Your recent average is ~${historicalTarget} matches per publish across ${userPatterns.totalPublishes} schedules.)` : '');
 
       preferenceContext = `\n\nUSER HISTORICAL PREFERENCES (learned from ${userPatterns.totalPublishes} published schedules):\n` +
         `You have consistently selected matches from these leagues: ${topLeagues}.\n` +
