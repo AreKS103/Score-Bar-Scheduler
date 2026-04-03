@@ -49,7 +49,7 @@ must_watch (order these FIRST):
 - Any rivalry/derby listed above
 - Finals, semi-finals, championship deciders
 - Football: top-2 clashes in any league, UCL knockout rounds
-- F1: EVERY race, qualifying session, and sprint race — always must_watch regardless of circuit
+- F1: Grand Prix RACES are the highest priority — always must_watch. Qualifying sessions and Sprint races are secondary — only mark as must_watch if no Grand Prix race is in the same weekend, otherwise mark them as high or exclude.
 - UFC: title fights, main events with top-5 fighters
 - MotoGP: EVERY race and qualifying session — always must_watch
 - Boxing: EVERY listed fight — always must_watch
@@ -197,9 +197,11 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Auto-promote sparse live-sport categories ────────────────────────────
-    // F1, MotoGP, UFC, Boxing, Cycling have so few events per window that every
+    // MotoGP, UFC, Boxing, Cycling have so few events per window that every
     // one is worth showing. Inject any the AI missed as must_watch.
-    const ALWAYS_INCLUDE_ABBREVS = new Set(['F1', 'MGP', 'UFC', 'BOX', 'UCI']);
+    // F1 is special: always include the Grand Prix race, but let the AI decide
+    // on qualifying/sprint sessions (they're lower priority than the race itself).
+    const ALWAYS_INCLUDE_ABBREVS = new Set(['MGP', 'UFC', 'BOX', 'UCI']);
     if (output && Array.isArray(output.ids)) {
       const selectedIds = new Set(output.ids.map((r: { id: string }) => r.id));
       for (const [abbrev, matches] of Object.entries(groups)) {
@@ -207,6 +209,25 @@ export async function POST(request: NextRequest) {
         if (!Array.isArray(matches)) continue;
         for (const m of matches) {
           const idx = String(m).split(':')[0];
+          if (!selectedIds.has(idx)) {
+            output.ids.push({ id: idx, importance: 'must_watch' as const });
+            selectedIds.add(idx);
+          }
+        }
+      }
+    }
+
+    // ── F1 race auto-promote ────────────────────────────────────────────────
+    // Grand Prix races are always must_watch. Qualifying/sprint sessions are
+    // only auto-included if the AI already rated them (they're lower priority).
+    if (output && Array.isArray(output.ids)) {
+      const selectedIds = new Set(output.ids.map((r: { id: string }) => r.id));
+      const f1Matches = Array.isArray(groups['F1']) ? groups['F1'] : [];
+      for (const m of f1Matches) {
+        const idx = String(m).split(':')[0];
+        const title = String(m).slice(idx.length + 1).toLowerCase();
+        // Only auto-promote actual Grand Prix races (not qualifying/sprint/practice)
+        if (title.includes('grand prix') || title.includes('race') && !title.includes('sprint') && !title.includes('qualif') && !title.includes('practice')) {
           if (!selectedIds.has(idx)) {
             output.ids.push({ id: idx, importance: 'must_watch' as const });
             selectedIds.add(idx);
