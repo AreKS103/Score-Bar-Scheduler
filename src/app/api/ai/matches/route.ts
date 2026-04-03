@@ -5,6 +5,7 @@ import { Redis } from '@upstash/redis';
 import { getAIModel, getFallbackModel, type AIProviderResult } from '@/lib/ai/provider';
 import { MatchFinderResponseSchema, MatchRatingSchema, type MatchFinderResponse } from '@/lib/ai/schemas';
 import { LEAGUE_MAX_PICKS } from '@/lib/config';
+import { createClient } from '@/lib/supabase/server';
 
 export const maxDuration = 30;
 
@@ -236,6 +237,96 @@ async function callAI(provider: AIProviderResult, matchData: string): Promise<Ma
   return parsed.data;
 }
 
+// ── Extract user patterns from historical published schedules ───────────────
+// Reads existing published_schedules from Supabase — no new storage needed.
+// Analyzes patterns across time: which leagues, teams, and match types the user
+// consistently selects. The more publishes, the richer the pattern data.
+async function extractUserPatterns(): Promise<{
+  leaguePrefs: { league: string; count: number; selectionRate: number }[];
+  teamPrefs: { team: string; count: number }[];
+  avgMatchesPerPublish: number;
+  totalPublishes: number;
+} | null> {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    // Fetch up to 20 most recent published schedules
+    const { data: schedules, error } = await supabase
+      .from('published_schedules')
+      .select('events_snapshot, league_order, featured_leagues, published_at')
+      .eq('user_id', user.id)
+      .order('published_at', { ascending: false })
+      .limit(20);
+
+    if (error || !schedules?.length) return null;
+
+    const leagueCounts = new Map<string, { total: number; selected: number }>();
+    const teamCounts = new Map<string, number>();
+    let totalSelected = 0;
+
+    for (const schedule of schedules) {
+      const events = (schedule.events_snapshot ?? []) as Array<{
+        id: string;
+        leagueLabel?: string;
+        home?: string;
+        away?: string;
+        isSelected?: boolean;
+      }>;
+
+      for (const e of events) {
+        const league = e.leagueLabel ?? 'Unknown';
+        const entry = leagueCounts.get(league) ?? { total: 0, selected: 0 };
+        entry.total++;
+        if (e.isSelected) {
+          entry.selected++;
+          totalSelected++;
+
+          // Count teams from selected matches
+          if (e.home) {
+            for (const team of e.home.split(' v ')) {
+              const t = team.trim();
+              if (t) teamCounts.set(t, (teamCounts.get(t) ?? 0) + 1);
+            }
+          }
+          if (e.away) {
+            teamCounts.set(e.away, (teamCounts.get(e.away) ?? 0) + 1);
+          }
+        }
+        leagueCounts.set(league, entry);
+      }
+    }
+
+    // Build league preferences sorted by selection rate (not just count)
+    // A league with 80% selection rate is more meaningful than one with 10%
+    const leaguePrefs = [...leagueCounts.entries()]
+      .map(([league, stats]) => ({
+        league,
+        count: stats.selected,
+        selectionRate: stats.total > 0 ? stats.selected / stats.total : 0,
+      }))
+      .filter(l => l.count >= 2) // at least 2 selections across all publishes
+      .sort((a, b) => b.selectionRate * b.count - a.selectionRate * a.count)
+      .slice(0, 12);
+
+    const teamPrefs = [...teamCounts.entries()]
+      .map(([team, count]) => ({ team, count }))
+      .filter(t => t.count >= 2)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 20);
+
+    return {
+      leaguePrefs,
+      teamPrefs,
+      avgMatchesPerPublish: schedules.length > 0 ? Math.round(totalSelected / schedules.length) : 0,
+      totalPublishes: schedules.length,
+    };
+  } catch {
+    return null; // Gracefully degrade if auth or DB fails
+  }
+}
+
 // ── POST handler ─────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
@@ -264,6 +355,14 @@ export async function POST(request: NextRequest) {
     const groups: Record<string, string[]> | undefined = body.groups;
     const filterType: string = body.filterType ?? 'week'; // 'today' | 'week' | 'month'
     const scanMode: boolean = body.scanMode ?? false; // 'all matches' scan — more inclusive
+
+    // ── Extract user patterns from historical published schedules ─────────
+    // Reads existing published_schedules from Supabase — no new storage.
+    // The more the user publishes, the richer the pattern data becomes.
+    const userPatterns = await extractUserPatterns();
+
+    // Also accept frontend-provided preferences (current session selections)
+    const userPreferences: { selectedLeagues?: string[]; selectedTeams?: string[] } = body.userPreferences ?? {};
 
     if (!groups || typeof groups !== 'object' || Object.keys(groups).length === 0) {
       return NextResponse.json(
@@ -304,19 +403,43 @@ export async function POST(request: NextRequest) {
       ? `${condensed}\n\nSCAN MODE: Do a comprehensive sweep across ALL leagues provided. Be thorough — don't miss any genuinely interesting matches. But still follow the exclusion rules above: mid-table clashes with no stakes, no-name teams, and routine fixtures should still be EXCLUDED. The difference from curated mode is that you should look at EVERY league carefully, not just the big ones. Include anything that meets the "high" criteria above.`
       : condensed;
 
+    // ── Build user preference context from historical patterns ────────────
+    let preferenceContext = '';
+
+    if (userPatterns && (userPatterns.leaguePrefs.length || userPatterns.teamPrefs.length)) {
+      const topLeagues = userPatterns.leaguePrefs
+        .map(l => `${l.league} (${l.count} selections, ${Math.round(l.selectionRate * 100)}% pick rate)`)
+        .join(', ');
+      const topTeams = userPatterns.teamPrefs
+        .map(t => `${t.team} (${t.count}x)`)
+        .join(', ');
+
+      preferenceContext = `\n\nUSER HISTORICAL PREFERENCES (learned from ${userPatterns.totalPublishes} published schedules):\n` +
+        `You have consistently selected matches from these leagues: ${topLeagues}.\n` +
+        `You frequently follow these teams: ${topTeams}.\n` +
+        `On average, you select ~${userPatterns.avgMatchesPerPublish} matches per publish.\n` +
+        `Prioritize matches from these leagues and involving these teams. If a match involves a league or team the user has shown strong preference for, lean toward including it.`;
+    } else if (userPreferences.selectedLeagues?.length || userPreferences.selectedTeams?.length) {
+      // Fallback to current session preferences if no historical data
+      preferenceContext = `\n\nUSER PREFERENCES (current session): You tend to follow these leagues: ${userPreferences.selectedLeagues?.join(', ') ?? 'none'}. And these teams: ${userPreferences.selectedTeams?.join(', ') ?? 'none'}. Prioritize matches from these leagues and involving these teams.`;
+    }
+
+    // Combine everything into the final prompt
+    const finalPrompt = `${userPrompt}${preferenceContext}`;
+
     // ── Try primary → fallback ──────────────────────────────────────────────
     const primary = getAIModel();
     let output;
 
     try {
-      output = await callAI(primary, userPrompt);
+      output = await callAI(primary, finalPrompt);
     } catch (primaryError) {
       console.error(`[AI Matches] Primary (${primary.provider}) failed:`, primaryError);
 
       const fallback = getFallbackModel();
       if (!fallback || fallback.modelId === primary.modelId) throw primaryError;
 
-      output = await callAI(fallback, userPrompt);
+      output = await callAI(fallback, finalPrompt);
     }
 
     // ── Zod safeParse + strip low/medium — only return high & must_watch ───

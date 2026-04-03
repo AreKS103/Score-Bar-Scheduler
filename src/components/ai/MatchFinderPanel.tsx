@@ -237,6 +237,41 @@ export default function MatchFinderPanel({
     setSelectedIds(alreadySelected);
   }, [hasResult, filteredEvents, ratings]);
 
+  // Extract user selection patterns from current events — no new storage needed
+  const extractUserPreferences = useCallback((allEvents: MatchEvent[]): {
+    selectedLeagues: string[];
+    selectedTeams: string[];
+  } => {
+    const selected = allEvents.filter(e => e.isSelected);
+    const leagueCounts = new Map<string, number>();
+    const teamCounts = new Map<string, number>();
+
+    for (const e of selected) {
+      const abbrev = getLeagueAbbrev(e.leagueLabel);
+      leagueCounts.set(abbrev, (leagueCounts.get(abbrev) ?? 0) + 1);
+      if (e.home) {
+        for (const team of e.home.split(' v ')) {
+          const t = team.trim();
+          if (t) teamCounts.set(t, (teamCounts.get(t) ?? 0) + 1);
+        }
+      }
+    }
+
+    const selectedLeagues = [...leagueCounts.entries()]
+      .filter(([, count]) => count >= 2)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([league]) => league);
+
+    const selectedTeams = [...teamCounts.entries()]
+      .filter(([, count]) => count >= 2)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20)
+      .map(([team]) => team);
+
+    return { selectedLeagues, selectedTeams };
+  }, []);
+
   const handleSubmit = useCallback(async (filter: string) => {
     setIsLoading(true);
     setError(null);
@@ -305,10 +340,13 @@ export default function MatchFinderPanel({
       // "All matches" triggers scan mode — more inclusive AI sweep
       const scanMode = filter === 'all';
 
+      // Extract user selection patterns from current events
+      const userPreferences = extractUserPreferences(events);
+
       const res = await fetch('/api/ai/matches', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ groups, filterType, scanMode }),
+        body: JSON.stringify({ groups, filterType, scanMode, userPreferences }),
       });
 
       if (!res.ok) {
