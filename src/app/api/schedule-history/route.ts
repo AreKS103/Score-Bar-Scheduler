@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
 
     const orgId = await getUserOrgId(user.id);
 
-    const { weekLabel, dateRangeStart, dateRangeEnd, htmlContent, eventsSnapshot, leagueOrder, featuredLeagues, embedTarget, publishedAtLabel, customTags } = await req.json();
+    const { weekLabel, dateRangeStart, dateRangeEnd, htmlContent, eventsSnapshot, leagueOrder, featuredLeagues, embedTarget, publishedAtLabel } = await req.json();
     if (!htmlContent || !eventsSnapshot) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
@@ -40,7 +40,6 @@ export async function POST(req: NextRequest) {
       author_email: user.email ?? null,
       author_username: profile?.username ?? null,
       published_at_label: (typeof publishedAtLabel === 'string' && publishedAtLabel.trim()) ? publishedAtLabel.trim() : null,
-      custom_tags: Array.isArray(customTags) ? customTags : [],
     });
 
     if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });

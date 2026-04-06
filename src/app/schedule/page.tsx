@@ -1783,8 +1783,7 @@ export default function SchedulePage() {
     eventsSnapshot: events.filter((e) => e.isSelected),
     leagueOrder,
     featuredLeagues: Object.fromEntries(featuredLeagues),
-    customTags,
-  }), [dateRange, events, leagueOrder, featuredLeagues, customTags]);
+  }), [dateRange, events, leagueOrder, featuredLeagues]);
 
   const handleRestoreSchedule = useCallback(async (scheduleId: string, embedTarget?: string | null) => {
     // If the schedule belongs to a different embed, switch to that embed pill first

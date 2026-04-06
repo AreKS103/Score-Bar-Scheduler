@@ -7,7 +7,7 @@ export async function GET() {
   if (!user) return NextResponse.json({ tags: [] });
 
   const { data } = await supabase
-    .from('user_custom_tags')
+    .from('custom_tags')
     .select('tags')
     .eq('user_id', user.id)
     .single();
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { error } = await supabase
-    .from('user_custom_tags')
+    .from('custom_tags')
     .upsert(
       { user_id: user.id, tags, updated_at: new Date().toISOString() },
       { onConflict: 'user_id' }
