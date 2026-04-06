@@ -60,6 +60,36 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
       return { events: updated };
     }),
 
+  toggleTag: (id: string, tag: string) =>
+    set((state) => {
+      const idx = state.events.findIndex((e) => e.id === id);
+      if (idx === -1) return state;
+      const updated = [...state.events];
+      const existing = updated[idx].tags;
+      const hasTag = existing.includes(tag);
+      updated[idx] = {
+        ...updated[idx],
+        tags: hasTag ? existing.filter((t) => t !== tag) : [...existing, tag],
+      };
+      return { events: updated };
+    }),
+
+  batchToggleTag: (ids: string[], tag: string) =>
+    set((state) => {
+      const idSet = new Set(ids);
+      const targeted = state.events.filter((e) => idSet.has(e.id));
+      const allHave = targeted.length > 0 && targeted.every((e) => e.tags.includes(tag));
+      return {
+        events: state.events.map((e) => {
+          if (!idSet.has(e.id)) return e;
+          if (allHave) {
+            return { ...e, tags: e.tags.filter((t) => t !== tag) };
+          }
+          return e.tags.includes(tag) ? e : { ...e, tags: [...e.tags, tag] };
+        }),
+      };
+    }),
+
   selectAll: () =>
     set((state) => ({
       events: state.events.map((e) => ({ ...e, isSelected: true })),

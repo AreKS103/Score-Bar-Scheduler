@@ -2,6 +2,15 @@
 
 export type ScreenTag = string; // free-text custom note per match
 
+/** Predefined tags users can apply to matches */
+export const PRESET_TAGS = [
+  { value: 'Big Screen', icon: '📺', color: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30' },
+  { value: 'Live', icon: '🔴', color: 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30' },
+  { value: 'Recorded', icon: '📹', color: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30' },
+] as const;
+
+export type PresetTagValue = (typeof PRESET_TAGS)[number]['value'];
+
 export interface MatchEvent {
   id: string;
   source: 'espn' | 'openf1' | 'sportsdb' | 'manual';
@@ -187,6 +196,8 @@ export interface ScheduleStore {
   toggleSelected: (id: string) => void;
   toggleFeatured: (id: string) => void;
   setNote: (id: string, note: string) => void;
+  toggleTag: (id: string, tag: string) => void;
+  batchToggleTag: (ids: string[], tag: string) => void;
   selectAll: () => void;
   deselectAll: () => void;
   batchSetSelected: (ids: string[], selected: boolean) => void;

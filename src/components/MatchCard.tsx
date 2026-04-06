@@ -1,11 +1,13 @@
 'use client';
 
-import { memo } from 'react';
-import { Star } from 'lucide-react';
+import { memo, useState } from 'react';
+import { Star, Tag } from 'lucide-react';
 import type { MatchEvent } from '@/types';
+import { PRESET_TAGS } from '@/types';
 import { cn } from '@/lib/utils';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 
 /** Convert ISO-3166-1 alpha-2 country code to Unicode flag emoji */
 function isoToFlag(code: string): string {
@@ -21,6 +23,7 @@ interface MatchCardProps {
   onToggleSelected: (id: string) => void;
   onToggleFeatured: (id: string) => void;
   onSetNote: (id: string, note: string) => void;
+  onToggleTag: (id: string, tag: string) => void;
 }
 
 const MatchCard = memo(function MatchCard({
@@ -28,13 +31,15 @@ const MatchCard = memo(function MatchCard({
   onToggleSelected,
   onToggleFeatured,
   onSetNote: _onSetNote,
+  onToggleTag,
 }: MatchCardProps) {
+  const [tagOpen, setTagOpen] = useState(false);
   const isCombat = ['ufc', 'bellator', 'boxing'].includes(event.sportId);
   return (
     <div
       onClick={() => onToggleSelected(event.id)}
       className={cn(
-        'flex items-start gap-2 p-2 rounded-lg border transition-all duration-150 cursor-pointer select-none',
+        'group/card flex items-start gap-2 p-2 rounded-lg border transition-all duration-150 cursor-pointer select-none',
         event.isSelected
           ? 'bg-card border-border hover:border-ring/40'
           : 'bg-secondary/20 border-border/40 opacity-65 hover:opacity-85'
@@ -110,6 +115,69 @@ const MatchCard = memo(function MatchCard({
 
         {event.round && (
           <div className="text-[10px] text-muted-foreground mt-0.5">{event.round}</div>
+        )}
+
+        {/* Tags row */}
+        {(event.tags.length > 0 || event.isSelected) && (
+          <div className="flex items-center gap-1 mt-1 flex-wrap">
+            {event.tags.map((tag) => {
+              const preset = PRESET_TAGS.find((p) => p.value === tag);
+              return (
+                <span
+                  key={tag}
+                  className={cn(
+                    'inline-flex items-center gap-0.5 text-[9px] font-medium px-1.5 py-0 h-4 rounded-full border',
+                    preset?.color ?? 'bg-secondary text-secondary-foreground border-border'
+                  )}
+                >
+                  {preset?.icon} {tag}
+                </span>
+              );
+            })}
+            <Popover open={tagOpen} onOpenChange={setTagOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setTagOpen(true); }}
+                  className={cn(
+                    'inline-flex items-center gap-0.5 text-[9px] px-1.5 h-4 rounded-full border border-dashed border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors',
+                    event.tags.length === 0 && 'opacity-0 group-hover/card:opacity-100'
+                  )}
+                  title="Add tag"
+                >
+                  <Tag className="w-2.5 h-2.5" />
+                  <span className="leading-none">+</span>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                className="w-44 p-2"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 px-1">Tags</p>
+                <div className="flex flex-col gap-0.5">
+                  {PRESET_TAGS.map((preset) => {
+                    const active = event.tags.includes(preset.value);
+                    return (
+                      <button
+                        key={preset.value}
+                        onClick={() => onToggleTag(event.id, preset.value)}
+                        className={cn(
+                          'flex items-center gap-2 text-xs px-2 py-1.5 rounded-md transition-colors text-left',
+                          active
+                            ? 'bg-accent font-medium'
+                            : 'hover:bg-accent/50'
+                        )}
+                      >
+                        <span>{preset.icon}</span>
+                        <span className="flex-1">{preset.value}</span>
+                        {active && <span className="text-primary text-[10px]">✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
         )}
       </div>
     </div>

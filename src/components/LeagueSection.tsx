@@ -17,6 +17,7 @@ interface LeagueSectionProps {
   onToggleSelected: (id: string) => void;
   onToggleFeatured: (id: string) => void;
   onSetNote: (id: string, note: string) => void;
+  onToggleTag: (id: string, tag: string) => void;
   isFeaturedLeague?: boolean;
   onToggleFeaturedLeague?: (sportId: string) => void;
   onBulkSelectLeague?: (sportId: string, selectAll: boolean) => void;
@@ -60,12 +61,14 @@ const FightCardGroup = memo(function FightCardGroup({
   onToggleSelected,
   onToggleFeatured,
   onSetNote,
+  onToggleTag,
 }: {
   main: MatchEvent;
   undercards: MatchEvent[];
   onToggleSelected: (id: string) => void;
   onToggleFeatured: (id: string) => void;
   onSetNote: (id: string, note: string) => void;
+  onToggleTag: (id: string, tag: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -76,6 +79,7 @@ const FightCardGroup = memo(function FightCardGroup({
         onToggleSelected={onToggleSelected}
         onToggleFeatured={onToggleFeatured}
         onSetNote={onSetNote}
+        onToggleTag={onToggleTag}
       />
     );
   }
@@ -88,6 +92,7 @@ const FightCardGroup = memo(function FightCardGroup({
         onToggleSelected={onToggleSelected}
         onToggleFeatured={onToggleFeatured}
         onSetNote={onSetNote}
+        onToggleTag={onToggleTag}
       />
       {/* Undercard toggle */}
       <button
@@ -115,6 +120,7 @@ const FightCardGroup = memo(function FightCardGroup({
                 onToggleSelected={onToggleSelected}
                 onToggleFeatured={onToggleFeatured}
                 onSetNote={onSetNote}
+                onToggleTag={onToggleTag}
               />
             ))}
             {mainCardUndercards.length > 0 && prelimUndercards.length > 0 && (
@@ -129,6 +135,7 @@ const FightCardGroup = memo(function FightCardGroup({
                 onToggleSelected={onToggleSelected}
                 onToggleFeatured={onToggleFeatured}
                 onSetNote={onSetNote}
+                onToggleTag={onToggleTag}
               />
             ))}
           </div>
@@ -153,6 +160,7 @@ const LeagueSection = memo(function LeagueSection({
   onToggleSelected,
   onToggleFeatured,
   onSetNote,
+  onToggleTag,
   isFeaturedLeague = false,
   onToggleFeaturedLeague,
   onBulkSelectLeague,
@@ -291,6 +299,7 @@ const LeagueSection = memo(function LeagueSection({
                       onToggleSelected={onToggleSelected}
                       onToggleFeatured={onToggleFeatured}
                       onSetNote={onSetNote}
+                      onToggleTag={onToggleTag}
                     />
                   ))
                 : dayEvents.map((event) => (
@@ -300,6 +309,7 @@ const LeagueSection = memo(function LeagueSection({
                       onToggleSelected={onToggleSelected}
                       onToggleFeatured={onToggleFeatured}
                       onSetNote={onSetNote}
+                      onToggleTag={onToggleTag}
                     />
                   ))
               }
