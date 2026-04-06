@@ -168,6 +168,11 @@ export default function SchedulePage() {
     setNote,
     toggleTag,
     batchToggleTag,
+    customTags,
+    setCustomTags,
+    addCustomTag,
+    removeCustomTag,
+    stripTagFromAllEvents,
     updateEvent,
     selectAll,
     deselectAll,
@@ -187,6 +192,7 @@ export default function SchedulePage() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [previewSelectedIds, setPreviewSelectedIds] = useState<Set<string>>(new Set());
+  const [customTagInput, setCustomTagInput] = useState('');
   const [previewCheckedIds, setPreviewCheckedIds] = useState<Set<string>>(new Set());
   const [leagueOrder, setLeagueOrder] = useState<string[]>([]);
   const [deleteAllConfirm, setDeleteAllConfirm] = useState(false);
@@ -698,6 +704,12 @@ export default function SchedulePage() {
             if (profileData?.username) setUserUsername(profileData.username);
             if (profileData?.avatarUrl) setUserAvatarUrl(profileData.avatarUrl);
           })
+          .catch(() => { /* non-fatal */ });
+
+        // Load custom tag library
+        fetch('/api/custom-tags')
+          .then(r => r.ok ? r.json() : null)
+          .then(data => { if (Array.isArray(data?.tags)) setCustomTags(data.tags); })
           .catch(() => { /* non-fatal */ });
       }
     });
@@ -1489,6 +1501,16 @@ export default function SchedulePage() {
 
   const closeHighlightMenu = useCallback(() => {
     setHighlightMenu(null);
+    setCustomTagInput('');
+  }, []);
+
+  /** Fire-and-forget: persist the current custom tag library to Supabase */
+  const saveCustomTagsToAPI = useCallback((tags: string[]) => {
+    fetch('/api/custom-tags', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tags }),
+    }).catch(() => {});
   }, []);
 
   const setLeagueHighlight = useCallback((sportId: string, leagueLabel: string, shouldHighlight: boolean) => {
@@ -1538,6 +1560,22 @@ export default function SchedulePage() {
     };
   }, [highlightMenu, closeHighlightMenu]);
 
+  // After the menu renders, clamp it so it never overflows the viewport edge.
+  useEffect(() => {
+    if (!highlightMenu || !highlightMenuRef.current) return;
+    const el = highlightMenuRef.current;
+    const rect = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const MARGIN = 8; // px gap from edge
+    if (rect.right > vw - MARGIN) {
+      el.style.left = `${Math.max(MARGIN, highlightMenu.x - rect.width)}px`;
+    }
+    if (rect.bottom > vh - MARGIN) {
+      el.style.top = `${Math.max(MARGIN, highlightMenu.y - rect.height)}px`;
+    }
+  }, [highlightMenu]);
+
   const bulkSelectLeague = useCallback((sportId: string, selectAll: boolean) => {
     const ids = useScheduleStore.getState().events.filter((e) => e.sportId === sportId).map((e) => e.id);
     batchSetSelected(ids, selectAll);
@@ -1576,11 +1614,17 @@ export default function SchedulePage() {
     setScrollToMatch({ id, ts: Date.now() });
   }, []);
 
-  const handlePreviewMatchClick = useCallback((id: string) => {
+  const handlePreviewMatchClick = useCallback((id: string, multi: boolean) => {
     setPreviewSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
+      if (multi) {
+        // Ctrl/Cmd+click: toggle this match in/out of the current selection
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        return next;
+      }
+      // Plain click: select only this match (deselect all others)
+      if (prev.size === 1 && prev.has(id)) return new Set(); // clicking the one selected match deselects it
+      return new Set([id]);
     });
   }, []);
 
@@ -1739,7 +1783,8 @@ export default function SchedulePage() {
     eventsSnapshot: events.filter((e) => e.isSelected),
     leagueOrder,
     featuredLeagues: Object.fromEntries(featuredLeagues),
-  }), [dateRange, events, leagueOrder, featuredLeagues]);
+    customTags,
+  }), [dateRange, events, leagueOrder, featuredLeagues, customTags]);
 
   const handleRestoreSchedule = useCallback(async (scheduleId: string, embedTarget?: string | null) => {
     // If the schedule belongs to a different embed, switch to that embed pill first
@@ -2589,7 +2634,7 @@ export default function SchedulePage() {
         >
           <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             {highlightMenu.type === 'match'
-              ? (previewSelectedIds.size > 1 && previewSelectedIds.has(highlightMenu.eventId)
+              ? (previewSelectedIds.size > 1
                   ? `${previewSelectedIds.size} Matches Selected`
                   : 'Match Options')
               : highlightMenu.leagueLabel}
@@ -2613,9 +2658,9 @@ export default function SchedulePage() {
           ) : (() => {
             const matchEvent = events.find((e) => e.id === highlightMenu.eventId);
             const isMatchHighlighted = matchEvent?.isFeatured;
-            // When multiple preview matches are selected and the right-clicked one is among them,
-            // tag actions apply to the whole selection; otherwise just this one match.
-            const tagTargetIds = previewSelectedIds.size > 1 && previewSelectedIds.has(highlightMenu.eventId)
+            // If any preview matches are selected, apply tags to the whole selection;
+            // otherwise fall back to just the right-clicked match.
+            const tagTargetIds = previewSelectedIds.size > 0
               ? Array.from(previewSelectedIds)
               : [highlightMenu.eventId];
             const matchTags = matchEvent?.tags ?? [];
@@ -2655,6 +2700,85 @@ export default function SchedulePage() {
                     </button>
                   );
                 })}
+                {customTags.map((ctag) => {
+                  const active = tagTargetIds.every((id) => events.find((e) => e.id === id)?.tags.includes(ctag));
+                  return (
+                    <div key={ctag} className="flex items-center gap-0.5">
+                      <button
+                        onClick={() => { batchToggleTag(tagTargetIds, ctag); closeHighlightMenu(); }}
+                        className={cn(
+                          'flex-1 flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors min-w-0',
+                          active ? 'bg-accent font-medium text-foreground' : 'text-foreground hover:bg-accent'
+                        )}
+                      >
+                        <span>🏷️</span>
+                        <span className="flex-1 truncate">{ctag}</span>
+                        {active && <span className="text-primary text-[10px]">✓</span>}
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const next = customTags.filter((t) => t !== ctag);
+                          removeCustomTag(ctag);
+                          stripTagFromAllEvents(ctag);
+                          saveCustomTagsToAPI(next);
+                        }}
+                        className="shrink-0 flex items-center justify-center w-5 h-5 rounded hover:bg-destructive/15 hover:text-destructive text-muted-foreground/60 transition-colors"
+                        title="Remove tag"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M18 6 6 18M6 6l12 12"/>
+                        </svg>
+                      </button>
+                    </div>
+                  );
+                })}
+                <div className="my-1 border-t border-border/50" />
+                <div className="flex items-center gap-1 px-1 pb-1">
+                  <input
+                    autoFocus
+                    type="text"
+                    value={customTagInput}
+                    onChange={(e) => setCustomTagInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === 'Enter') {
+                        const tag = customTagInput.trim();
+                        if (tag) {
+                          batchToggleTag(tagTargetIds, tag);
+                          const isPreset = PRESET_TAGS.some((p) => p.value === tag);
+                          if (!isPreset && !customTags.includes(tag)) {
+                            addCustomTag(tag);
+                            saveCustomTagsToAPI([...customTags, tag]);
+                          }
+                          closeHighlightMenu();
+                        }
+                      }
+                    }}
+                    placeholder="Custom tag…"
+                    className="flex-1 min-w-0 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-ring focus:ring-1 focus:ring-ring/30"
+                  />
+                  <button
+                    onClick={() => {
+                      const tag = customTagInput.trim();
+                      if (tag) {
+                        batchToggleTag(tagTargetIds, tag);
+                        const isPreset = PRESET_TAGS.some((p) => p.value === tag);
+                        if (!isPreset && !customTags.includes(tag)) {
+                          addCustomTag(tag);
+                          saveCustomTagsToAPI([...customTags, tag]);
+                        }
+                        closeHighlightMenu();
+                      }
+                    }}
+                    className="shrink-0 flex items-center justify-center w-6 h-6 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                    title="Add tag"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 12h14M12 5l7 7-7 7"/>
+                    </svg>
+                  </button>
+                </div>
               </>
             );
           })()}

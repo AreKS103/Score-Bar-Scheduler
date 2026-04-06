@@ -5,6 +5,23 @@ import { today, daysFromToday } from '@/lib/timezone';
 export const useScheduleStore = create<ScheduleStore>((set, get) => ({
   events: [],
   fetchStatuses: {},
+  customTags: [],
+  setCustomTags: (tags: string[]) => set({ customTags: tags }),
+  addCustomTag: (tag: string) =>
+    set((state) => ({
+      customTags: state.customTags.includes(tag) ? state.customTags : [...state.customTags, tag],
+    })),
+  removeCustomTag: (tag: string) =>
+    set((state) => ({
+      customTags: state.customTags.filter((t) => t !== tag),
+    })),
+
+  stripTagFromAllEvents: (tag: string) =>
+    set((state) => ({
+      events: state.events.map((e) =>
+        e.tags.includes(tag) ? { ...e, tags: e.tags.filter((t) => t !== tag) } : e
+      ),
+    })),
   dateRange: {
     start: today(),
     end: daysFromToday(7),
@@ -38,7 +55,13 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
       const idx = state.events.findIndex((e) => e.id === id);
       if (idx === -1) return state;
       const updated = [...state.events];
-      updated[idx] = { ...updated[idx], isSelected: !updated[idx].isSelected };
+      const wasSelected = updated[idx].isSelected;
+      updated[idx] = {
+        ...updated[idx],
+        isSelected: !wasSelected,
+        // Clear tags when deselecting so re-adding a match starts tag-free
+        ...(wasSelected ? { tags: [] } : {}),
+      };
       return { events: updated };
     }),
 
@@ -97,7 +120,7 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
 
   deselectAll: () =>
     set((state) => ({
-      events: state.events.map((e) => ({ ...e, isSelected: false })),
+      events: state.events.map((e) => ({ ...e, isSelected: false, tags: [] })),
     })),
 
   /** Batch toggle — set isSelected for many IDs in one render */
@@ -105,9 +128,11 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
     set((state) => {
       const idSet = new Set(ids);
       return {
-        events: state.events.map((e) =>
-          idSet.has(e.id) ? { ...e, isSelected: selected } : e
-        ),
+        events: state.events.map((e) => {
+          if (!idSet.has(e.id)) return e;
+          // Clear tags when deselecting so re-adding starts tag-free
+          return selected ? { ...e, isSelected: true } : { ...e, isSelected: false, tags: [] };
+        }),
       };
     }),
 

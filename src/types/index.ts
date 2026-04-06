@@ -198,6 +198,11 @@ export interface ScheduleStore {
   setNote: (id: string, note: string) => void;
   toggleTag: (id: string, tag: string) => void;
   batchToggleTag: (ids: string[], tag: string) => void;
+  customTags: string[];
+  setCustomTags: (tags: string[]) => void;
+  addCustomTag: (tag: string) => void;
+  removeCustomTag: (tag: string) => void;
+  stripTagFromAllEvents: (tag: string) => void;
   selectAll: () => void;
   deselectAll: () => void;
   batchSetSelected: (ids: string[], selected: boolean) => void;

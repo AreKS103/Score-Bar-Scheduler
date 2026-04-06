@@ -31,7 +31,7 @@ interface PreviewPanelProps {
   ) => void;
   scrollToMatchId?: string | null;
   previewSelectedIds?: Set<string>;
-  onPreviewMatchClick?: (eventId: string) => void;
+  onPreviewMatchClick?: (eventId: string, multi: boolean) => void;
   onPreviewClearSelection?: () => void;
 }
 
@@ -93,13 +93,11 @@ export default function PreviewPanel({
       const el = node as HTMLElement;
       const id = el.getAttribute('data-preview-match-id') || '';
       if (previewSelectedIds?.has(id)) {
-        el.style.outline = '2px solid rgba(99,102,241,0.6)';
-        el.style.outlineOffset = '2px';
+        el.style.boxShadow = 'inset 0 0 0 2px rgba(99,102,241,0.65)';
         el.style.borderRadius = '3px';
         el.style.backgroundColor = 'rgba(99,102,241,0.08)';
       } else {
-        el.style.outline = '';
-        el.style.outlineOffset = '';
+        el.style.boxShadow = '';
         el.style.borderRadius = '';
         el.style.backgroundColor = '';
       }
@@ -114,7 +112,9 @@ export default function PreviewPanel({
     if (matchNode) {
       const eventId = matchNode.getAttribute('data-preview-match-id') || '';
       if (eventId && onPreviewMatchClick) {
-        onPreviewMatchClick(eventId);
+        // Ctrl (Win/Linux) or Cmd (Mac) = add to / toggle from existing selection
+        const multi = event.ctrlKey || event.metaKey;
+        onPreviewMatchClick(eventId, multi);
       }
     } else {
       onPreviewClearSelection?.();
