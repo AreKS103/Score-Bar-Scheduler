@@ -30,6 +30,9 @@ interface PreviewPanelProps {
       }
   ) => void;
   scrollToMatchId?: string | null;
+  previewSelectedIds?: Set<string>;
+  onPreviewMatchClick?: (eventId: string) => void;
+  onPreviewClearSelection?: () => void;
 }
 
 export default function PreviewPanel({
@@ -41,6 +44,9 @@ export default function PreviewPanel({
   copied,
   onPreviewContextMenu,
   scrollToMatchId,
+  previewSelectedIds,
+  onPreviewMatchClick,
+  onPreviewClearSelection,
 }: PreviewPanelProps) {
   const previewRef = useRef<HTMLDivElement>(null);
   // DOMPurify requires a real DOM — initialize lazily on the client only.
@@ -78,6 +84,42 @@ export default function PreviewPanel({
 
     return () => clearTimeout(timer);
   }, [scrollToMatchId, html]);
+
+  // Apply/remove selection highlight on preview-selected match spans
+  useEffect(() => {
+    if (!previewRef.current) return;
+    const nodes = previewRef.current.querySelectorAll('[data-preview-match="1"]');
+    nodes.forEach((node) => {
+      const el = node as HTMLElement;
+      const id = el.getAttribute('data-preview-match-id') || '';
+      if (previewSelectedIds?.has(id)) {
+        el.style.outline = '2px solid rgba(99,102,241,0.6)';
+        el.style.outlineOffset = '2px';
+        el.style.borderRadius = '3px';
+        el.style.backgroundColor = 'rgba(99,102,241,0.08)';
+      } else {
+        el.style.outline = '';
+        el.style.outlineOffset = '';
+        el.style.borderRadius = '';
+        el.style.backgroundColor = '';
+      }
+    });
+  }, [previewSelectedIds, html]);
+
+  const handlePreviewClick = (event: MouseEvent<HTMLDivElement>) => {
+    // Only respond to left-click (button 0)
+    if (event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    const matchNode = target.closest('[data-preview-match="1"]') as HTMLElement | null;
+    if (matchNode) {
+      const eventId = matchNode.getAttribute('data-preview-match-id') || '';
+      if (eventId && onPreviewMatchClick) {
+        onPreviewMatchClick(eventId);
+      }
+    } else {
+      onPreviewClearSelection?.();
+    }
+  };
 
   const handlePreviewContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     // In preview, always suppress the browser context menu.
@@ -198,6 +240,7 @@ export default function PreviewPanel({
           [&_.mc-round]:text-[0.82em] [&_.mc-round]:opacity-50
         "
         onContextMenu={handlePreviewContextMenu}
+        onClick={handlePreviewClick}
         dangerouslySetInnerHTML={{ __html: purify ? purify.sanitize(html, { USE_PROFILES: { html: true } }) : html }}
       />
     </div>

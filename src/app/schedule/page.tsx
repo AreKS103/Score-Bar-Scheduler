@@ -167,6 +167,7 @@ export default function SchedulePage() {
     toggleFeatured,
     setNote,
     toggleTag,
+    batchToggleTag,
     updateEvent,
     selectAll,
     deselectAll,
@@ -185,6 +186,7 @@ export default function SchedulePage() {
   const [searchFilterIds, setSearchFilterIds] = useState<Set<string> | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [previewSelectedIds, setPreviewSelectedIds] = useState<Set<string>>(new Set());
   const [previewCheckedIds, setPreviewCheckedIds] = useState<Set<string>>(new Set());
   const [leagueOrder, setLeagueOrder] = useState<string[]>([]);
   const [deleteAllConfirm, setDeleteAllConfirm] = useState(false);
@@ -1574,6 +1576,18 @@ export default function SchedulePage() {
     setScrollToMatch({ id, ts: Date.now() });
   }, []);
 
+  const handlePreviewMatchClick = useCallback((id: string) => {
+    setPreviewSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handlePreviewClearSelection = useCallback(() => {
+    setPreviewSelectedIds(new Set());
+  }, []);
+
   const deleteManualEventsPermanently = useCallback(async (ids: string[]) => {
     const eventIds = Array.from(new Set(ids));
     if (eventIds.length === 0) return { deletedIds: [] as string[], failedIds: [] as string[] };
@@ -2555,6 +2569,9 @@ export default function SchedulePage() {
                 copied={copied}
                 onPreviewContextMenu={openHighlightMenu}
                 scrollToMatchId={scrollToMatch?.id}
+                previewSelectedIds={previewSelectedIds}
+                onPreviewMatchClick={handlePreviewMatchClick}
+                onPreviewClearSelection={handlePreviewClearSelection}
               />
             </div>
           </div>
@@ -2571,7 +2588,11 @@ export default function SchedulePage() {
           }}
         >
           <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            {highlightMenu.type === 'match' ? 'Match Options' : highlightMenu.leagueLabel}
+            {highlightMenu.type === 'match'
+              ? (previewSelectedIds.size > 1 && previewSelectedIds.has(highlightMenu.eventId)
+                  ? `${previewSelectedIds.size} Matches Selected`
+                  : 'Match Options')
+              : highlightMenu.leagueLabel}
           </p>
           {highlightMenu.type === 'league' ? (
             featuredLeagues.has(highlightMenu.sportId) ? (
@@ -2592,6 +2613,11 @@ export default function SchedulePage() {
           ) : (() => {
             const matchEvent = events.find((e) => e.id === highlightMenu.eventId);
             const isMatchHighlighted = matchEvent?.isFeatured;
+            // When multiple preview matches are selected and the right-clicked one is among them,
+            // tag actions apply to the whole selection; otherwise just this one match.
+            const tagTargetIds = previewSelectedIds.size > 1 && previewSelectedIds.has(highlightMenu.eventId)
+              ? Array.from(previewSelectedIds)
+              : [highlightMenu.eventId];
             const matchTags = matchEvent?.tags ?? [];
             return (
               <>
@@ -2613,11 +2639,11 @@ export default function SchedulePage() {
                 <div className="my-1 border-t border-border/50" />
                 <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Tags</p>
                 {PRESET_TAGS.map((preset) => {
-                  const active = matchTags.includes(preset.value);
+                  const active = tagTargetIds.every((id) => events.find((e) => e.id === id)?.tags.includes(preset.value));
                   return (
                     <button
                       key={preset.value}
-                      onClick={() => { toggleTag(highlightMenu.eventId, preset.value); closeHighlightMenu(); }}
+                      onClick={() => { batchToggleTag(tagTargetIds, preset.value); closeHighlightMenu(); }}
                       className={cn(
                         'w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors',
                         active ? 'bg-accent font-medium text-foreground' : 'text-foreground hover:bg-accent'
