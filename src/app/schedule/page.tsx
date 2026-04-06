@@ -22,7 +22,6 @@ import {
   Redo2,
   Star,
   Printer,
-  Tag,
 } from 'lucide-react';
 import { useScheduleStore } from '@/lib/store';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
@@ -57,7 +56,6 @@ import { useOrgRealtime } from '@/hooks/useOrgRealtime';
 import { useEmbedRealtime } from '@/hooks/useEmbedRealtime';
 import { useTimezoneStore } from '@/lib/timezoneStore';
 import { Separator } from '@/components/ui/separator';
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
 interface ScheduleHistoryState {
@@ -169,7 +167,6 @@ export default function SchedulePage() {
     toggleFeatured,
     setNote,
     toggleTag,
-    batchToggleTag,
     updateEvent,
     selectAll,
     deselectAll,
@@ -2043,40 +2040,6 @@ export default function SchedulePage() {
 
             <Separator orientation="vertical" className="h-5 hidden sm:block" />
 
-            {/* Bulk Tag Selected */}
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm" className="sm:text-xs sm:h-7 sm:px-2">
-                  <Tag className="w-3.5 h-3.5" /> <span className="phone-ls-hide">Tag Selected</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="start" className="w-48 p-2">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 px-1">Tag all selected matches</p>
-                <div className="flex flex-col gap-0.5">
-                  {PRESET_TAGS.map((preset) => {
-                    const selectedIds = events.filter((e) => e.isSelected).map((e) => e.id);
-                    const allHave = selectedIds.length > 0 && selectedIds.every((id) => events.find((e) => e.id === id)?.tags.includes(preset.value));
-                    return (
-                      <button
-                        key={preset.value}
-                        onClick={() => batchToggleTag(selectedIds, preset.value)}
-                        className={cn(
-                          'flex items-center gap-2 text-xs px-2 py-1.5 rounded-md transition-colors text-left',
-                          allHave ? 'bg-accent font-medium' : 'hover:bg-accent/50'
-                        )}
-                      >
-                        <span>{preset.icon}</span>
-                        <span className="flex-1">{preset.value}</span>
-                        {allHave && <span className="text-primary text-[10px]">✓</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-              </PopoverContent>
-            </Popover>
-
-            <Separator orientation="vertical" className="h-5 hidden sm:block" />
-
             <Button variant="secondary" size="sm" className="sm:text-xs sm:h-7 sm:px-2" onClick={() => setIsAddModalOpen(true)}>
               <Plus className="w-3.5 h-3.5" /> <span className="phone-ls-hide">Add Custom Event</span>
             </Button>
@@ -2608,7 +2571,7 @@ export default function SchedulePage() {
           }}
         >
           <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            {highlightMenu.type === 'match' ? 'Match Highlight' : highlightMenu.leagueLabel}
+            {highlightMenu.type === 'match' ? 'Match Options' : highlightMenu.leagueLabel}
           </p>
           {highlightMenu.type === 'league' ? (
             featuredLeagues.has(highlightMenu.sportId) ? (
@@ -2627,24 +2590,46 @@ export default function SchedulePage() {
               </button>
             )
           ) : (() => {
-            const isMatchHighlighted = events.find((e) => e.id === highlightMenu.eventId)?.isFeatured;
-            if (isMatchHighlighted) {
-              return (
-                <button
-                  onClick={() => setMatchHighlight(highlightMenu.eventId, false)}
-                  className="w-full rounded-md px-2 py-1.5 text-left text-xs text-foreground hover:bg-accent transition-colors"
-                >
-                  Remove Match Highlight
-                </button>
-              );
-            }
+            const matchEvent = events.find((e) => e.id === highlightMenu.eventId);
+            const isMatchHighlighted = matchEvent?.isFeatured;
+            const matchTags = matchEvent?.tags ?? [];
             return (
-              <button
-                onClick={() => setMatchHighlight(highlightMenu.eventId, true)}
-                className="w-full rounded-md px-2 py-1.5 text-left text-xs text-foreground hover:bg-accent transition-colors"
-              >
-                Add Match Highlight
-              </button>
+              <>
+                {isMatchHighlighted ? (
+                  <button
+                    onClick={() => setMatchHighlight(highlightMenu.eventId, false)}
+                    className="w-full rounded-md px-2 py-1.5 text-left text-xs text-foreground hover:bg-accent transition-colors"
+                  >
+                    Remove Match Highlight
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setMatchHighlight(highlightMenu.eventId, true)}
+                    className="w-full rounded-md px-2 py-1.5 text-left text-xs text-foreground hover:bg-accent transition-colors"
+                  >
+                    Add Match Highlight
+                  </button>
+                )}
+                <div className="my-1 border-t border-border/50" />
+                <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Tags</p>
+                {PRESET_TAGS.map((preset) => {
+                  const active = matchTags.includes(preset.value);
+                  return (
+                    <button
+                      key={preset.value}
+                      onClick={() => { toggleTag(highlightMenu.eventId, preset.value); closeHighlightMenu(); }}
+                      className={cn(
+                        'w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors',
+                        active ? 'bg-accent font-medium text-foreground' : 'text-foreground hover:bg-accent'
+                      )}
+                    >
+                      <span>{preset.icon}</span>
+                      <span className="flex-1">{preset.value}</span>
+                      {active && <span className="text-primary text-[10px]">✓</span>}
+                    </button>
+                  );
+                })}
+              </>
             );
           })()}
         </div>
