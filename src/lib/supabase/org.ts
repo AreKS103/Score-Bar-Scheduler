@@ -5,14 +5,17 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
-/** Kebab-case + 6-char random suffix for slug uniqueness */
+/** Kebab-case + 8-char random suffix for slug uniqueness.
+ *  Uses crypto.randomUUID for collision resistance. */
 export function slugify(name: string): string {
   const base = name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .substring(0, 48);
-  const suffix = Math.random().toString(36).substring(2, 8);
+    .substring(0, 48) || 'org';
+  const suffix = (globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`)
+    .replace(/-/g, '')
+    .slice(0, 8);
   return `${base}-${suffix}`;
 }
 
@@ -25,7 +28,7 @@ export async function getUserOrg(userId: string) {
     .eq('status', 'active')
     .order('created_at', { ascending: true })
     .limit(1)
-    .single();
+    .maybeSingle();
   return data?.organizations ?? null;
 }
 
@@ -40,23 +43,40 @@ export async function getUserOrgs(userId: string) {
   return (data ?? []).map(m => ({ ...m.organizations, role: m.role }));
 }
 
-/** Create a new organization and make the user the owner */
+/** Create a new organization and make the user the owner.
+ *  Retries slug generation on rare uniqueness collisions, and rolls back
+ *  the organization row if the owner-membership insert fails so we never
+ *  leave an orphaned org behind. */
 export async function createOrg(userId: string, name: string) {
-  const slug = slugify(name);
+  let org: { id: string; name: string; slug: string; created_by: string; created_at: string; updated_at: string } | null = null;
+  let lastErr: string | undefined;
 
-  const { data: org, error: orgErr } = await supabase
-    .from('organizations')
-    .insert({ name, slug, created_by: userId })
-    .select('id, name, slug, created_by, created_at, updated_at')
-    .single();
+  // Retry slug generation up to 3 times if we hit the unique constraint
+  for (let attempt = 0; attempt < 3 && !org; attempt++) {
+    const slug = slugify(name);
+    const { data, error } = await supabase
+      .from('organizations')
+      .insert({ name, slug, created_by: userId })
+      .select('id, name, slug, created_by, created_at, updated_at')
+      .single();
 
-  if (orgErr || !org) throw new Error(orgErr?.message ?? 'Failed to create organization');
+    if (data) { org = data; break; }
+    lastErr = error?.message;
+    // Postgres unique_violation is 23505 — retry; otherwise bail
+    if (error?.code !== '23505') break;
+  }
+
+  if (!org) throw new Error(lastErr ?? 'Failed to create organization');
 
   const { error: memErr } = await supabase
     .from('organization_members')
     .insert({ organization_id: org.id, user_id: userId, role: 'owner' });
 
-  if (memErr) throw new Error(memErr.message);
+  if (memErr) {
+    // Roll back the org so we don't leave a dangling row with no owner
+    await supabase.from('organizations').delete().eq('id', org.id);
+    throw new Error(memErr.message);
+  }
 
   return org;
 }
@@ -70,7 +90,7 @@ export async function getUserOrgId(userId: string): Promise<string | null> {
     .eq('status', 'active')
     .order('created_at', { ascending: true })
     .limit(1)
-    .single();
+    .maybeSingle();
   return data?.organization_id ?? null;
 }
 

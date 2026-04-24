@@ -169,7 +169,8 @@ export async function POST(req: NextRequest) {
       }
 
       // ── Send notification email to the existing user ────────────
-      // (fire-and-forget — don't fail the invite if email errors)
+      // (fire-and-forget — don't fail the invite if email errors, but
+      //  DO log the error so we have observability when SMTP is misconfigured)
       void (async () => {
         try {
           const [orgRes, inviterRes] = await Promise.all([
@@ -185,7 +186,13 @@ export async function POST(req: NextRequest) {
             invitedByEmail: inviterEmail,
             acceptUrl: `${siteUrl}/schedule`,
           });
-        } catch { /* ignore email errors */ }
+        } catch (emailErr) {
+          console.error('[org/members] failed to send invite email to existing user', {
+            to: trimmedEmail,
+            orgId,
+            error: emailErr instanceof Error ? emailErr.message : String(emailErr),
+          });
+        }
       })();
 
       return NextResponse.json({ ok: true, invited: true });
@@ -193,8 +200,11 @@ export async function POST(req: NextRequest) {
 
     // ── Step 2: User doesn't exist — try Supabase invite ──────────
     // Always use the server-controlled site URL, never the request origin header.
+    // Redirect to /schedule so after they set a password they land in-app and
+    // immediately see the pending invite banner (falls through to /login if not
+    // yet authenticated, then back to /schedule after login).
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-    const redirectTo = `${siteUrl}/login`;
+    const redirectTo = `${siteUrl}/schedule`;
 
     try {
       const { data: inviteData, error: inviteErr } =
@@ -267,6 +277,33 @@ export async function POST(req: NextRequest) {
     if (insertErr) {
       return NextResponse.json({ error: insertErr.message }, { status: 500 });
     }
+
+    // ── Also send our own Nodemailer invite email ─────────────────
+    // Supabase's default SMTP is rate-limited and often silently dropped.
+    // Sending via our configured transporter gives the owner a reliable
+    // notification path in addition to Supabase's auth-invite email.
+    void (async () => {
+      try {
+        const [orgRes, inviterRes] = await Promise.all([
+          adminClient.from('organizations').select('name').eq('id', orgId).single(),
+          adminClient.auth.admin.getUserById(user.id),
+        ]);
+        const orgName = orgRes.data?.name ?? 'an organization';
+        const inviterEmail = inviterRes.data?.user?.email ?? 'A team member';
+        await sendOrgInviteEmail({
+          toEmail: trimmedEmail,
+          orgName,
+          invitedByEmail: inviterEmail,
+          acceptUrl: `${siteUrl}/schedule`,
+        });
+      } catch (emailErr) {
+        console.error('[org/members] failed to send invite email to new user', {
+          to: trimmedEmail,
+          orgId,
+          error: emailErr instanceof Error ? emailErr.message : String(emailErr),
+        });
+      }
+    })();
 
     return NextResponse.json({ ok: true, invited });
   } catch (err) {

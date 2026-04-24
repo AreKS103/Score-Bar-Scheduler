@@ -665,16 +665,18 @@ export default function SchedulePage() {
                   }
                 })
                 .catch(() => { /* non-fatal */ });
-            } else {
-              // No org — check for pending invites to show a banner
-              try {
-                const invitesRes = await fetch('/api/org/invites');
-                if (invitesRes.ok) {
-                  const { invites } = await invitesRes.json();
-                  if (invites?.length > 0) setPendingInvites(invites);
-                }
-              } catch { /* ignore */ }
             }
+            // Always check for pending invites so users with their own org
+            // still see invites from other orgs (they can act on them in
+            // Settings → Organization). Previously this was gated behind
+            // !hasOrg which hid invites from anyone who had created an org.
+            try {
+              const invitesRes = await fetch('/api/org/invites');
+              if (invitesRes.ok) {
+                const { invites } = await invitesRes.json();
+                if (invites?.length > 0) setPendingInvites(invites);
+              }
+            } catch { /* ignore */ }
             // Note: we no longer redirect to /onboarding automatically.
             // Org creation is available in Settings → Organization.
           }
