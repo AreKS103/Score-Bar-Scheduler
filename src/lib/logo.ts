@@ -19,23 +19,25 @@ function toAbsolutePublicUrl(pathValue: string): string {
 }
 
 export function resolvePublishLogoUrl(logo: string, publishLogo?: string): string {
-  const publish = (publishLogo || '').trim();
-  if (publish) return publish;
-
   const primary = (logo || '').trim();
-  if (!primary) return '';
-  if (isHttpUrl(primary)) return primary;
-  if (primary.startsWith('/')) return toAbsolutePublicUrl(primary);
-  return primary;
+  if (primary) {
+    if (isHttpUrl(primary)) return primary;
+    if (primary.startsWith('/')) return toAbsolutePublicUrl(primary);
+    return primary;
+  }
+
+  return (publishLogo || '').trim();
 }
 
 export function getLogoCandidates(logo?: string, publishLogo?: string): string[] {
   const out: string[] = [];
   const primary = (logo || '').trim();
+  const publish = (publishLogo || '').trim();
   const publishResolved = resolvePublishLogoUrl(primary, publishLogo);
 
   if (primary) out.push(primary);
   if (publishResolved) out.push(publishResolved);
+  if (publish) out.push(publish);
 
   // If a relative path is given, also try the opposite flavor explicitly.
   if (primary.startsWith('/')) {

@@ -183,7 +183,7 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
             <iframe id="<?php echo esc_attr($uid); ?>-frame"
                 src="<?php echo esc_url($iframe_url); ?>"
                 style="position:relative;z-index:1;width:100%!important;height:<?php echo ($auto_height ? '0' : esc_attr($height_val)); ?>;border:none!important;display:block!important;"
-                scrolling="<?php echo $auto_height ? 'no' : 'auto'; ?>" loading="lazy" allowtransparency="true"></iframe>
+                scrolling="<?php echo $auto_height ? 'no' : 'auto'; ?>" loading="<?php echo $auto_height ? 'eager' : 'lazy'; ?>" title="Score Bar schedule" referrerpolicy="strict-origin-when-cross-origin" allowtransparency="true"></iframe>
         </div>
         <script>
         (function(){

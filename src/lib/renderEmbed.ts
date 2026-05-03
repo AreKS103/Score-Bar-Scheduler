@@ -55,75 +55,6 @@ function footSort(sportId: string): number {
   return idx === -1 ? 999 : idx;
 }
 
-function getAbbrev(sportId: string, label: string): string {
-  // Combat sports: use the card title before ":" as inline abbrev
-  if (['ufc', 'bellator', 'boxing'].includes(sportId)) {
-    const i = label.indexOf(':');
-    return i > 0 ? label.substring(0, i).trim() : label;
-  }
-
-  const m: Record<string, string> = {
-    'soccer-epl': 'EPL',
-    'soccer-ucl': 'UCL',
-    'soccer-uel': 'UEL',
-    'soccer-uecl': 'UECL',
-    'soccer-facup': 'FA Cup',
-    'soccer-efl': 'EFL',
-    'soccer-leagueone': 'L1 (ENG)',
-    'soccer-carabao': 'Carabao',
-    'soccer-bundesliga': 'BL',
-    'soccer-ligue1': 'L1',
-    'soccer-laliga': 'LaLiga',
-    'soccer-seriea': 'Serie A',
-    'soccer-spfl': 'SPFL',
-    'soccer-eredivisie': 'Eredivisie',
-    'soccer-ligaportugal': 'Liga PT',
-    'soccer-mls': 'MLS',
-    'soccer-superlig': 'Süper Lig',
-    'soccer-aleague': 'A-League',
-    'soccer-saudipro': 'SPL',
-    'soccer-bra1': 'Brasileirão',
-    'soccer-arg1': 'LPA',
-    'soccer-jleague': 'J-League',
-    'soccer-isl': 'ISL',
-    'soccer-afc': 'AFC CLE',
-    'soccer-afc2': 'AFC CL2',
-    'soccer-afccl': 'AFC CL',
-    'soccer-afc-asian-cup': 'AFC Asian Cup',
-    'soccer-asian-cup-women': "Women's Asian Cup",
-    'soccer-copam': 'Libertadores',
-    'soccer-cpl': 'CPL',
-    'soccer-hun-sen-cup': 'Hun Sen Cup',
-    'basketball-nba': 'NBA',
-    'basketball-wnba': 'WNBA',
-    'basketball-ncaam': 'NCAAM',
-    'basketball-ncaaw': 'NCAAW',
-    'football-nfl': 'NFL',
-    'football-ncaaf': 'NCAAF',
-    'baseball-mlb': 'MLB',
-    'hockey-nhl': 'NHL',
-    'cricket-ipl': 'IPL',
-    'cricket-bbl': 'BBL',
-    'f1': 'F1',
-    'motogp': 'MotoGP',
-    'indycar': 'IndyCar',
-    'rugby-superrugby': 'Super Rugby',
-    'rugby-sixnations': '6N',
-    'rugby-premship': 'Prem Rugby',
-    'rugby-top14': 'Top 14',
-    'rugby-urc': 'URC',
-    'rugby-champscup': 'Champs Cup',
-    'rugby-rc': 'TRC',
-    'nrl': 'NRL',
-    'afl': 'AFL',
-    'tennis-atp': 'ATP',
-    'tennis-wta': 'WTA',
-    'golf-pga': 'PGA',
-    'golf-lpga': 'LPGA',
-  };
-  return m[sportId] || label;
-}
-
 function countryFlag(code: string): string {
   const c = (code || '').trim().toUpperCase().substring(0, 2);
   if (!/^[A-Z]{2}$/.test(c)) return '';
@@ -203,14 +134,14 @@ function renderHighlights(
       const isCombat = ['boxing', 'ufc', 'bellator'].includes(e.sportId);
       const homeFlag = isCombat && e.homeCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(e.homeCountry)}</span>` : '';
       const awayFlag = isCombat && e.awayCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(e.awayCountry)}</span>` : '';
-      const homeImg = (!opts.hideLogos && e.homeLogo) ? `<img class="hl-team-logo" src="${esc(e.homeLogo)}" alt="" onerror="this.onerror=null;this.style.display='none'" />` : '';
-      const awayImg = (!opts.hideLogos && e.awayLogo && e.away) ? `<img class="hl-team-logo" src="${esc(e.awayLogo)}" alt="" onerror="this.onerror=null;this.style.display='none'" />` : '';
+      const homeImg = (!opts.hideLogos && e.homeLogo) ? `<img class="hl-team-logo" src="${esc(e.homeLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
+      const awayImg = (!opts.hideLogos && e.awayLogo && e.away) ? `<img class="hl-team-logo" src="${esc(e.awayLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
       // For singular events with no team logo, show league logo
       const leagueFallback = !opts.hideLogos && !e.away && !homeImg ? (() => {
         const cfg = SPORTS_CONFIG.find(s => s.id === e.sportId);
         return cfg ? resolvePublishLogoUrl(cfg.logo || e.leagueLogo || '', cfg.publishLogo) : '';
       })() : '';
-      const leagueFallbackImg = leagueFallback ? `<img class="hl-team-logo" src="${esc(leagueFallback)}" alt="" onerror="this.onerror=null;this.style.display='none'" />` : '';
+      const leagueFallbackImg = leagueFallback ? `<img class="hl-team-logo" src="${esc(leagueFallback)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
       // For combat sports: homeLogo = flagcdn.com flag image (generated from ISO country code).
       // Prefer the image; if absent (e.g. unknown fighter nationality), fall back to emoji flag.
       // For non-combat sports: homeImg is the team logo; emoji flags don't apply.
@@ -234,13 +165,13 @@ function renderHighlights(
       allEvents.find(e => e.sportId === sportId && !!e.away && e.isFeatured) ||
       allEvents.find(e => e.sportId === sportId && !!e.away);
     if (teamEvent) {
-      const homeImg = (!opts.hideLogos && teamEvent.homeLogo) ? `<img class="hl-team-logo" src="${esc(teamEvent.homeLogo)}" alt="" onerror="this.onerror=null;this.style.display='none'" />` : '';
-      const awayImg = (!opts.hideLogos && teamEvent.awayLogo) ? `<img class="hl-team-logo" src="${esc(teamEvent.awayLogo)}" alt="" onerror="this.onerror=null;this.style.display='none'" />` : '';
+      const homeImg = (!opts.hideLogos && teamEvent.homeLogo) ? `<img class="hl-team-logo" src="${esc(teamEvent.homeLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
+      const awayImg = (!opts.hideLogos && teamEvent.awayLogo) ? `<img class="hl-team-logo" src="${esc(teamEvent.awayLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
       const teamsHtml = `<span class="hl-team">${homeImg}${esc(teamEvent.home)}</span><span class="hl-vs">vs</span><span class="hl-team">${awayImg}${esc(teamEvent.away!)}</span>`;
       parts.push(`<div class="hl-event"><div class="hl-event-meta">${teamEvent.time ? `<span class="hl-time">${esc(teamEvent.time)}</span>` : ''}<span class="hl-league-name">${esc(leagueLabel)}</span></div><div class="hl-teams">${teamsHtml}</div></div>`);
     } else {
       const logoUrl = (!opts.hideLogos && config) ? resolvePublishLogoUrl(config.logo || '', config.publishLogo) : '';
-      const logoImg = logoUrl ? `<img class="hl-team-logo" src="${esc(logoUrl)}" alt="" onerror="this.onerror=null;this.style.display='none'" />` : '';
+      const logoImg = logoUrl ? `<img class="hl-team-logo" src="${esc(logoUrl)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
       const label = (customLabel || '').trim() || leagueLabel;
       parts.push(`<div class="hl-league-spotlight">${logoImg}${esc(label)}</div>`);
     }
@@ -270,7 +201,7 @@ function renderLeagueBlock(
   // League logo
   if (!opts.hideLogos && leagueLogo) {
     parts.push(
-      `<img data-preview-league="1" data-preview-sport-id="${eKey}" data-preview-league-label="${eLabel}" src="${leagueLogo}" alt="${eLabel}" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='${LOGO_PLACEHOLDER_REMOTE}';" />`
+      `<img data-preview-league="1" data-preview-sport-id="${eKey}" data-preview-league-label="${eLabel}" src="${esc(leagueLogo)}" alt="${eLabel}" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='${LOGO_PLACEHOLDER_REMOTE}';" />`
     );
   }
 

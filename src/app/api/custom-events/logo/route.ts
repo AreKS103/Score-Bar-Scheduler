@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import sharp from 'sharp';
 
 const BUCKET = 'custom-league-logos';
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+const OPTIMIZED_LOGO_WIDTH = 192;
+const OPTIMIZED_LOGO_HEIGHT = 96;
 
 // Magic byte signatures for allowed image formats
 const IMAGE_SIGNATURES: Array<{ bytes: number[]; offset?: number }> = [
@@ -79,11 +82,27 @@ export async function POST(req: NextRequest) {
 
     const safeLabel = sanitizeSegment(leagueLabel);
     const path = `${user.id}/${safeLabel}-${Date.now()}.webp`;
+    let optimizedLogo: Buffer;
+
+    try {
+      optimizedLogo = await sharp(Buffer.from(await file.arrayBuffer()), { animated: false })
+        .rotate()
+        .resize({
+          width: OPTIMIZED_LOGO_WIDTH,
+          height: OPTIMIZED_LOGO_HEIGHT,
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
+        .webp({ quality: 82, alphaQuality: 90, effort: 6 })
+        .toBuffer();
+    } catch {
+      return NextResponse.json({ error: 'Image could not be optimized' }, { status: 400 });
+    }
 
     const { error: uploadError } = await supabase.storage
       .from(BUCKET)
-      .upload(path, file, {
-        contentType: file.type || 'image/webp',
+      .upload(path, optimizedLogo, {
+        contentType: 'image/webp',
         upsert: false,
       });
 

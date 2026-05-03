@@ -3,7 +3,7 @@
  * Plugin Name: Scheduler
  * Plugin URI:
  * Description: A sports schedule widget for your website.
- * Version: 1.2.11
+ * Version: 1.2.13
  * Text Domain: scorebar-scheduler
  * Requires at least: 6.0
  * Tested up to: 6.7
@@ -13,7 +13,7 @@
 if (!defined('ABSPATH')) exit;
 
 // Plugin version — must match the "Version:" header above.
-define('SCHEDULE_PLUGIN_VERSION', '1.2.11');
+define('SCHEDULE_PLUGIN_VERSION', '1.2.13');
 
 // ── PHP version gate ────────────────────────────────────────────────────────
 if (version_compare(PHP_VERSION, '7.4', '<')) {

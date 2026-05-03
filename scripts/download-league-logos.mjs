@@ -3,6 +3,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import sharp from 'sharp';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -80,6 +81,21 @@ async function downloadRemoteLogo(urlValue, targetBase) {
   return { target, source: urlValue, extension: ext };
 }
 
+async function optimizeRasterLogo(sourceFile, targetBase, extension) {
+  if (!['.png', '.jpg', '.jpeg'].includes(extension)) return null;
+
+  const target = `${targetBase}.webp`;
+  await sharp(sourceFile, { animated: false })
+    .resize({ width: 192, height: 96, fit: 'inside', withoutEnlargement: true })
+    .webp({ quality: 82, alphaQuality: 90, effort: 6 })
+    .toFile(target);
+
+  return {
+    file: path.relative(root, target).replace(/\\/g, '/'),
+    extension: '.webp',
+  };
+}
+
 async function main() {
   await fs.mkdir(outDir, { recursive: true });
 
@@ -104,12 +120,23 @@ async function main() {
           saved = await downloadRemoteLogo(candidate, targetBase);
         }
 
+        let optimized = null;
+        let optimizeError = '';
+        try {
+          optimized = await optimizeRasterLogo(saved.target, targetBase, saved.extension);
+        } catch (error) {
+          optimizeError = error instanceof Error ? error.message : String(error);
+        }
+
         results.push({
           id: league.id,
           ok: true,
           source: saved.source,
           file: path.relative(root, saved.target).replace(/\\/g, '/'),
           extension: saved.extension,
+          optimizedFile: optimized?.file ?? null,
+          optimizedExtension: optimized?.extension ?? null,
+          optimizeError: optimizeError || null,
         });
         done = true;
         break;

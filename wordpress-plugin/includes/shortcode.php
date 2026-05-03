@@ -148,7 +148,7 @@ function schedule_shortcode_render($atts) {
         <iframe id="<?php echo esc_attr($uid); ?>-frame"
             src="<?php echo esc_url($iframe_url); ?>"
             style="position:relative;z-index:1;width:100%!important;height:<?php echo ($auto ? '0' : $height_css); ?>;border:none!important;display:block!important;"
-            scrolling="<?php echo $auto ? 'no' : 'auto'; ?>" loading="lazy" allowtransparency="true"></iframe>
+            scrolling="<?php echo $auto ? 'no' : 'auto'; ?>" loading="<?php echo $auto ? 'eager' : 'lazy'; ?>" title="Score Bar schedule" referrerpolicy="strict-origin-when-cross-origin" allowtransparency="true"></iframe>
     </div>
     <script>
     (function(){

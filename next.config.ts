@@ -23,6 +23,12 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        source: '/league-logos/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=604800, stale-while-revalidate=2592000' },
+        ],
+      },
+      {
         // Security headers for all routes except embeds
         source: '/((?!embed).*)',
         headers: [
