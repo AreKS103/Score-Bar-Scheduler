@@ -2,7 +2,7 @@
 
 import { useRef, useMemo, useState } from 'react';
 import { useReactToPrint } from 'react-to-print';
-import { Printer, Download } from 'lucide-react';
+import { Printer, Copy, Check } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -18,8 +18,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { CATEGORY_ORDER, SPORTS_CONFIG } from '@/lib/config';
+import { CATEGORY_ORDER } from '@/lib/config';
 import { formatDisplayDate } from '@/lib/timezone';
+import { formatTimezoneDisplay, useTimezoneStore } from '@/lib/timezoneStore';
 import type { MatchEvent } from '@/types';
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
@@ -29,22 +30,44 @@ function categorySort(cat: string): number {
   return idx === -1 ? 999 : idx;
 }
 
-/** Group selected events by league label, sorted by category then league */
-function groupForPrint(events: MatchEvent[]): { league: string; logo: string; items: MatchEvent[] }[] {
-  const map = new Map<string, { logo: string; category: string; items: MatchEvent[] }>();
+/** Group selected events by category -> league -> date */
+function groupForPrint(events: MatchEvent[]) {
+  const categories = new Map<string, Map<string, { logo: string; dates: Map<string, MatchEvent[]> }>>();
+  
   for (const e of events) {
     if (!e.isSelected) continue;
-    const key = e.leagueLabel;
-    if (!map.has(key)) map.set(key, { logo: e.leagueLogo, category: e.category, items: [] });
-    map.get(key)!.items.push(e);
+    if (!categories.has(e.category)) {
+      categories.set(e.category, new Map());
+    }
+    const leaguesMap = categories.get(e.category)!;
+    
+    if (!leaguesMap.has(e.leagueLabel)) {
+      leaguesMap.set(e.leagueLabel, { logo: e.leagueLogo, dates: new Map() });
+    }
+    const datesMap = leaguesMap.get(e.leagueLabel)!.dates;
+    
+    if (!datesMap.has(e.date)) {
+      datesMap.set(e.date, []);
+    }
+    datesMap.get(e.date)!.push(e);
   }
 
-  return [...map.entries()]
-    .sort(([, a], [, b]) => categorySort(a.category) - categorySort(b.category))
-    .map(([league, { logo, items }]) => ({
-      league,
-      logo,
-      items: items.sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time)),
+  return [...categories.entries()]
+    .sort(([catA], [catB]) => categorySort(catA) - categorySort(catB))
+    .map(([category, leaguesMap]) => ({
+      category,
+      leagues: [...leaguesMap.entries()]
+        .sort(([leagueA], [leagueB]) => leagueA.localeCompare(leagueB))
+        .map(([league, { logo, dates }]) => ({
+          league,
+          logo,
+          dates: [...dates.entries()]
+            .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+            .map(([date, items]) => ({
+              date,
+              items: items.sort((a, b) => a.time.localeCompare(b.time))
+            }))
+        }))
     }));
 }
 
@@ -60,22 +83,44 @@ function getDateRange(events: MatchEvent[]): string {
   return `${formatDisplayDate(sorted[0])} – ${formatDisplayDate(sorted[sorted.length - 1])}`;
 }
 
+function getMatchLabel(event: MatchEvent): string {
+  return event.away ? `${event.home} vs ${event.away}` : event.home;
+}
+
+function getNotesLabel(event: MatchEvent): string {
+  return event.tags.length > 0 ? event.tags.join('; ') : '';
+}
+
+function getPrintSectionId(league: string): string {
+  return `print-league-${league.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+}
+
 /* ── inline styles for print (no Tailwind in print iframe) ───────── */
 
 const S = {
-  page: { fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif', color: '#111', padding: '0', fontSize: '11px', lineHeight: '1.5' } as const,
-  title: { fontSize: '16px', fontWeight: 700, marginBottom: '4px' } as const,
-  subtitle: { fontSize: '11px', color: '#666', marginBottom: '16px' } as const,
-  league: { marginBottom: '14px', breakInside: 'avoid' as const } as const,
-  leagueHeader: { display: 'flex', alignItems: 'center', gap: '6px', paddingBottom: '4px', borderBottom: '1px solid #ddd', marginBottom: '6px' } as const,
-  leagueLogo: { height: '16px', width: '16px', objectFit: 'contain' as const, flexShrink: 0 } as const,
-  leagueName: { fontSize: '12px', fontWeight: 700 } as const,
-  dateRow: { fontSize: '9px', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.05em', color: '#888', padding: '3px 0', marginTop: '4px' } as const,
-  row: { display: 'flex', alignItems: 'center', gap: '8px', padding: '3px 0', borderBottom: '1px solid #f0f0f0' } as const,
-  time: { fontWeight: 700, fontSize: '11px', width: '38px', flexShrink: 0, fontVariantNumeric: 'tabular-nums' as const } as const,
-  teams: { flex: 1, fontSize: '11px' } as const,
-  round: { fontSize: '9px', color: '#999', fontStyle: 'italic' as const } as const,
-  teamLogo: { height: '14px', width: '14px', objectFit: 'contain' as const, verticalAlign: 'middle', marginRight: '3px' } as const,
+  page: { fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif', backgroundColor: '#fff', color: '#111', padding: '24px', fontSize: '13px', lineHeight: '1.5' } as const,
+  title: { fontSize: '18px', fontWeight: 700, marginBottom: '4px', color: '#000' } as const,
+  subtitle: { fontSize: '12px', color: '#555', marginBottom: '16px' } as const,
+  meta: { display: 'grid', gridTemplateColumns: '80px 1fr', gap: '4px 12px', fontSize: '11px', color: '#555', marginBottom: '24px' } as const,
+  metaLabel: { fontWeight: 700, color: '#222' } as const,
+  
+  categoryContainer: { marginBottom: '32px' } as const,
+  categoryHeader: { fontSize: '18px', fontWeight: 800, margin: '0 0 24px 0', color: '#000' } as const,
+  
+  league: { marginBottom: '24px', breakInside: 'avoid' as const } as const,
+  leagueHeader: { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' } as const,
+  leagueLogo: { height: '24px', width: '24px', objectFit: 'contain' as const, flexShrink: 0 } as const,
+  leagueName: { fontSize: '18px', fontWeight: 700, color: '#000' } as const,
+  
+  dateHeader: { fontSize: '11px', fontWeight: 600, color: '#555', textTransform: 'uppercase' as const, letterSpacing: '0.05em', margin: '16px 0 8px', borderBottom: '1px solid #ddd', paddingBottom: '4px' } as const,
+  
+  matchRow: { display: 'flex', alignItems: 'baseline', padding: '4px 0', gap: '12px' } as const,
+  time: { fontWeight: 700, color: '#000', width: '45px', flexShrink: 0, fontVariantNumeric: 'tabular-nums' as const } as const,
+  matchInfo: { display: 'flex', alignItems: 'center', flexWrap: 'wrap' as const, gap: '6px' } as const,
+  home: { fontWeight: 500, color: '#111' } as const,
+  away: { fontWeight: 500, color: '#111' } as const,
+  vs: { fontSize: '11px', color: '#666', fontStyle: 'italic' as const } as const,
+  notes: { fontSize: '12px', color: '#666' } as const,
 } as const;
 
 /* ── component ───────────────────────────────────────────────────── */
@@ -95,6 +140,8 @@ export default function PrintScheduleModal({
 }: PrintScheduleModalProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [selectedEmbed, setSelectedEmbed] = useState('all');
+  const [copied, setCopied] = useState(false);
+  const timezone = useTimezoneStore((state) => state.timezone);
 
   const selectedEvents = useMemo(() => {
     if (selectedEmbed === 'all') return events;
@@ -119,10 +166,46 @@ export default function PrintScheduleModal({
     `,
   });
 
+  const handleCopyText = async () => {
+    let text = `Schedule (${dateRange})\n`;
+    text += `Timezone: ${formatTimezoneDisplay(timezone)} (${timezone})\n`;
+    text += `Matches: ${selectedCount}\n\n`;
+
+    for (const catGroup of groups) {
+      text += `— ${catGroup.category} —\n\n`;
+
+      for (const leagueGroup of catGroup.leagues) {
+        text += `${leagueGroup.league}\n\n`;
+
+        for (const dateGroup of leagueGroup.dates) {
+          text += `${formatDisplayDate(dateGroup.date).toUpperCase()}\n`;
+
+          for (const ev of dateGroup.items) {
+            let line = `${ev.time}  ${getMatchLabel(ev)}`;
+            const extra = [ev.round, getNotesLabel(ev)].filter(Boolean).join(' - ');
+            if (extra) {
+              line += ` — ${extra}`;
+            }
+            text += `${line}\n`;
+          }
+          text += `\n`;
+        }
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(text.trim());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy text', err);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col gap-0 p-0 overflow-hidden">
-        <DialogHeader className="px-5 pt-5 pb-3 border-b border-border/50 shrink-0">
+      <DialogContent className="sm:max-w-4xl max-h-[85vh] flex flex-col gap-0 p-0 overflow-hidden">
+        <DialogHeader className="px-5 pt-5 pb-3 border-b border-border/50 shrink-0 pr-12">
           <div className="flex items-center justify-between gap-3">
             <div>
               <DialogTitle className="text-base">Print Schedule</DialogTitle>
@@ -146,6 +229,10 @@ export default function PrintScheduleModal({
                   </SelectContent>
                 </Select>
               )}
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={handleCopyText}>
+                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copied ? 'Copied' : 'Copy'}
+              </Button>
               <Button size="sm" className="gap-1.5" onClick={() => handlePrint()}>
                 <Printer className="w-3.5 h-3.5" />
                 Print / PDF
@@ -159,74 +246,72 @@ export default function PrintScheduleModal({
           <div ref={contentRef} style={S.page}>
             <div style={S.title}>Schedule</div>
             <div style={S.subtitle}>{dateRange}</div>
+            <div style={S.meta}>
+              <span style={S.metaLabel}>Timezone</span>
+              <span>{formatTimezoneDisplay(timezone)} ({timezone})</span>
+              <span style={S.metaLabel}>Matches</span>
+              <span>{selectedCount}</span>
+            </div>
 
             {groups.length === 0 && (
-              <p style={{ color: '#999', textAlign: 'center', padding: '40px 0' }}>
+              <p style={{ color: '#888', textAlign: 'center', padding: '40px 0' }}>
                 No matches selected
               </p>
             )}
 
-            {groups.map(({ league, logo, items }) => {
-              // Group items by date
-              const byDate = new Map<string, MatchEvent[]>();
-              for (const item of items) {
-                if (!byDate.has(item.date)) byDate.set(item.date, []);
-                byDate.get(item.date)!.push(item);
-              }
-
-              return (
-                <div key={league} style={S.league}>
-                  <div style={S.leagueHeader}>
-                    {logo && (
-                      <img
-                        src={logo}
-                        alt=""
-                        style={S.leagueLogo}
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                      />
-                    )}
-                    <span style={S.leagueName}>{league}</span>
-                  </div>
-
-                  {[...byDate.entries()].map(([date, dateEvents]) => (
-                    <div key={date}>
-                      <div style={S.dateRow}>{formatDisplayDate(date)}</div>
-                      {dateEvents.map(ev => (
-                        <div key={ev.id} style={S.row}>
-                          <span style={S.time}>{ev.time}</span>
-                          <span style={S.teams}>
-                            {ev.homeLogo && (
-                              <img
-                                src={ev.homeLogo}
-                                alt=""
-                                style={S.teamLogo}
-                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                              />
-                            )}
-                            {ev.home}
-                            {ev.away && (
-                              <>
-                                {' vs '}
-                                {ev.awayLogo && (
-                                  <img
-                                    src={ev.awayLogo}
-                                    alt=""
-                                    style={S.teamLogo}
-                                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                  />
-                                )}
-                                {ev.away}
-                              </>
-                            )}
-                          </span>
-                          {ev.round && <span style={S.round}>{ev.round}</span>}
-                        </div>
-                      ))}
+            {groups.map((catGroup) => (
+              <div key={catGroup.category} style={S.categoryContainer}>
+                {/* Only render category header if it exists and isn't a top-level un-categorized default */}
+                {catGroup.category && catGroup.category.trim() !== '' && catGroup.category !== 'Soccer' && (
+                  <div style={S.categoryHeader}>– {catGroup.category} –</div>
+                )}
+                
+                {catGroup.leagues.map((leagueGroup) => (
+                  <section key={leagueGroup.league} style={S.league} aria-labelledby={getPrintSectionId(leagueGroup.league)}>
+                    <div style={S.leagueHeader}>
+                      {leagueGroup.logo && (
+                        <img
+                          src={leagueGroup.logo}
+                          alt=""
+                          aria-hidden="true"
+                          style={S.leagueLogo}
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      )}
+                      <span id={getPrintSectionId(leagueGroup.league)} style={S.leagueName}>{leagueGroup.league}</span>
                     </div>
-                  ))}
-                </div>
-              );
-            })}
+
+                    {leagueGroup.dates.map((dateGroup) => (
+                      <div key={dateGroup.date}>
+                        <div style={S.dateHeader}>{formatDisplayDate(dateGroup.date)}</div>
+                        
+                        <div>
+                          {dateGroup.items.map((ev) => (
+                            <div key={ev.id} style={S.matchRow} data-event-id={ev.id}>
+                              <div style={S.time}>{ev.time}</div>
+                              <div style={S.matchInfo}>
+                                <span style={S.home}>{ev.home}</span>
+                                {ev.away && (
+                                  <>
+                                    <span style={S.vs}>vs</span>
+                                    <span style={S.away}>{ev.away}</span>
+                                  </>
+                                )}
+                                {(ev.round || getNotesLabel(ev)) && (
+                                  <span style={S.notes}>
+                                    – {[ev.round, getNotesLabel(ev)].filter(Boolean).join(' - ')}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </section>
+                ))}
+              </div>
+            ))}
           </div>
         </div>
       </DialogContent>

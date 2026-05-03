@@ -184,6 +184,7 @@ export default function SchedulePage() {
     setDateRange,
     setActiveSportFilter,
   } = useScheduleStore();
+  const selectedTimezone = useTimezoneStore((state) => state.timezone);
 
   const [scrollToMatch, setScrollToMatch] = useState<{ id: string; ts: number } | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -813,6 +814,7 @@ export default function SchedulePage() {
   const [activeSortLeague, setActiveSortLeague] = useState<string | null>(null);
   const [headerHeight, setHeaderHeight] = useState(116);
   const hasFetchedRef = useRef(false);
+  const previousTimezoneRef = useRef(selectedTimezone);
   const prevPreviewContentCountRef = useRef(0);
   const isSwitchingEmbedRef = useRef(false);
   // Prevents auto-save from overwriting stored selections before the initial
@@ -902,10 +904,11 @@ export default function SchedulePage() {
     // Read the CURRENT range from the store – this is always fresh regardless
     // of when this callback was created.
     const currentRange = useScheduleStore.getState().dateRange;
+    const timeZone = useTimezoneStore.getState().timezone;
 
     // Try to load from client cache first for instant display
     if (!forceRefresh && events.length === 0) {
-      const cached = getCachedEvents(currentRange);
+      const cached = getCachedEvents(currentRange, timeZone);
       if (cached && cached.length > 0) {
         console.log(`[Schedule] Instant load: ${cached.length} events from local cache`);
         const instantSavedSel = loadSelectionState(effectiveTargetRef.current)?.selections ?? {};
@@ -927,7 +930,7 @@ export default function SchedulePage() {
     );
 
     try {
-      const url = `/api/events?start=${currentRange.start}&end=${currentRange.end}`;
+      const url = `/api/events?start=${currentRange.start}&end=${currentRange.end}&timeZone=${encodeURIComponent(timeZone)}`;
       const ctrl = new AbortController();
       const timeout = setTimeout(() => ctrl.abort(), 45_000); // 45s safety timeout
       let res: Response;
@@ -975,7 +978,7 @@ export default function SchedulePage() {
       // (page refresh where the closure captures events=[]).
       const prevForFallback = events.length > 0
         ? events
-        : (getCachedEvents(currentRange) ?? []);
+        : (getCachedEvents(currentRange, timeZone) ?? []);
       const prevById = new Map(prevForFallback.map(e => [e.id, e]));
       const preserved: MatchEvent[] = [];
       for (const [id, sel] of Object.entries(savedSel)) {
@@ -991,7 +994,7 @@ export default function SchedulePage() {
       }
 
       setEvents(allEvents);
-      setCachedEvents(currentRange, [...mergedRaw, ...preserved.map(e => ({ ...e, isSelected: false, isFeatured: false, tags: [] as string[] }))]);
+      setCachedEvents(currentRange, [...mergedRaw, ...preserved.map(e => ({ ...e, isSelected: false, isFeatured: false, tags: [] as string[] }))], timeZone);
       
       setFetchStatuses(
         Object.fromEntries(
@@ -1024,7 +1027,6 @@ export default function SchedulePage() {
     } finally {
       setIsFetching(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events, setEvents, setFetchStatuses]);
 
   // ─── Auto-fetch on mount ───────────────────────────────────────────────────
@@ -1058,6 +1060,13 @@ export default function SchedulePage() {
       // which fires when embedInstances load and fires with the correct embed key.
     }
   }, [handleFetch, setEvents]);
+
+  useEffect(() => {
+    if (previousTimezoneRef.current === selectedTimezone) return;
+    previousTimezoneRef.current = selectedTimezone;
+    if (!hasFetchedRef.current) return;
+    handleFetch(true);
+  }, [handleFetch, selectedTimezone]);
 
   // ─── Filtered events (sport filter + search) ──────────────────────────────
   const filteredEvents = useMemo(() => {
@@ -1301,7 +1310,6 @@ export default function SchedulePage() {
     // Tablets 768–1199 (landscape), e.g. iPad mini
     const w = Math.max(500, Math.round(vw * 0.55));
     setPanelWidth(w); widthRef.current = w;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Sync panel DOM width on state change (width is managed outside React for resize perf)
@@ -1938,9 +1946,10 @@ export default function SchedulePage() {
         ? (schedule.events_snapshot as MatchEvent[]).map(normalizeEvent)
         : [];
       const restoredCustom = snapshot.filter((e) => e.source === 'manual');
+      const timeZone = useTimezoneStore.getState().timezone;
 
       // Start fetching full-week events immediately while local persistence runs.
-      const eventsPromise = fetch(`/api/events?start=${rangeStart}&end=${rangeEnd}`);
+      const eventsPromise = fetch(`/api/events?start=${rangeStart}&end=${rangeEnd}&timeZone=${encodeURIComponent(timeZone)}`);
 
       // Persist restored custom events locally so they survive refresh/tab close.
       for (const ev of restoredCustom) {
@@ -1972,7 +1981,9 @@ export default function SchedulePage() {
       for (const snap of snapshot) {
         const existing = byId.get(snap.id);
         if (existing) {
-          byId.set(snap.id, { ...existing, ...snap, isSelected: true });
+          byId.set(snap.id, snap.source === 'manual'
+            ? { ...existing, ...snap, isSelected: true }
+            : { ...existing, isSelected: true, isFeatured: Boolean(snap.isFeatured), tags: [...snap.tags] });
         } else if (snap.date >= rangeStart && snap.date <= rangeEnd) {
           // Only add snapshot-only events that fall within the restored date range.
           byId.set(snap.id, { ...snap, isSelected: true });
@@ -1981,7 +1992,7 @@ export default function SchedulePage() {
 
       const restoredFullWeek = Array.from(byId.values());
       setEvents(restoredFullWeek);
-      setCachedEvents({ start: rangeStart, end: rangeEnd }, restoredFullWeek);
+      setCachedEvents({ start: rangeStart, end: rangeEnd }, restoredFullWeek, timeZone);
 
       setLeagueOrder(schedule.league_order || []);
       const fl = new Map<string, string>(Object.entries(schedule.featured_leagues || {}));

@@ -9,17 +9,18 @@ import type { MatchEvent, ScreenTag } from '@/types';
 
 const CACHE_KEY = 'scorebar_events_cache';
 const LEGACY_CACHE_KEY = 'sportglobe_events_cache';
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 
 interface CacheData {
   version: number;
   timestamp: number;
   dateRange: { start: string; end: string };
+  timeZone: string;
   events: MatchEvent[];
 }
 
 /** Get cached events if available and fresh enough */
-export function getCachedEvents(dateRange: { start: string; end: string }): MatchEvent[] | null {
+export function getCachedEvents(dateRange: { start: string; end: string }, timeZone: string): MatchEvent[] | null {
   if (typeof window === 'undefined') return null;
 
   try {
@@ -44,6 +45,10 @@ export function getCachedEvents(dateRange: { start: string; end: string }): Matc
       return null;
     }
 
+    if (cache.timeZone !== timeZone) {
+      return null;
+    }
+
     // Cache is valid for 15 minutes locally (server cache is 5 min, this is backup)
     const age = Date.now() - cache.timestamp;
     if (age > 15 * 60 * 1000) {
@@ -60,7 +65,8 @@ export function getCachedEvents(dateRange: { start: string; end: string }): Matc
 /** Save events to local cache */
 export function setCachedEvents(
   dateRange: { start: string; end: string },
-  events: MatchEvent[]
+  events: MatchEvent[],
+  timeZone: string
 ): void {
   if (typeof window === 'undefined') return;
 
@@ -69,6 +75,7 @@ export function setCachedEvents(
       version: CACHE_VERSION,
       timestamp: Date.now(),
       dateRange,
+      timeZone,
       events,
     };
 
@@ -448,7 +455,7 @@ export function saveSelectionToSupabase(state: SavedSelectionState, embedTarget 
       checkAndClearIfUserChanged(user.id);
 
       const selectedCount = Object.values(state.selections).filter(
-        (v: any) => v?.isSelected === true
+        (value) => value.isSelected === true
       ).length;
 
       // If nothing is selected/featured/tagged, delete the row entirely

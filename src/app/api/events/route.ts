@@ -190,15 +190,47 @@ function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-/** Convert UTC ISO string to date/time in the configured timezone offset */
-function utcToLocal(utcDateString: string): { date: string; time: string } {
+const DEFAULT_EVENTS_TIMEZONE = 'Asia/Phnom_Penh';
+
+function normalizeTimeZone(value: string | null): string {
+  const candidate = value?.trim() || DEFAULT_EVENTS_TIMEZONE;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: candidate }).format(new Date());
+    return candidate;
+  } catch {
+    return DEFAULT_EVENTS_TIMEZONE;
+  }
+}
+
+function formatUtcDateInTimeZone(utc: Date, timeZone: string): { date: string; time: string } {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(utc);
+
+  const lookup = Object.fromEntries(
+    parts
+      .filter(part => part.type !== 'literal')
+      .map(part => [part.type, part.value])
+  ) as Record<string, string>;
+
+  return {
+    date: `${lookup.year}-${lookup.month}-${lookup.day}`,
+    time: `${lookup.hour}:${lookup.minute}`,
+  };
+}
+
+/** Convert UTC ISO string to date/time in a DST-aware IANA timezone */
+function utcToLocal(utcDateString: string, timeZone: string): { date: string; time: string } {
   try {
     const utc = new Date(utcDateString);
-    const localMs = utc.getTime() + 7 * 60 * 60 * 1000; // TODO: make offset configurable per-user
-    const local = new Date(localMs);
-    const date = local.toISOString().split('T')[0];
-    const time = local.toISOString().split('T')[1].slice(0, 5);
-    return { date, time };
+    if (Number.isNaN(utc.getTime())) return { date: '', time: '' };
+    return formatUtcDateInTimeZone(utc, timeZone);
   } catch {
     return { date: '', time: '' };
   }
@@ -411,14 +443,15 @@ function countryToFlagUrl(country: string): string {
 function mapMMAFights(
   events: ESPNEvent[],
   league: { id: string; slug: string },
-  meta: { label: string; category: string; logo: string }
+  meta: { label: string; category: string; logo: string },
+  timeZone: string
 ): MatchEvent[] {
   const results: MatchEvent[] = [];
 
   for (const event of events) {
     // Use the full event name so each card has a unique label (e.g. "UFC Fight Night: Emmett vs. Vallejos")
     const cardName = event.name || event.shortName || meta.label;
-    const { date, time } = utcToLocal(event.date);
+    const { date, time } = utcToLocal(event.date, timeZone);
     const competitions = event.competitions ?? [];
     if (competitions.length === 0) continue;
 
@@ -454,7 +487,7 @@ function mapMMAFights(
       if (!f1Name) continue;
 
       const compTime = comp.date || event.date;
-      const fightTime = comp.date ? utcToLocal(comp.date) : { date, time };
+      const fightTime = comp.date ? utcToLocal(comp.date, timeZone) : { date, time };
       const weightClass = comp.type?.abbreviation ?? '';
 
       // Fighter flags: ESPN provides athlete.flag.href (image) and .alt (country name).
@@ -508,7 +541,8 @@ function mapMMAFights(
 function mapMotorsportSessions(
   events: ESPNEvent[],
   league: { id: string; slug: string },
-  meta: { label: string; category: string; logo: string }
+  meta: { label: string; category: string; logo: string },
+  timeZone: string
 ): MatchEvent[] {
   const results: MatchEvent[] = [];
 
@@ -532,7 +566,7 @@ function mapMotorsportSessions(
         sessionType === 'Race'  ? 'Race'         :
         sessionType || `Session ${i + 1}`;
 
-      const sessionTime = comp.date ? utcToLocal(comp.date) : utcToLocal(event.date);
+      const sessionTime = comp.date ? utcToLocal(comp.date, timeZone) : utcToLocal(event.date, timeZone);
 
       results.push({
         id: `espn-${league.id}-${event.id}-${sessionType || i}`,
@@ -562,7 +596,8 @@ function mapMotorsportSessions(
 function mapTennisMatches(
   events: ESPNEvent[],
   league: { id: string; slug: string },
-  meta: { label: string; category: string; logo: string }
+  meta: { label: string; category: string; logo: string },
+  timeZone: string
 ): MatchEvent[] {
   const results: MatchEvent[] = [];
 
@@ -582,7 +617,7 @@ function mapTennisMatches(
         const p2Name = p2 ? getCompName(p2) : '';
         if (!p1Name || !p2Name) continue;
 
-        const matchTime = comp.date ? utcToLocal(comp.date) : utcToLocal(event.date);
+        const matchTime = comp.date ? utcToLocal(comp.date, timeZone) : utcToLocal(event.date, timeZone);
         const roundName = comp.round?.displayName || '';
         const drawLabel = group.grouping.displayName || '';
         const round = roundName ? `${drawLabel} – ${roundName}` : drawLabel;
@@ -617,7 +652,8 @@ function mapTeamSportEvents(
   events: ESPNEvent[],
   league: { id: string; slug: string },
   meta: { label: string; category: string; logo: string },
-  seasonTypeId?: string | number
+  seasonTypeId: string | number | undefined,
+  timeZone: string
 ): MatchEvent[] {
   const isGolf = league.slug.startsWith('golf/');
   const isNCAA = league.id === 'basketball-ncaam' || league.id === 'basketball-ncaaw';
@@ -627,7 +663,7 @@ function mapTeamSportEvents(
     const competitors = comp?.competitors ?? [];
     const home = competitors.find(c => c.homeAway === 'home') ?? competitors[0];
     const away = competitors.find(c => c.homeAway === 'away') ?? competitors[1];
-    const { date, time } = utcToLocal(event.date);
+    const { date, time } = utcToLocal(event.date, timeZone);
 
     let homeName = home ? getCompName(home) : '';
     let awayName = away ? getCompName(away) : '';
@@ -687,7 +723,8 @@ function mapTeamSportEvents(
 async function fetchESPNLeague(
   league: { id: string; slug: string },
   startDate: string,
-  endDate: string
+  endDate: string,
+  timeZone: string
 ): Promise<MatchEvent[]> {
   const meta = LEAGUE_METADATA[league.id];
   if (!meta) return [];
@@ -777,13 +814,13 @@ async function fetchESPNLeague(
     // Route to the correct mapper based on sport type
     let parsed: MatchEvent[];
     if (isMMA) {
-      parsed = mapMMAFights(events, league, meta);
+      parsed = mapMMAFights(events, league, meta, timeZone);
     } else if (isMotorsport) {
-      parsed = mapMotorsportSessions(events, league, meta);
+      parsed = mapMotorsportSessions(events, league, meta, timeZone);
     } else if (isTennis) {
-      parsed = mapTennisMatches(events, league, meta);
+      parsed = mapTennisMatches(events, league, meta, timeZone);
     } else {
-      parsed = mapTeamSportEvents(events, league, meta, seasonTypeId);
+      parsed = mapTeamSportEvents(events, league, meta, seasonTypeId, timeZone);
     }
 
     // Apply date-range guard to all leagues: prevents the 404-fallback (which fetches
@@ -817,7 +854,7 @@ async function fetchESPNLeague(
 }
 
 /** Fetch ESPN leagues with controlled concurrency without strict batch bottlenecks */
-async function fetchAllESPN(startDate: string, endDate: string): Promise<MatchEvent[]> {
+async function fetchAllESPN(startDate: string, endDate: string, timeZone: string): Promise<MatchEvent[]> {
   const allLeagues = [...ESPN_PRIORITY_LEAGUES, ...ESPN_SECONDARY_LEAGUES];
   const results: MatchEvent[] = [];
   const CONCURRENCY = 15;
@@ -828,7 +865,7 @@ async function fetchAllESPN(startDate: string, endDate: string): Promise<MatchEv
       const league = allLeagues[i++];
       if (!league) break;
       try {
-        const events = await fetchESPNLeague(league, startDate, endDate);
+        const events = await fetchESPNLeague(league, startDate, endDate, timeZone);
         results.push(...events);
       } catch {
         // Ignored, handled in fetchESPNLeague
@@ -946,24 +983,20 @@ async function sdbFetch(endpoint: string, responseKey: 'events' | 'results' = 'e
   }
 }
 
-function sportsDBToLocal(dateStr: string, timeStr: string): { date: string; time: string } {
+function sportsDBToLocal(dateStr: string, timeStr: string, timeZone: string): { date: string; time: string } {
   try {
     const [y, m, d] = dateStr.split('-').map(Number);
-    const [h, min] = (timeStr || '00:00:00').split(':').map(Number);
-    const utc = Date.UTC(y, m - 1, d, h, min);
-    const localMs = utc + 7 * 60 * 60 * 1000; // TODO: make offset configurable per-user
-    const local = new Date(localMs);
-    return {
-      date: local.toISOString().split('T')[0],
-      time: local.toISOString().split('T')[1].slice(0, 5),
-    };
+    const [h, min, sec] = (timeStr || '00:00:00').split(':').map(Number);
+    const utc = new Date(Date.UTC(y, m - 1, d, h || 0, min || 0, sec || 0));
+    if (Number.isNaN(utc.getTime())) return { date: dateStr, time: '00:00' };
+    return formatUtcDateInTimeZone(utc, timeZone);
   } catch {
     return { date: dateStr, time: '00:00' };
   }
 }
 
-function mapSDBEvent(event: SportsDBEvent, league: typeof SPORTSDB_ONLY_LEAGUES[0]): MatchEvent {
-  const { date, time } = sportsDBToLocal(event.dateEvent, event.strTime || '00:00:00');
+function mapSDBEvent(event: SportsDBEvent, league: typeof SPORTSDB_ONLY_LEAGUES[0], timeZone: string): MatchEvent {
+  const { date, time } = sportsDBToLocal(event.dateEvent, event.strTime || '00:00:00', timeZone);
   return {
     id: `sportsdb-${event.idEvent}`,
     source: 'sportsdb',
@@ -1060,9 +1093,10 @@ function parseSDBFightEvent(
  */
 function mapSDBCombatEvent(
   event: SportsDBEvent,
-  league: typeof SPORTSDB_ONLY_LEAGUES[0]
+  league: typeof SPORTSDB_ONLY_LEAGUES[0],
+  timeZone: string
 ): MatchEvent {
-  const { date, time } = sportsDBToLocal(event.dateEvent, event.strTime || '00:00:00');
+  const { date, time } = sportsDBToLocal(event.dateEvent, event.strTime || '00:00:00', timeZone);
   const { cardName, home, away } = parseSDBFightEvent(event.strEvent, league.sportsdbId);
 
   // Build leagueLabel used by generateHTML's getLeagueAbbrev:
@@ -1107,7 +1141,8 @@ function mapSDBCombatEvent(
 async function fetchCPLFanout(
   league: typeof SPORTSDB_ONLY_LEAGUES[0],
   startDate: string,
-  endDate: string
+  endDate: string,
+  timeZone: string
 ): Promise<MatchEvent[]> {
   const allCalls: Promise<SportsDBEvent[]>[] = [
     sdbFetch(`eventsnextleague.php?id=${league.sportsdbId}`),
@@ -1137,7 +1172,7 @@ async function fetchCPLFanout(
 
   const mapped = deduped
     .filter(e => (e.strPostponed ?? 'no').toLowerCase() !== 'yes')
-    .map(e => mapSDBEvent(e, league))
+    .map(e => mapSDBEvent(e, league, timeZone))
     .filter(e => e.date >= startDate && e.date <= endDate);
 
   console.log(`[SportsDB] ✓ ${league.label}: ${mapped.length} events in date range`);
@@ -1154,7 +1189,8 @@ async function fetchCPLFanout(
 async function fetchSportsDBLeagueByNextPast(
   league: typeof SPORTSDB_ONLY_LEAGUES[0],
   startDate: string,
-  endDate: string
+  endDate: string,
+  timeZone: string
 ): Promise<MatchEvent[]> {
   const allEvents: SportsDBEvent[] = [];
   const seen = new Set<string>();
@@ -1176,7 +1212,7 @@ async function fetchSportsDBLeagueByNextPast(
   if (past.length > 0) console.log(`[SportsDB] ${league.label} eventspastleague: ${past.length} events`);
 
   const mapped = allEvents
-    .map(e => mapSDBEvent(e, league))
+    .map(e => mapSDBEvent(e, league, timeZone))
     .filter(e => e.date >= startDate && e.date <= endDate);
 
   console.log(`[SportsDB] ✓ ${league.label}: ${mapped.length} events in date range (${startDate} to ${endDate})`);
@@ -1187,7 +1223,8 @@ async function fetchSportsDBLeagueByNextPast(
 async function fetchSportsDBCombatBySeason(
   league: typeof SPORTSDB_ONLY_LEAGUES[0],
   startDate: string,
-  endDate: string
+  endDate: string,
+  timeZone: string
 ): Promise<MatchEvent[]> {
   const startYear = parseInt(startDate.slice(0, 4), 10);
   const endYear   = parseInt(endDate.slice(0, 4), 10);
@@ -1221,7 +1258,7 @@ async function fetchSportsDBCombatBySeason(
   }
 
   const mapped = allEvents
-    .map(e => mapSDBCombatEvent(e, league))
+    .map(e => mapSDBCombatEvent(e, league, timeZone))
     .filter(e => e.date >= startDate && e.date <= endDate);
 
   console.log(`[SportsDB] ✓ ${league.label}: ${mapped.length} combat events in date range`);
@@ -1238,7 +1275,8 @@ const HSC_TEAM_IDS = [139402, 147520, 139397, 139410, 139405, 139401, 139407, 13
 async function fetchHSCFanout(
   league: typeof SPORTSDB_ONLY_LEAGUES[0],
   startDate: string,
-  endDate: string
+  endDate: string,
+  timeZone: string
 ): Promise<MatchEvent[]> {
   // Derive the cross-year season string from startDate (e.g. Apr 2026 → "2025-2026")
   const year = parseInt(startDate.slice(0, 4), 10);
@@ -1273,7 +1311,7 @@ async function fetchHSCFanout(
 
   const mapped = deduped
     .filter(e => (e.strPostponed ?? 'no').toLowerCase() !== 'yes')
-    .map(e => mapSDBEvent(e, league))
+    .map(e => mapSDBEvent(e, league, timeZone))
     .filter(e => e.date >= startDate && e.date <= endDate);
 
   console.log(`[SportsDB] ✓ ${league.label}: ${mapped.length} events in date range`);
@@ -1283,30 +1321,31 @@ async function fetchHSCFanout(
 async function fetchSportsDBLeague(
   league: typeof SPORTSDB_ONLY_LEAGUES[0],
   startDate: string,
-  endDate: string
+  endDate: string,
+  timeZone: string
 ): Promise<MatchEvent[]> {
   if (league.id === 'soccer-cpl') {
-    return fetchCPLFanout(league, startDate, endDate);
+    return fetchCPLFanout(league, startDate, endDate, timeZone);
   }
   if (league.id === 'soccer-hun-sen-cup') {
-    return fetchHSCFanout(league, startDate, endDate);
+    return fetchHSCFanout(league, startDate, endDate, timeZone);
   }
   // Combat sports use season-based fetch (ESPN is primary; SportsDB is fallback)
   if (COMBAT_SPORT_IDS.has(league.sportsdbId)) {
-    return fetchSportsDBCombatBySeason(league, startDate, endDate);
+    return fetchSportsDBCombatBySeason(league, startDate, endDate, timeZone);
   }
   // All other leagues (AFC, MotoGP): efficient next+past strategy (2 API calls)
-  return fetchSportsDBLeagueByNextPast(league, startDate, endDate);
+  return fetchSportsDBLeagueByNextPast(league, startDate, endDate, timeZone);
 }
 
-async function fetchAllSportsDB(startDate: string, endDate: string): Promise<MatchEvent[]> {
+async function fetchAllSportsDB(startDate: string, endDate: string, timeZone: string): Promise<MatchEvent[]> {
   const results: MatchEvent[] = [];
 
   // Phase 1: Cambodian leagues use heavy fan-out strategies — run them first
   const cambodianLeagues = SPORTSDB_ONLY_LEAGUES.filter(l => l.id === 'soccer-cpl' || l.id === 'soccer-hun-sen-cup');
   for (const league of cambodianLeagues) {
     try {
-      const events = await fetchSportsDBLeague(league, startDate, endDate);
+      const events = await fetchSportsDBLeague(league, startDate, endDate, timeZone);
       results.push(...events);
     } catch (err) {
       console.warn(`[SportsDB] ${league.label} fetch failed:`, err);
@@ -1322,7 +1361,7 @@ async function fetchAllSportsDB(startDate: string, endDate: string): Promise<Mat
   for (let i = 0; i < otherLeagues.length; i += BATCH_SIZE) {
     const batch = otherLeagues.slice(i, i + BATCH_SIZE);
     const batchResults = await Promise.allSettled(
-      batch.map(league => fetchSportsDBLeague(league, startDate, endDate))
+      batch.map(league => fetchSportsDBLeague(league, startDate, endDate, timeZone))
     );
 
     for (const outcome of batchResults) {
@@ -1346,8 +1385,8 @@ async function fetchAllSportsDB(startDate: string, endDate: string): Promise<Mat
 // MAIN FETCH FUNCTION
 // ═══════════════════════════════════════════════════════════════════════════════
 
-async function fetchAllEvents(startDate: string, endDate: string): Promise<MatchEvent[]> {
-  console.log(`[Events API] Fetching events from ${startDate} to ${endDate}`);
+async function fetchAllEvents(startDate: string, endDate: string, timeZone: string): Promise<MatchEvent[]> {
+  console.log(`[Events API] Fetching events from ${startDate} to ${endDate} (${timeZone})`);
   const startTime = Date.now();
 
   // Fetch ESPN and SportsDB in parallel, but don't let a slow SportsDB pass
@@ -1356,12 +1395,12 @@ async function fetchAllEvents(startDate: string, endDate: string): Promise<Match
   // plus 9 other league batches.  The old 6 s cap was too tight and silently
   // dropped ALL SportsDB events on wider date ranges when Node was busy.
   const sportsDBBounded = Promise.race<MatchEvent[] | null>([
-    fetchAllSportsDB(startDate, endDate),
+    fetchAllSportsDB(startDate, endDate, timeZone),
     sleep(15_000).then(() => null),
   ]);
 
   const [espnEvents, sportsDBEvents] = await Promise.allSettled([
-    fetchAllESPN(startDate, endDate),
+    fetchAllESPN(startDate, endDate, timeZone),
     sportsDBBounded,
   ]);
 
@@ -1422,6 +1461,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const startDate = searchParams.get('start');
   const endDate = searchParams.get('end');
+  const timeZone = normalizeTimeZone(searchParams.get('timeZone'));
 
   if (!startDate || !endDate) {
     return NextResponse.json(
@@ -1454,7 +1494,7 @@ export async function GET(req: NextRequest) {
     } catch { return []; }
   };
 
-  const cacheKey = `${startDate}|${endDate}`;
+  const cacheKey = `${startDate}|${endDate}|${timeZone}`;
   const now = Date.now();
   const cached = CACHE.get(cacheKey);
 
@@ -1474,7 +1514,7 @@ export async function GET(req: NextRequest) {
   // Return stale data while refreshing in background
   if (cached && now - cached.timestamp < STALE_OK_TTL && !fetchPromises.has(cacheKey)) {
     // Start background refresh
-    const bgPromise = fetchAllEvents(startDate, endDate).then(events => {
+    const bgPromise = fetchAllEvents(startDate, endDate, timeZone).then(events => {
       CACHE.set(cacheKey, { data: events, timestamp: Date.now() });
       fetchPromises.delete(cacheKey);
       return events;
@@ -1504,7 +1544,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ events: [...events, ...customEvents], cached: false });
     }
 
-    const p = fetchAllEvents(startDate, endDate);
+    const p = fetchAllEvents(startDate, endDate, timeZone);
     fetchPromises.set(cacheKey, { promise: p, startedAt: Date.now() });
     const events = await p;
     
