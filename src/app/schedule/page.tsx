@@ -22,6 +22,8 @@ import {
   Redo2,
   Star,
   Printer,
+  Clipboard,
+  ClipboardPaste,
 } from 'lucide-react';
 import { useScheduleStore } from '@/lib/store';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
@@ -196,6 +198,14 @@ export default function SchedulePage() {
   const [previewCheckedIds, setPreviewCheckedIds] = useState<Set<string>>(new Set());
   const [leagueOrder, setLeagueOrder] = useState<string[]>([]);
   const [deleteAllConfirm, setDeleteAllConfirm] = useState(false);
+  const [embedClipboard, setEmbedClipboard] = useState<{
+    selections: Record<string, { isSelected: boolean; isFeatured: boolean; tags: string[] }>;
+    leagueOrder: string[];
+    featuredLeagues: Record<string, string>;
+    sourceEmbed: string;
+  } | null>(null);
+  const [panelContextMenu, setPanelContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [selectionCopied, setSelectionCopied] = useState(false);
   // Note: useState lazy initializer is ignored during SSR hydration in Next.js — we use
   // a plain default and set the real viewport-aware width in a useEffect after mount.
   const [panelWidth, setPanelWidth] = useState(700);
@@ -1562,6 +1572,18 @@ export default function SchedulePage() {
     };
   }, [highlightMenu, closeHighlightMenu]);
 
+  useEffect(() => {
+    if (!panelContextMenu) return;
+    const dismiss = () => setPanelContextMenu(null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') dismiss(); };
+    window.addEventListener('pointerdown', dismiss);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('pointerdown', dismiss);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [panelContextMenu]);
+
   // After the menu renders, clamp it so it never overflows the viewport edge.
   useEffect(() => {
     if (!highlightMenu || !highlightMenuRef.current) return;
@@ -1747,7 +1769,101 @@ export default function SchedulePage() {
     setTimeout(() => setCopied(false), 2000);
   }, [getHTML]);
 
+  const copySelections = useCallback(() => {
+    const selections: Record<string, { isSelected: boolean; isFeatured: boolean; tags: string[] }> = {};
+    const hasPreviewChecks = previewCheckedIds.size > 0;
+    
+    for (const e of events) {
+      if (hasPreviewChecks) {
+        // Active checkboxes in the preview panel: copy only these checked items.
+        // We ensure they preserve their isFeatured/tags if they have them, but 
+        // enforce isSelected=true since they were explicitly requested for copy.
+        if (previewCheckedIds.has(e.id)) {
+          selections[e.id] = { isSelected: true, isFeatured: e.isFeatured, tags: [...e.tags] };
+        }
+      } else {
+        // Default clipboard behavior (no explicit subset selected in the right panel)
+        if (e.isSelected || e.isFeatured || e.tags.length > 0) {
+          selections[e.id] = { isSelected: e.isSelected, isFeatured: e.isFeatured, tags: [...e.tags] };
+        }
+      }
+    }
+    setEmbedClipboard({
+      selections,
+      leagueOrder: [...leagueOrder],
+      featuredLeagues: Object.fromEntries(featuredLeagues),
+      sourceEmbed: effectiveTarget,
+    });
+    setSelectionCopied(true);
+    setTimeout(() => setSelectionCopied(false), 2000);
+    setPanelContextMenu(null);
+    closeHighlightMenu();
+  }, [events, leagueOrder, featuredLeagues, effectiveTarget, previewCheckedIds, closeHighlightMenu]);
 
+  const pasteSelections = useCallback(() => {
+    if (!embedClipboard) return;
+    // Push current state to undo stack so paste can be undone with Ctrl+Z
+    const current = captureHistoryState();
+    undoStackRef.current.push(current);
+    redoStackRef.current.length = 0;
+    
+    const updated = events.map(e => {
+      const sel = embedClipboard.selections[e.id];
+      if (sel) {
+        // MERGE behavior:
+        // Do not overwrite existing selections/highlights/tags.
+        // If a match is already selected, keep it selected. If incoming specifies it's selected, mark it selected.
+        return {
+          ...e,
+          isSelected: e.isSelected || sel.isSelected,
+          isFeatured: e.isFeatured || sel.isFeatured,
+          tags: Array.from(new Set([...e.tags, ...sel.tags]))
+        };
+      }
+      return e; // Leave existing matches that aren't in clipboard untouched
+    });
+    
+    setEvents(updated);
+    
+    // Add incoming leagues to the end of the order if not already present
+    const incomingLeagues = embedClipboard.leagueOrder.filter(l => !leagueOrder.includes(l));
+    setLeagueOrder([...leagueOrder, ...incomingLeagues]);
+    
+    // Merge featured leagues
+    const newFeatured = new Map(featuredLeagues);
+    for (const [sportId, label] of Object.entries(embedClipboard.featuredLeagues)) {
+      if (!newFeatured.has(sportId)) {
+        newFeatured.set(sportId, label);
+      }
+    }
+    setFeaturedLeagues(newFeatured);
+    
+    setPanelContextMenu(null);
+    closeHighlightMenu();
+    setPreviewCheckedIds(new Set()); // clear any selection checks after paste
+  }, [embedClipboard, events, captureHistoryState, setEvents, leagueOrder, featuredLeagues, closeHighlightMenu]);
+
+  // Ctrl+C / Ctrl+V shortcuts for embed selection copy/paste
+  // Defined here (after copySelections/pasteSelections) to avoid TDZ ordering issues.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      const target = event.target as HTMLElement;
+      const inInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+      const key = event.key.toLowerCase();
+      if (key === 'c' && !inInput && !window.getSelection()?.toString()) {
+        event.preventDefault();
+        copySelections();
+        return;
+      }
+      if (key === 'v' && !inInput) {
+        event.preventDefault();
+        pasteSelections();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [copySelections, pasteSelections]);
 
   // Optimized resize — mutates DOM directly, React state only updates on pointer-up
   const startResize = useCallback((e: React.PointerEvent) => {
@@ -2351,7 +2467,17 @@ export default function SchedulePage() {
           )}
 
           {/* Left: match list */}
-          <aside className="w-full sm:w-60 shrink-0 border-b sm:border-b-0 sm:border-r border-border bg-sidebar flex flex-col overflow-hidden relative max-h-[28vh] sm:max-h-none phone-ls-preview-aside tablet-portrait-preview-aside">
+          <aside
+            className="w-full sm:w-60 shrink-0 border-b sm:border-b-0 sm:border-r border-border bg-sidebar flex flex-col overflow-hidden relative max-h-[28vh] sm:max-h-none phone-ls-preview-aside tablet-portrait-preview-aside"
+            onContextMenu={(e) => {
+              const hasOwnMenu = (e.target as HTMLElement).closest('[data-has-context-menu]');
+              if (hasOwnMenu) return;
+              e.preventDefault();
+              const x = Math.min(e.clientX, window.innerWidth - 220);
+              const y = Math.min(e.clientY, window.innerHeight - 130);
+              setPanelContextMenu({ x, y });
+            }}
+          >
             <div className="shrink-0 px-3 py-2 border-b border-border">
               <div className="flex items-center justify-between">
                 <div className="flex gap-3 text-[10px] text-muted-foreground">
@@ -2442,6 +2568,7 @@ export default function SchedulePage() {
                 {featuredOnlyLeagues.map((league) => (
                   <div
                     key={`featured-only-${league.sportId}`}
+                    data-has-context-menu="true"
                     className="border border-yellow-500/40 bg-yellow-500/5 rounded-lg p-2 transition-colors"
                     onContextMenu={(event) => {
                       event.preventDefault();
@@ -2466,6 +2593,7 @@ export default function SchedulePage() {
                 {orderedSelectedByLeague.map(([sportId, matches], leagueIdx) => (
                   <div
                     key={sportId}
+                    data-has-context-menu="true"
                     ref={(el) => { if (el) leagueItemRefs.current.set(sportId, el); else leagueItemRefs.current.delete(sportId); }}
                     className={cn(
                       'border rounded-lg p-2 transition-colors',
@@ -2624,6 +2752,40 @@ export default function SchedulePage() {
         </div>
       </div>
 
+      {panelContextMenu && (
+        <div
+          className="fixed z-170 min-w-48 rounded-lg border border-border bg-popover/98 p-1.5 shadow-2xl backdrop-blur-sm"
+          style={{ left: panelContextMenu.x, top: panelContextMenu.y }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Schedule Clipboard
+          </p>
+          <button
+            onClick={copySelections}
+            className="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-foreground hover:bg-accent transition-colors"
+          >
+            <Clipboard className="w-3.5 h-3.5" />
+            <span className="flex-1">Copy Sports Selection</span>
+            <kbd className="text-[9px] text-muted-foreground bg-muted px-1 rounded">Ctrl+C</kbd>
+          </button>
+          <button
+            onClick={pasteSelections}
+            disabled={!embedClipboard}
+            className="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-foreground hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            <ClipboardPaste className="w-3.5 h-3.5" />
+            <span className="flex-1">Paste Sports Selection</span>
+            <kbd className="text-[9px] text-muted-foreground bg-muted px-1 rounded">Ctrl+V</kbd>
+          </button>
+          {embedClipboard && embedClipboard.sourceEmbed !== effectiveTarget && (
+            <p className="px-2 pt-1 pb-0.5 text-[9px] text-muted-foreground/60 border-t border-border/30 mt-1">
+              From: {embedClipboard.sourceEmbed} &middot; {Object.keys(embedClipboard.selections).length} matches
+            </p>
+          )}
+        </div>
+      )}
+
       {highlightMenu && (
         <div
           ref={highlightMenuRef}
@@ -2640,6 +2802,26 @@ export default function SchedulePage() {
                   : 'Match Options')
               : highlightMenu.leagueLabel}
           </p>
+
+          <button
+            onClick={copySelections}
+            className="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-foreground hover:bg-accent transition-colors"
+          >
+            <Clipboard className="w-3.5 h-3.5" />
+            <span className="flex-1">Copy</span>
+            <kbd className="text-[9px] text-muted-foreground bg-muted px-1 rounded">Ctrl+C</kbd>
+          </button>
+          <button
+            onClick={pasteSelections}
+            disabled={!embedClipboard}
+            className="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-foreground hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            <ClipboardPaste className="w-3.5 h-3.5" />
+            <span className="flex-1">Paste</span>
+            <kbd className="text-[9px] text-muted-foreground bg-muted px-1 rounded">Ctrl+V</kbd>
+          </button>
+          <div className="my-1 border-t border-border/50" />
+
           {highlightMenu.type === 'league' ? (
             featuredLeagues.has(highlightMenu.sportId) ? (
               <button
@@ -2928,6 +3110,14 @@ export default function SchedulePage() {
           });
         }}
       />
+
+      {/* ── Selection-copied toast ─────────────────────────────────────────── */}
+      {selectionCopied && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-9999 flex items-center gap-2 rounded-full border border-green-500/30 bg-green-950/90 px-4 py-2 text-xs text-green-400 shadow-lg pointer-events-none">
+          <CheckSquare className="w-3.5 h-3.5" />
+          Sports selection copied!
+        </div>
+      )}
 
       {/* ── No-plugin detection banner ──────────────────────────────────────── */}
       {noPluginBanner && (
