@@ -7,6 +7,19 @@ const adminClient = createAdminClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
+type InviteOrganization = {
+  name?: string | null;
+  slug?: string | null;
+};
+
+type InviteRow = {
+  id: string;
+  organization_id: string;
+  invited_by: string | null;
+  created_at: string;
+  organizations?: InviteOrganization | InviteOrganization[] | null;
+};
+
 /** Resolve emails for a list of user IDs */
 async function resolveEmails(userIds: string[]): Promise<Record<string, string>> {
   if (!userIds.length) return {};
@@ -47,14 +60,18 @@ export async function GET() {
     const inviterIds = (invites ?? []).map(i => i.invited_by).filter(Boolean) as string[];
     const inviterEmails = await resolveEmails(inviterIds);
 
-    const result = (invites ?? []).map(i => ({
-      id: i.id,
-      orgId: i.organization_id,
-      orgName: (i.organizations as any)?.name ?? 'Unknown Organization',
-      orgSlug: (i.organizations as any)?.slug ?? '',
-      invitedBy: i.invited_by ? (inviterEmails[i.invited_by] ?? 'Unknown') : 'Unknown',
-      invitedAt: i.created_at,
-    }));
+    const result = ((invites ?? []) as InviteRow[]).map(i => {
+      const organization = Array.isArray(i.organizations) ? i.organizations[0] : i.organizations;
+
+      return {
+        id: i.id,
+        orgId: i.organization_id,
+        orgName: organization?.name ?? 'Unknown Organization',
+        orgSlug: organization?.slug ?? '',
+        invitedBy: i.invited_by ? (inviterEmails[i.invited_by] ?? 'Unknown') : 'Unknown',
+        invitedAt: i.created_at,
+      };
+    });
 
     return NextResponse.json({ invites: result });
   } catch (err) {

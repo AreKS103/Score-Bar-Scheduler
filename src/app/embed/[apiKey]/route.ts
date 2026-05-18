@@ -4,7 +4,9 @@ import { type NextRequest } from 'next/server';
 import type { MatchEvent } from '@/types';
 import { renderEmbedContent } from '@/lib/renderEmbed';
 import { renderCalendarContent, getCalendarCSS, getCalendarNavJS } from '@/lib/renderCalendar';
+import { buildScheduleSeoPayload } from '@/lib/seoSchedule';
 import { getOrgMemberIds } from '@/lib/supabase/org';
+import { refreshWorldCupSnapshotEvents, WORLD_CUP_SPORT_ID } from '@/lib/worldCup';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,11 +42,34 @@ interface EmbedOpts {
   timeFontSize: string;
 }
 
+function buildPublishedScheduleSerial(publishedAt: string, events: MatchEvent[]): string {
+  const worldCupRows = events.filter((event) => event.sportId === WORLD_CUP_SPORT_ID);
+  if (worldCupRows.length === 0) return publishedAt;
+
+  const fingerprint = worldCupRows
+    .map((event) => [
+      event.id,
+      event.sourceEventId ?? '',
+      event.date,
+      event.time,
+      event.home,
+      event.away,
+      event.homeLogo ?? '',
+      event.awayLogo ?? '',
+      event.round,
+      event.status ?? '',
+    ].join('|'))
+    .join('~');
+  const hash = crypto.createHash('sha1').update(fingerprint).digest('hex').slice(0, 12);
+  return `${publishedAt || 'published'}:wc:${hash}`;
+}
+
 function buildEmbedPage(
   scheduleContent: string,
   foundCategories: string[],
   opts: EmbedOpts,
   serial: string,
+  publishedAt: string,
 ): string {
   const isDark = opts.theme === 'dark';
   const isAuto = opts.theme === 'auto';
@@ -170,8 +195,8 @@ ${isCard ? `.league-block{background:var(--card-bg);border:1px solid var(--borde
   const toggleBar = !opts.hideViewToggle && !opts.noInlineToggle ? `<div class="vt-bar" style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:10px"><button class="vt-btn vt-active" data-layout="list" style="padding:4px 14px;border-radius:999px;border:1px solid var(--accent,#3b82f6);background:var(--accent,#3b82f6);color:#fff;cursor:pointer;font-size:12px;font-family:inherit;font-weight:600">List</button><button class="vt-btn" data-layout="calendar" style="padding:4px 14px;border-radius:999px;border:1px solid var(--border,#e5e7eb);background:var(--tab-bg,#f3f4f6);color:var(--tab-text,#6b7280);cursor:pointer;font-size:12px;font-family:inherit;font-weight:500">Calendar</button></div>` : '';
   const toggleJS = !opts.hideViewToggle ? `\n<script>\n(function(){document.querySelectorAll('.vt-btn').forEach(function(b){b.addEventListener('click',function(){var u=new URL(location.href);u.searchParams.set('layout',b.getAttribute('data-layout'));location.replace(u.toString());});});})();\n</script>` : '';
 
-  const safeSerial = serial.replace(/[^0-9a-zA-Z.:+\-TZ]/g, '');
-  const lastUpdatedJS = safeSerial ? `\n<script>\n(function(){\n  var d=new Date('${safeSerial}');\n  if(isNaN(d))return;\n  var el=document.getElementById('last-updated');\n  if(!el)return;\n  el.innerHTML='<span class=\"hl-updated-dot\"></span> Last updated: '+d.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long',year:'numeric'})+', '+d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});\n})();\n</script>` : '';
+  const safePublishedAt = publishedAt.replace(/[^0-9a-zA-Z.:+\-TZ]/g, '');
+  const lastUpdatedJS = safePublishedAt ? `\n<script>\n(function(){\n  var d=new Date('${safePublishedAt}');\n  if(isNaN(d))return;\n  var el=document.getElementById('last-updated');\n  if(!el)return;\n  el.innerHTML='<span class=\"hl-updated-dot\"></span> Last updated: '+d.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long',year:'numeric'})+', '+d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});\n})();\n</script>` : '';
 
   return `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width,initial-scale=1.0"/>\n<title>Schedule</title>\n<style>${css}</style>\n</head>\n<body>\n${toggleBar}\n<div id="schedule-root" data-serial="${serial}">\n<div class="hl-updated" id="last-updated"></div>\n${tabsHTML}\n<div class="schedule-content">${scheduleContent}</div>\n</div>\n${tabJS}\n${cardJS}\n${toggleJS}\n${resizeJS}\n${styleJS}\n${noCopyJS}\n${beaconJS}\n${pollJS}\n${lastUpdatedJS}\n</body>\n</html>`;
 }
@@ -180,6 +205,7 @@ function buildCalendarPage(
   calendarHTML: string,
   opts: EmbedOpts,
   serial: string,
+  publishedAt: string,
 ): string {
   const isDark = opts.theme === 'dark';
   const isAuto = opts.theme === 'auto';
@@ -246,8 +272,8 @@ body{padding:${paddingVal}px}
   const calToggleBar = !opts.hideViewToggle && !opts.noInlineToggle ? `<div class="vt-bar" style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:10px"><button class="vt-btn" data-layout="list" style="padding:4px 14px;border-radius:999px;border:1px solid var(--border,#e5e7eb);background:var(--tab-bg,#f3f4f6);color:var(--tab-text,#6b7280);cursor:pointer;font-size:12px;font-family:inherit;font-weight:500">List</button><button class="vt-btn vt-active" data-layout="calendar" style="padding:4px 14px;border-radius:999px;border:1px solid var(--accent,#3b82f6);background:var(--accent,#3b82f6);color:#fff;cursor:pointer;font-size:12px;font-family:inherit;font-weight:600">Calendar</button></div>` : '';
   const calToggleJS = !opts.hideViewToggle ? `\n<script>\n(function(){document.querySelectorAll('.vt-btn').forEach(function(b){b.addEventListener('click',function(){var u=new URL(location.href);u.searchParams.set('layout',b.getAttribute('data-layout'));location.replace(u.toString());});});})();\n</script>` : '';
 
-  const safeSerialCal = serial.replace(/[^0-9a-zA-Z.:+\-TZ]/g, '');
-  const lastUpdatedJSCal = safeSerialCal ? `\n<script>\n(function(){\n  var d=new Date('${safeSerialCal}');\n  if(isNaN(d))return;\n  var el=document.getElementById('last-updated');\n  if(!el)return;\n  el.innerHTML='<span class=\"hl-updated-dot\"></span> Last updated: '+d.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long',year:'numeric'})+', '+d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});\n})();\n</script>` : '';
+  const safePublishedAtCal = publishedAt.replace(/[^0-9a-zA-Z.:+\-TZ]/g, '');
+  const lastUpdatedJSCal = safePublishedAtCal ? `\n<script>\n(function(){\n  var d=new Date('${safePublishedAtCal}');\n  if(isNaN(d))return;\n  var el=document.getElementById('last-updated');\n  if(!el)return;\n  el.innerHTML='<span class=\"hl-updated-dot\"></span> Last updated: '+d.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long',year:'numeric'})+', '+d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});\n})();\n</script>` : '';
 
   return `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width,initial-scale=1.0"/>\n<title>Schedule</title>\n<style>${baseCss}${calendarCss}</style>\n</head>\n<body>\n${calToggleBar}\n<div id="schedule-root" data-serial="${serial}"><div class="hl-updated" id="last-updated"></div>${calendarHTML}</div>\n${calNavJS}\n${calToggleJS}\n${resizeJS}\n${styleJSCal}\n${noCopyJSCal}\n${beaconJS}\n${pollJS}\n${lastUpdatedJSCal}\n</body>\n</html>`;
 }
@@ -408,10 +434,22 @@ export async function GET(
   };
   opts.appUrl = `${request.nextUrl.protocol}//${request.nextUrl.host}`;
 
-  const events = (schedule.events_snapshot ?? []) as MatchEvent[];
+  const events = await refreshWorldCupSnapshotEvents((schedule.events_snapshot ?? []) as MatchEvent[], sp.timeZone);
+  const scheduleSerial = buildPublishedScheduleSerial(scheduleAt, events);
   const leagueOrder = (schedule.league_order ?? []) as string[];
   const featuredLeaguesObj = (schedule.featured_leagues ?? {}) as Record<string, string>;
   const featuredLeagues = new Map(Object.entries(featuredLeaguesObj));
+
+  if (sp._seo === '1') {
+    return Response.json(
+      buildScheduleSeoPayload(events, {
+        pageUrl: typeof sp.pageUrl === 'string' ? sp.pageUrl.slice(0, 2048) : '',
+        publishedAt: scheduleAt,
+        embedTarget: scheduleTarget,
+      }),
+      { headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' } },
+    );
+  }
 
   const isCalendar = sp.layout === 'calendar';
 
@@ -426,12 +464,12 @@ export async function GET(
 
     if (sp._poll === '1') {
       return Response.json(
-        { serial: scheduleAt, html: calHTML, tabsHtml: '', hasTabs: false, empty: false },
+        { serial: scheduleSerial, html: calHTML, tabsHtml: '', hasTabs: false, empty: false },
         { headers: { 'Cache-Control': 'no-store' } },
       );
     }
 
-    return new Response(buildCalendarPage(calHTML, opts, scheduleAt), {
+    return new Response(buildCalendarPage(calHTML, opts, scheduleSerial, scheduleAt), {
       status: 200,
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
@@ -462,12 +500,12 @@ export async function GET(
       ? `<div id="sport-tabs" role="tablist"><button class="tab active" data-cat="all" role="tab" aria-selected="true">All</button>${categories.map((c) => `<button class="tab" data-cat="${c.toLowerCase().replace(/\s+/g, '-')}" role="tab">${(opts.catLabels?.[c] || c).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}</button>`).join('')}</div>`
       : '';
     return Response.json(
-      { serial: scheduleAt, html: scheduleContent, tabsHtml, hasTabs, empty: false },
+      { serial: scheduleSerial, html: scheduleContent, tabsHtml, hasTabs, empty: false },
       { headers: { 'Cache-Control': 'no-store' } },
     );
   }
 
-  return new Response(buildEmbedPage(scheduleContent, categories, opts, scheduleAt), {
+  return new Response(buildEmbedPage(scheduleContent, categories, opts, scheduleSerial, scheduleAt), {
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',

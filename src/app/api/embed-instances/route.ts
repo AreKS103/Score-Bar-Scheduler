@@ -299,7 +299,24 @@ export async function GET(req: NextRequest) {
     display_id: inst.embed_id ?? `#${idx + 1}`,
   }));
 
-  return NextResponse.json({ instances: labeled }, {
+  const { data: publishedRows } = await supabase
+    .from('published_schedules')
+    .select('embed_target, published_at')
+    .in('user_id', userIds)
+    .not('embed_target', 'is', null)
+    .order('published_at', { ascending: false })
+    .limit(200);
+
+  const publishedTargets: string[] = [];
+  const seenPublishedTargets = new Set<string>();
+  for (const row of publishedRows ?? []) {
+    const target = typeof row.embed_target === 'string' ? row.embed_target.trim() : '';
+    if (!target || seenPublishedTargets.has(target)) continue;
+    seenPublishedTargets.add(target);
+    publishedTargets.push(target);
+  }
+
+  return NextResponse.json({ instances: labeled, publishedTargets }, {
     headers: {
       ...corsHeaders,
       'Cache-Control': 'private, s-maxage=30, stale-while-revalidate=60',

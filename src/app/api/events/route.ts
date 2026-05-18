@@ -3,6 +3,7 @@ import type { MatchEvent } from '@/types';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { normalizeTournamentGame, MARCH_MADNESS_LOGO, MARCH_MADNESS_WOMEN_LOGO } from '@/lib/marchMadness';
+import { fetchWorldCupFixtures, formatWorldCupStage, WORLD_CUP_LABEL, WORLD_CUP_LOGO, WORLD_CUP_SPORT_ID, WORLD_CUP_ESPN_SLUG } from '@/lib/worldCup';
 
 // ── Supabase service-role client for SportsDB endpoint cache ────────────────
 // Created lazily so we don't throw at module load if env vars are absent.
@@ -67,6 +68,7 @@ const ESPN_PRIORITY_LEAGUES = [
   // Tier 1: Most important leagues
   { id: 'soccer-epl', slug: 'soccer/eng.1' },
   { id: 'soccer-ucl', slug: 'soccer/uefa.champions' },
+  { id: WORLD_CUP_SPORT_ID, slug: WORLD_CUP_ESPN_SLUG },
   { id: 'basketball-nba', slug: 'basketball/nba' },
   { id: 'football-nfl', slug: 'football/nfl' },
   { id: 'soccer-laliga', slug: 'soccer/esp.1' },
@@ -127,6 +129,7 @@ const ESPN_SECONDARY_LEAGUES = [
 const LEAGUE_METADATA: Record<string, { label: string; category: string; logo: string }> = {
   'soccer-epl': { label: 'EPL', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/23.png' },
   'soccer-ucl': { label: 'UEFA Champions League', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/2.png' },
+  [WORLD_CUP_SPORT_ID]: { label: WORLD_CUP_LABEL, category: 'Football', logo: WORLD_CUP_LOGO },
   'soccer-uel': { label: 'UEFA Europa League', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/2310.png' },
   'soccer-uecl': { label: 'Europa Conference League', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/45.png' },
   'soccer-facup': { label: 'FA Cup', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/4.png' },
@@ -363,6 +366,7 @@ interface ESPNEvent {
   name?: string;
   shortName?: string;
   date: string;
+  season?: { slug?: string };
   notes?: Array<{ headline?: string }>;
   competitions?: ESPNCompetitionRaw[];
   groupings?: {
@@ -657,6 +661,7 @@ function mapTeamSportEvents(
 ): MatchEvent[] {
   const isGolf = league.slug.startsWith('golf/');
   const isNCAA = league.id === 'basketball-ncaam' || league.id === 'basketball-ncaaw';
+  const isWorldCup = league.id === WORLD_CUP_SPORT_ID;
 
   return events.map((event): MatchEvent => {
     const comp = event.competitions?.[0];
@@ -688,6 +693,8 @@ function mapTeamSportEvents(
       if (info.leagueLabel === 'March Madness') {
         leagueLogo = league.id === 'basketball-ncaaw' ? MARCH_MADNESS_WOMEN_LOGO : MARCH_MADNESS_LOGO;
       }
+    } else if (isWorldCup) {
+      round = formatWorldCupStage(event.season?.slug);
     } else {
       // Round info from event name
       const name = event.name || '';
@@ -714,10 +721,14 @@ function mapTeamSportEvents(
       tags: [],
       isFeatured: false,
       isSelected: false,
+      ...(isWorldCup ? {
+        sourceEventId: event.id,
+        isoDate: event.date,
+        stageSlug: event.season?.slug || 'group-stage',
+      } : {}),
     };
-  }).filter(e => e.date && (e.home !== 'TBD' || isNCAA));
-  // isNCAA: tournament bracket slots with TBD teams are valid and should be shown
-  // (e.g. "TBD vs Duke" before the Round of 32 winner is decided).
+  }).filter(e => e.date && (e.home !== 'TBD' || isNCAA || isWorldCup));
+  // NCAA and World Cup tournament bracket slots with placeholders are valid and should be shown.
 }
 
 async function fetchESPNLeague(
@@ -728,6 +739,11 @@ async function fetchESPNLeague(
 ): Promise<MatchEvent[]> {
   const meta = LEAGUE_METADATA[league.id];
   if (!meta) return [];
+
+  if (league.id === WORLD_CUP_SPORT_ID) {
+    const { fixtures } = await fetchWorldCupFixtures(timeZone);
+    return fixtures.filter((event) => event.date >= startDate && event.date <= endDate);
+  }
 
   try {
     const isMMA = league.slug.startsWith('mma/') || league.slug.startsWith('boxing/');
@@ -894,7 +910,7 @@ const SPORTSDB_ONLY_LEAGUES = [
   { id: 'motogp', sportsdbId: '4407', label: 'MotoGP', category: 'Motorsport', logo: 'https://r2.thesportsdb.com/images/media/league/badge/gg3c201768486075.png' },
   { id: 'boxing', sportsdbId: '4445', label: 'Boxing', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/6enin21740228549.png' },
   { id: 'cycling-uci', sportsdbId: '4465', label: 'UCI World Tour', category: 'Cycling', logo: 'https://r2.thesportsdb.com/images/media/league/badge/igahc11535183469.png' },
-  { id: 'soccer-hun-sen-cup', sportsdbId: '5859', label: 'Cambodian Hun Sen Cup', category: 'Football', logo: 'https://www.thesportsdb.com/images/media/league/badge/4motr51774278480.png' },
+  { id: 'soccer-hun-sen-cup', sportsdbId: '5859', label: 'Cambodian Hun Sen Cup', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/4motr51774278480.png' },
 ];
 
 interface SportsDBEvent {
@@ -1547,7 +1563,7 @@ export async function GET(req: NextRequest) {
     const p = fetchAllEvents(startDate, endDate, timeZone);
     fetchPromises.set(cacheKey, { promise: p, startedAt: Date.now() });
     const events = await p;
-    
+
     CACHE.set(cacheKey, { data: events, timestamp: Date.now() });
     fetchPromises.delete(cacheKey);
 
@@ -1558,7 +1574,7 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     fetchPromises.delete(cacheKey);
     console.error('[Events API] Fetch failed:', err);
-    
+
     // Return stale data on error if available
     if (cached) {
       const customEvents = await getCustomEvents();

@@ -36,16 +36,31 @@ interface ErrorInfo {
   debugLines: string[];
 }
 
+function getAuthErrorStatus(error: unknown) {
+  if (typeof error !== 'object' || error === null || !('status' in error)) return 'n/a';
+  const status = (error as { status?: unknown }).status;
+  return typeof status === 'string' || typeof status === 'number' ? status : 'n/a';
+}
+
 export default function InvitePage() {
   const router = useRouter();
   const [stage, setStage] = useState<Stage>('parsing');
   const [errInfo, setErrInfo] = useState<ErrorInfo | null>(null);
-  const isDev = process.env.NODE_ENV === 'development';
 
   useEffect(() => {
+    const showError = (info: ErrorInfo) => {
+      queueMicrotask(() => {
+        setStage('error');
+        setErrInfo(info);
+      });
+    };
+
+    const showExchanging = () => {
+      queueMicrotask(() => setStage('exchanging'));
+    };
+
     if (!isSupabaseConfigured()) {
-      setStage('error');
-      setErrInfo({
+      showError({
         title: 'App not configured',
         detail: 'Supabase environment variables are missing.',
         debugLines: ['NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY not set'],
@@ -68,8 +83,7 @@ export default function InvitePage() {
         p.get('error_description') || p.get('error') || 'Unknown error'
       );
       console.error('[invite] hash contains error:', msg);
-      setStage('error');
-      setErrInfo({
+      showError({
         title: 'Invite link error',
         detail: msg,
         debugLines: [`error param: ${msg}`],
@@ -89,7 +103,7 @@ export default function InvitePage() {
     // ── 2. Implicit-flow hash tokens (#access_token=…&type=invite) ──
     if (accessToken && refreshToken) {
       window.history.replaceState(null, '', window.location.pathname);
-      setStage('exchanging');
+      showExchanging();
 
       const supabase = createClient();
       supabase.auth
@@ -108,7 +122,7 @@ export default function InvitePage() {
               detail: error?.message ?? 'setSession returned no session. The link may be expired.',
               debugLines: [
                 `error: ${error?.message ?? 'none'}`,
-                `error status: ${(error as any)?.status ?? 'n/a'}`,
+                `error status: ${getAuthErrorStatus(error)}`,
                 `token prefix: ${accessToken.substring(0, 20)}`,
               ],
             });
@@ -124,7 +138,7 @@ export default function InvitePage() {
 
     if (code) {
       window.history.replaceState(null, '', window.location.pathname);
-      setStage('exchanging');
+      showExchanging();
 
       const supabase = createClient();
       supabase.auth
@@ -154,8 +168,7 @@ export default function InvitePage() {
 
     // ── 4. Nothing usable in the URL ────────────────────────────────
     console.warn('[invite] no tokens found. hash:', hash, '| search:', search);
-    setStage('error');
-    setErrInfo({
+    showError({
       title: 'No invite tokens found',
       detail:
         'This page did not receive any invite credentials. The link may have already been used or is malformed.',

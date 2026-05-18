@@ -58,6 +58,7 @@ export const SPORTS_CONFIG: SportConfig[] = [
   // ── Football (Soccer) ─────────────────────────────────────────────────────
   { id: 'soccer-epl',            label: 'EPL',                                category: 'Football',    espnSlug: 'soccer/eng.1',              logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/23.png' },
   { id: 'soccer-ucl',            label: 'UEFA Champions League',              category: 'Football',    espnSlug: 'soccer/uefa.champions',     logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/2.png' },
+  { id: 'soccer-fifa-world-cup-2026', label: '2026 FIFA World Cup',           category: 'Football',    espnSlug: 'soccer/fifa.world',         logo: 'https://r2.thesportsdb.com/images/media/league/badge/e7er5g1696521789.png' },
   { id: 'soccer-uel',            label: 'UEFA Europa League',                 category: 'Football',    espnSlug: 'soccer/uefa.europa',        logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/2310.png' },
   { id: 'soccer-uecl',           label: 'Europa Conference League',           category: 'Football',    espnSlug: 'soccer/uefa.europa.conf',   logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/45.png' },
   { id: 'soccer-facup',          label: 'FA Cup',                             category: 'Football',    espnSlug: 'soccer/eng.fa',             logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/4.png' },
@@ -81,7 +82,7 @@ export const SPORTS_CONFIG: SportConfig[] = [
   { id: 'soccer-asian-cup-women', label: 'Asian Cup Women',                   category: 'Football',    espnSlug: null,                        sportsdbId: '5179', logo: 'https://r2.thesportsdb.com/images/media/league/badge/m0scwf1726416187.png' },
   { id: 'soccer-copam',          label: 'Copa Libertadores',                  category: 'Football',    espnSlug: 'soccer/conmebol.libertadores', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/26.png' },
   { id: 'soccer-cpl',            label: 'Cambodian Premier League',           category: 'Football',    espnSlug: null,                        sportsdbId: '4793', logo: '/CPL.png', publishLogo: 'https://r2.thesportsdb.com/images/media/league/badge/fdhux61655121747.png' },
-  { id: 'soccer-hun-sen-cup',    label: 'Cambodian Hun Sen Cup',              category: 'Football',    espnSlug: null,                        sportsdbId: '5859', logo: 'https://www.thesportsdb.com/images/media/league/badge/4motr51774278480.png' },
+  { id: 'soccer-hun-sen-cup',    label: 'Cambodian Hun Sen Cup',              category: 'Football',    espnSlug: null,                        sportsdbId: '5859', logo: 'https://r2.thesportsdb.com/images/media/league/badge/4motr51774278480.png' },
 
   // ── Basketball ─────────────────────────────────────────────────────────────
   { id: 'basketball-nba',        label: 'NBA',                                category: 'Basketball',  espnSlug: 'basketball/nba',            logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/nba.png' },
@@ -162,6 +163,7 @@ export const CATEGORY_ORDER = [
 export const FOOTBALL_LEAGUE_ORDER = [
   'soccer-epl',
   'soccer-ucl',
+  'soccer-fifa-world-cup-2026',
   'soccer-uel',
   'soccer-uecl',
   'soccer-facup',
@@ -185,6 +187,7 @@ export const FOOTBALL_LEAGUE_ORDER = [
   'soccer-afc-asian-cup',
   'soccer-asian-cup-women',
   'soccer-copam',
+  'soccer-hun-sen-cup',
 ];
 
 /** Category logo URLs — used in sidebar instead of emojis */
@@ -210,6 +213,7 @@ export const CATEGORY_LOGOS: Record<string, string> = {
 export const LEAGUE_SHORT: Record<string, string> = {
   'EPL': 'EPL',
   'UEFA Champions League': 'UCL',
+  '2026 FIFA World Cup': 'WC26',
   'UEFA Europa League': 'UEL',
   'Europa Conference League': 'UECL',
   'FA Cup': 'FAC',
@@ -270,7 +274,7 @@ export const LEAGUE_SHORT: Record<string, string> = {
 // Used to rank leagues in AI results: Football first, then by global viewership
 export const LEAGUE_POPULARITY: Record<string, number> = {
   // Football — highest global viewership
-  'EPL': 100, 'UCL': 99, 'LLG': 95, 'BUN': 93, 'SEA': 92,
+  'WC26': 100, 'EPL': 100, 'UCL': 99, 'LLG': 95, 'BUN': 93, 'SEA': 92,
   'L1F': 90, 'UEL': 88, 'COP': 85, 'UECL': 82, 'FAC': 80,
   'EFL': 70, 'CC': 68, 'MLS': 65, 'SPFL': 60, 'ERE': 58,
   'SPL': 55, 'ALE': 50, 'JLG': 48, 'AFCE': 45, 'AFC2': 40,
@@ -308,7 +312,7 @@ export const LEAGUE_POPULARITY: Record<string, number> = {
 // 10-15 games per day. Elite football leagues get more slots.
 export const LEAGUE_MAX_PICKS: Record<string, number> = {
   // ── Tier 1: Premium leagues — high cap ──────────────────────────────────
-  'EPL': 50, 'UCL': 40, 'LLG': 40, 'BUN': 30, 'SEA': 30,
+  'WC26': 104, 'EPL': 50, 'UCL': 40, 'LLG': 40, 'BUN': 30, 'SEA': 30,
   'L1F': 30, 'UEL': 30, 'COP': 30, 'UECL': 20, 'FAC': 25,
   // ── Tier 2: Good leagues — moderate cap ─────────────────────────────────
   'EFL': 10, 'CC': 10, 'MLS': 15, 'SPFL': 8, 'ERE': 10,

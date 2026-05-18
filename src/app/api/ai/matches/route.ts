@@ -214,7 +214,7 @@ async function callAI(provider: AIProviderResult, matchData: string): Promise<Ma
     raw = JSON.parse(jsonMatch[0]);
   } catch {
     // Try to fix common JSON issues (trailing commas, unescaped chars)
-    let fixed = jsonMatch[0]
+    const fixed = jsonMatch[0]
       .replace(/,\s*}/g, '}')  // trailing commas before }
       .replace(/,\s*]/g, ']')  // trailing commas before ]
       .replace(/"importance"\s*:\s*"([^"]*?)"/g, (m, v) => {

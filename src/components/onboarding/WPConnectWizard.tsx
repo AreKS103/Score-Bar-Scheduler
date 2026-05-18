@@ -669,12 +669,14 @@ export default function WPConnectWizard({
       const savedDownloaded = localStorage.getItem(LS_DOWNLOADED);
       const savedInstalled = localStorage.getItem(LS_INSTALLED);
 
-      if (savedDownloaded === 'true') setDownloaded(true);
-      if (savedInstalled === 'true') setInstalled(true);
-      if (savedStep) {
-        const n = parseInt(savedStep, 10);
-        if (n >= 1 && n <= 3) setStep(n);
-      }
+      queueMicrotask(() => {
+        if (savedDownloaded === 'true') setDownloaded(true);
+        if (savedInstalled === 'true') setInstalled(true);
+        if (savedStep) {
+          const n = parseInt(savedStep, 10);
+          if (n >= 1 && n <= 3) setStep(n);
+        }
+      });
     } catch {}
   }, []);
 

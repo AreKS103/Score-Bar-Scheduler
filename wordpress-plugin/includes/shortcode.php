@@ -38,6 +38,7 @@ function schedule_shortcode_render($atts) {
         'layout'          => 'list',
         'embed_id'        => '',
         'cat_labels'      => '',
+        'seo'             => '1',
     ], $atts, 'schedule');
 
     $query_args = [
@@ -123,7 +124,7 @@ function schedule_shortcode_render($atts) {
             u.searchParams.set('layout', layout);
             if (layout === 'list') { u.searchParams.set('listStyle', '<?php echo esc_js($atts['list_style'] !== 'calendar' ? $atts['list_style'] : 'default'); ?>'); }
             u.searchParams.set('noInlineToggle', '1');
-            frame.style.height = '0';
+            frame.style.height = '480px';
             frame.src = u.toString();
         } catch(e) {}
         var ac = '#<?php echo esc_js($accent_hex); ?>';
@@ -147,8 +148,8 @@ function schedule_shortcode_render($atts) {
             <div class="schedule-editor-overlay" style="display:none;position:absolute;top:0;left:0;right:0;height:20px;z-index:2;cursor:grab;" title="Drag to reposition"><span style="display:flex;align-items:center;justify-content:center;height:100%;font-size:13px;color:rgba(150,150,150,0.55);pointer-events:none;user-select:none;">&#8942;</span></div>
         <iframe id="<?php echo esc_attr($uid); ?>-frame"
             src="<?php echo esc_url($iframe_url); ?>"
-            style="position:relative;z-index:1;width:100%!important;height:<?php echo ($auto ? '0' : $height_css); ?>;border:none!important;display:block!important;"
-            scrolling="<?php echo $auto ? 'no' : 'auto'; ?>" loading="<?php echo $auto ? 'eager' : 'lazy'; ?>" title="Score Bar schedule" referrerpolicy="strict-origin-when-cross-origin" allowtransparency="true"></iframe>
+            style="position:relative;z-index:1;width:100%!important;height:<?php echo ($auto ? '480px' : $height_css); ?>;border:none!important;display:block!important;"
+            scrolling="auto" loading="<?php echo $auto ? 'eager' : 'lazy'; ?>" title="Score Bar schedule" referrerpolicy="strict-origin-when-cross-origin" allowtransparency="true"></iframe>
     </div>
     <script>
     (function(){
@@ -225,6 +226,11 @@ function schedule_shortcode_render($atts) {
         })();
     })();
     </script>
+    <?php
+    if ($atts['seo'] !== '0' && function_exists('schedule_render_seo_block')) {
+        echo schedule_render_seo_block($iframe_url);
+    }
+    ?>
     <?php
     return ob_get_clean();
 }

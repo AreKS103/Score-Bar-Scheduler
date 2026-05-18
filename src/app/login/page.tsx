@@ -8,6 +8,29 @@ import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 
 type Mode = 'signin' | 'signup' | 'verify';
 
+function getLoginErrorFromSearch(search: string) {
+  const params = new URLSearchParams(search);
+  const urlError = params.get('error');
+
+  if (urlError === 'invite_expired') {
+    return 'This invite link has expired or was already used. Please ask your admin to send a new invite.';
+  }
+  if (urlError === 'verification_failed') {
+    return 'Email verification failed. The link may have expired — please try signing up again.';
+  }
+  if (urlError === 'oauth_failed') {
+    return 'Google sign-in failed. Please try again.';
+  }
+  if (urlError === 'oauth_state_expired') {
+    return 'Sign-in session expired — please try again.';
+  }
+  if (urlError === 'oauth_email_exists') {
+    return 'An account with this email already exists. Sign in with your email & password, then link Google under Settings → Account.';
+  }
+
+  return '';
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('signin');
@@ -49,21 +72,8 @@ export default function LoginPage() {
 
   // Show error from URL params (e.g. expired invite, failed verification)
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const urlError = params.get('error');
-    if (urlError === 'invite_expired') {
-      setError('This invite link has expired or was already used. Please ask your admin to send a new invite.');
-    } else if (urlError === 'verification_failed') {
-      setError('Email verification failed. The link may have expired — please try signing up again.');
-    } else if (urlError === 'oauth_failed') {
-      setError('Google sign-in failed. Please try again.');
-    } else if (urlError === 'oauth_state_expired') {
-      setError('Sign-in session expired — please try again.');
-    } else if (urlError === 'oauth_email_exists') {
-      setError(
-        'An account with this email already exists. Sign in with your email & password, then link Google under Settings → Account.',
-      );
-    }
+    const urlError = getLoginErrorFromSearch(window.location.search);
+    if (urlError) queueMicrotask(() => setError(urlError));
   }, []);
 
   const [showVerifyNotice, setShowVerifyNotice] = useState(false);

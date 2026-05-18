@@ -10,6 +10,7 @@
  *       elementor-widget.php
  *       elementor-editor-sync.js
  *       elementor-init.php
+ *       seo.php
  *       settings.php
  *       shortcode.php
  *       schedule-frontend.js
@@ -45,6 +46,7 @@ const PLUGIN_FILES = [
   'includes/elementor-widget.php',
   'includes/elementor-editor-sync.js',
   'includes/elementor-init.php',
+  'includes/seo.php',
   'includes/settings.php',
   'includes/shortcode.php',
   'includes/schedule-frontend.js',

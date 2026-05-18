@@ -36,6 +36,7 @@ interface DragState {
   dragIndex: number;
   hoverIndex: number;
   offsetX: number;
+  shift: number;
 }
 
 const GAP = 6;        // matches gap-1.5 (Tailwind: 1.5 × 4px = 6px)
@@ -61,7 +62,6 @@ export default function DraggableEmbedPills({
 
   // Refs — avoid stale closures in pointer handlers
   const dragRef = useRef<DragState | null>(null);
-  dragRef.current = drag;
 
   const pillRefs = useRef<(HTMLDivElement | null)[]>([]);
   const rectsRef = useRef<DOMRect[]>([]);
@@ -86,11 +86,8 @@ export default function DraggableEmbedPills({
   // ── Transform calculation per pill ──────────────────────────────────────
   function getTranslateX(i: number): number {
     if (!drag) return 0;
-    const { dragIndex, hoverIndex, offsetX } = drag;
+    const { dragIndex, hoverIndex, offsetX, shift } = drag;
     if (i === dragIndex) return offsetX;
-
-    const draggedWidth = rectsRef.current[dragIndex]?.width ?? 0;
-    const shift = draggedWidth + GAP;
 
     if (dragIndex < hoverIndex) {
       // Moving right — pills in between shift left
@@ -121,14 +118,26 @@ export default function DraggableEmbedPills({
       if (Math.abs(offsetX) < THRESHOLD) return;
       // Threshold exceeded — initiate drag
       draggingRef.current = true;
-      setDrag({ dragIndex: i, hoverIndex: i, offsetX: 0 });
+      const initialDrag: DragState = {
+        dragIndex: i,
+        hoverIndex: i,
+        offsetX: 0,
+        shift: (rectsRef.current[i]?.width ?? 0) + GAP,
+      };
+      dragRef.current = initialDrag;
+      setDrag(initialDrag);
       return;
     }
 
     const rect = rectsRef.current[i];
     const currentCenterX = rect.left + rect.width / 2 + offsetX;
     const hoverIndex = computeHoverIndex(i, currentCenterX);
-    const next: DragState = { dragIndex: i, hoverIndex, offsetX };
+    const next: DragState = {
+      dragIndex: i,
+      hoverIndex,
+      offsetX,
+      shift: (rectsRef.current[i]?.width ?? 0) + GAP,
+    };
     dragRef.current = next;
     setDrag(next);
   }
@@ -143,7 +152,7 @@ export default function DraggableEmbedPills({
       // double-click detection here instead.
       const inst = instances[i];
       const value = inst.embed_id ?? inst.display_id;
-      const now = Date.now();
+      const now = e.timeStamp;
       const last = lastClickRef.current;
       if (last.idx === i && now - last.time < 300) {
         // Double-click — open rename
@@ -183,6 +192,7 @@ export default function DraggableEmbedPills({
   function handlePointerCancel() {
     activeIdxRef.current = -1;
     draggingRef.current = false;
+    dragRef.current = null;
     setDrag(null);
   }
 

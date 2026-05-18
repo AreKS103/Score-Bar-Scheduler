@@ -25,6 +25,23 @@ interface PendingSchedule {
   embed_target: string | null;
 }
 
+interface PublishedScheduleSnapshot {
+  id?: string;
+  week_label: string;
+  date_range_start: string;
+  date_range_end: string;
+  html_content: string;
+  events_snapshot: unknown[];
+  league_order: string[];
+  featured_leagues: Record<string, string>;
+  embed_target: string | null;
+}
+
+interface ScheduleHistoryResponse {
+  schedule?: { id?: string } | null;
+  schedules?: Array<{ id?: string }>;
+}
+
 const HISTORY_CACHE_MS = 60_000;
 
 interface PublishButtonProps {
@@ -64,7 +81,7 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
   // 5-second publish countdown (null = not counting, 0 = fire, 1-5 = counting)
   const [countdown, setCountdown] = useState<number | null>(null);
   // Undo toast state
-  const [undoToast, setUndoToast] = useState<{ prevSchedule: any } | null>(null);
+  const [undoToast, setUndoToast] = useState<{ prevSchedule: PublishedScheduleSnapshot } | null>(null);
   // Scheduled publish state
   const [scheduleMode, setScheduleMode] = useState(false);
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
@@ -81,7 +98,7 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
   const dropdownRef = useRef<HTMLDivElement>(null);
   const historyRef = useRef<HTMLDivElement>(null);
   // Stores previous schedule object fetched just before publish starts (for undo)
-  const prevScheduleRef = useRef<any>(null);
+  const prevScheduleRef = useRef<PublishedScheduleSnapshot | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const historyFetchedAtRef = useRef(0);
   const historyAbortRef = useRef<AbortController | null>(null);
@@ -228,7 +245,7 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
         throw new Error(err.error || `Server returned ${res.status}`);
       }
 
-      const result = await res.json();
+      await res.json().catch(() => null);
       setStatus('success');
       onSuccess?.(new Date().toISOString());
 
@@ -274,13 +291,13 @@ export default function PublishButton({ getHTML, disabled, onSuccess, onDeleteSc
     const targetParam = publishTarget ? `?target=${encodeURIComponent(publishTarget)}` : '?target=';
     fetch(`/api/schedule-history${targetParam}`)
       .then(r => r.json())
-      .then(async (data) => {
+      .then(async (data: ScheduleHistoryResponse) => {
         const latest = data.schedule ?? data.schedules?.[0];
         if (latest?.id) {
           const r2 = await fetch(`/api/schedule-history/${latest.id}`);
           if (r2.ok) {
-            const { schedule } = await r2.json();
-            prevScheduleRef.current = schedule;
+            const { schedule } = (await r2.json()) as { schedule?: PublishedScheduleSnapshot | null };
+            prevScheduleRef.current = schedule ?? null;
           }
         }
       })

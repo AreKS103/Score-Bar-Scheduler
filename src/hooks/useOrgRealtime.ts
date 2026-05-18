@@ -29,7 +29,10 @@ export function useOrgRealtime({
   enabled?: boolean;
 }) {
   const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
 
   useEffect(() => {
     if (!enabled) return;

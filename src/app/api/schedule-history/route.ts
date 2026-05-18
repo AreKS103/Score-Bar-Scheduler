@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getUserOrgId, getOrgMemberIds } from '@/lib/supabase/org';
+import type { MatchEvent } from '@/types';
+import { refreshWorldCupSnapshotEvents } from '@/lib/worldCup';
 
 const MAX_HISTORY = 50; // per embed_target — keep full history
 
@@ -90,7 +92,11 @@ export async function GET(req: NextRequest) {
         : await query.eq('embed_target', target);
 
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      return NextResponse.json({ schedule: data?.[0] ?? null });
+      const schedule = data?.[0] ?? null;
+      if (schedule && Array.isArray(schedule.events_snapshot)) {
+        schedule.events_snapshot = await refreshWorldCupSnapshotEvents(schedule.events_snapshot as MatchEvent[]);
+      }
+      return NextResponse.json({ schedule });
     }
 
     // No ?target → return history list (for PublishButton history drawer).

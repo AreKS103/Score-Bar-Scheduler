@@ -29,6 +29,13 @@ export interface MatchEvent {
   tags: ScreenTag[];       // Screen/viewing tags
   isFeatured: boolean;     // Star toggle — appears in highlights
   isSelected: boolean;     // Whether included in the published schedule
+  sourceEventId?: string;  // Provider's original event id, used for targeted refreshes
+  isoDate?: string;        // Provider UTC timestamp, when available
+  stageSlug?: string;      // Tournament stage slug, when available
+  status?: string;         // Provider status text, when available
+  venue?: string;          // Venue name, when available
+  city?: string;           // Venue city, when available
+  country?: string;        // Venue country, when available
   // ── MMA / Boxing fight card fields ──
   isMainCard?: boolean;    // true = main event, false = undercard
   cardName?: string;       // e.g. "UFC 326" — groups fights under one card

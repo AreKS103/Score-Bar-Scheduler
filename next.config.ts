@@ -3,17 +3,16 @@ import withBundleAnalyzer from '@next/bundle-analyzer';
 import type { NextConfig } from 'next';
 import path from 'path';
 
-// On local Windows/OneDrive dev: redirect build output to AppData to prevent
-// OneDrive file-lock (EBUSY/EPERM) errors. NEXT_PHASE is a Next.js constant,
-// not an env var, so we cannot use it here — always redirect when LOCALAPPDATA
-// is present (i.e. local Windows). On Vercel/CI LOCALAPPDATA is undefined so
-// this is a no-op and the default '.next' inside the project is used.
+// Older local Windows/OneDrive builds used an AppData distDir to avoid file-lock
+// errors. Newer Turbopack builds reject distDir values outside the project, so
+// keep that workaround opt-in and fall back to the normal in-project '.next'.
 function resolveDistDir(): string | undefined {
-  if (process.env.VERCEL || process.env.CI || !process.env.LOCALAPPDATA) {
+  if (process.env.VERCEL || process.env.CI || process.env.SCOREBAR_EXTERNAL_NEXT_DIR !== '1' || !process.env.LOCALAPPDATA) {
     return undefined; // Vercel / CI: use default '.next'
   }
   const target = path.join(process.env.LOCALAPPDATA, 'scorebarschedule-next');
-  return path.relative(process.cwd(), target);
+  const relativeTarget = path.relative(process.cwd(), target);
+  return relativeTarget.startsWith('..') || path.isAbsolute(relativeTarget) ? undefined : relativeTarget;
 }
 
 const distDir = resolveDistDir();

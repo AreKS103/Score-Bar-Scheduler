@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     let userId: string | null = keyData?.user_id ?? null;
-    let foundByHash = userId !== null;
+    const foundByHash = userId !== null;
 
     // ── Step 2: Key not found by hash — try by siteUrl (handles key
     //    regeneration where WordPress still holds the old token but the

@@ -33,6 +33,7 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
         $this->add_control('show_date',       ['label' => 'Date Rows',            'type' => \Elementor\Controls_Manager::SWITCHER, 'label_on' => 'Show', 'label_off' => 'Hide', 'return_value' => '1', 'default' => '1']);
         $this->add_control('show_time',       ['label' => 'Match Time',           'type' => \Elementor\Controls_Manager::SWITCHER, 'label_on' => 'Show', 'label_off' => 'Hide', 'return_value' => '1', 'default' => '1']);
         $this->add_control('auto_height', ['label' => 'Auto Height (fit content)', 'type' => \Elementor\Controls_Manager::SWITCHER, 'label_on' => 'On', 'label_off' => 'Off', 'return_value' => '1', 'default' => '1', 'description' => 'Expands to show all matches with no scrollbar']);
+        $this->add_control('seo_content', ['label' => 'SEO Text Summary', 'type' => \Elementor\Controls_Manager::SWITCHER, 'label_on' => 'Show', 'label_off' => 'Hide', 'return_value' => '1', 'default' => '1', 'description' => 'Adds crawlable schedule text and structured data to the WordPress page.']);
         $this->add_control('show_view_toggle', ['label' => 'View Toggle Button', 'type' => \Elementor\Controls_Manager::SWITCHER, 'label_on' => 'Show', 'label_off' => 'Hide', 'return_value' => '1', 'default' => '1', 'description' => 'Show/hide the List ↔ Calendar toggle button.']);
         $this->add_responsive_control('iframe_height', ['label' => 'Fixed Height (Auto off only)', 'type' => \Elementor\Controls_Manager::SLIDER, 'size_units' => ['px', 'vh'], 'range' => ['px' => ['min' => 200, 'max' => 3000], 'vh' => ['min' => 10, 'max' => 100]], 'default' => ['unit' => 'px', 'size' => 600]]);
         $this->end_controls_section();
@@ -158,7 +159,7 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
                     u.searchParams.set('listStyle', '<?php echo esc_js($view_mode === 'calendar' ? 'default' : $view_mode); ?>');
                 }
                 u.searchParams.set('noInlineToggle', '1');
-                frame.style.height = '0';
+                frame.style.height = '480px';
                 frame.src = u.toString();
             } catch(e) {}
             var ac = '#<?php echo esc_js($accent_hex); ?>';
@@ -182,8 +183,8 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
             <div class="schedule-editor-overlay" style="display:none;position:absolute;top:0;left:0;right:0;height:20px;z-index:2;cursor:grab;" title="Drag to reposition"><span style="display:flex;align-items:center;justify-content:center;height:100%;font-size:13px;color:rgba(150,150,150,0.55);pointer-events:none;user-select:none;">&#8942;</span></div>
             <iframe id="<?php echo esc_attr($uid); ?>-frame"
                 src="<?php echo esc_url($iframe_url); ?>"
-                style="position:relative;z-index:1;width:100%!important;height:<?php echo ($auto_height ? '0' : esc_attr($height_val)); ?>;border:none!important;display:block!important;"
-                scrolling="<?php echo $auto_height ? 'no' : 'auto'; ?>" loading="<?php echo $auto_height ? 'eager' : 'lazy'; ?>" title="Score Bar schedule" referrerpolicy="strict-origin-when-cross-origin" allowtransparency="true"></iframe>
+                style="position:relative;z-index:1;width:100%!important;height:<?php echo ($auto_height ? '480px' : esc_attr($height_val)); ?>;border:none!important;display:block!important;"
+                scrolling="auto" loading="<?php echo $auto_height ? 'eager' : 'lazy'; ?>" title="Score Bar schedule" referrerpolicy="strict-origin-when-cross-origin" allowtransparency="true"></iframe>
         </div>
         <script>
         (function(){
@@ -281,6 +282,11 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
             })();
         })();
         </script>
+        <?php
+        if (!empty($settings['seo_content']) && function_exists('schedule_render_seo_block')) {
+            echo schedule_render_seo_block($iframe_url);
+        }
+        ?>
         <?php
     }
 }

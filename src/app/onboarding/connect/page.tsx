@@ -29,15 +29,18 @@ function ConnectPageContent() {
         update_failed: 'Failed to save connection. Please try again.',
         internal: 'An internal error occurred. Please try again.',
       };
-      setCallbackError(messages[error] || 'Connection failed. Please try again.');
+      const message = messages[error] || 'Connection failed. Please try again.';
+      queueMicrotask(() => setCallbackError(message));
     }
 
     if (connected === 'true' && site) {
-      setExistingConnection({
-        siteUrl: decodeURIComponent(site),
-        connectedAt: new Date().toISOString(),
+      queueMicrotask(() => {
+        setExistingConnection({
+          siteUrl: decodeURIComponent(site),
+          connectedAt: new Date().toISOString(),
+        });
+        setLoading(false);
       });
-      setLoading(false);
       return;
     }
 

@@ -110,8 +110,8 @@ export default function BusinessInfoModal({ isOpen, onClose, onSaved }: Business
       const publicUrl = `${urlData.publicUrl}?v=${Date.now()}`;
 
       setForm(f => ({ ...f, logo_url: publicUrl, logo_path: path }));
-    } catch (e: any) {
-      setError(e.message ?? 'Logo upload failed');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Logo upload failed');
     } finally {
       setUploading(false);
     }

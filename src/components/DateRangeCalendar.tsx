@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useSyncExternalStore } from 'react';
 import { format, parse, isValid } from 'date-fns';
 import { CalendarDays, CalendarRange, Calendar1 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -11,15 +11,17 @@ import type { DateRange } from 'react-day-picker';
 type CalendarMode = 'range' | 'single';
 
 function useIsMobile(breakpoint = 640) {
-  const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${breakpoint - 1}px)`);
-    setIsMobile(mql.matches);
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mql.addEventListener('change', handler);
-    return () => mql.removeEventListener('change', handler);
-  }, [breakpoint]);
-  return isMobile;
+  const query = `(max-width: ${breakpoint - 1}px)`;
+
+  return useSyncExternalStore(
+    (notify) => {
+      const mql = window.matchMedia(query);
+      mql.addEventListener('change', notify);
+      return () => mql.removeEventListener('change', notify);
+    },
+    () => window.matchMedia(query).matches,
+    () => false,
+  );
 }
 
 interface DateRangeCalendarProps {

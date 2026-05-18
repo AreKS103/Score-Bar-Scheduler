@@ -63,8 +63,8 @@ export async function POST() {
       apiKey: plainKey, 
       preview: preview
     });
-  } catch (error: any) {
-    console.error('[keys/generate] error:', error?.message);
+  } catch (error: unknown) {
+    console.error('[keys/generate] error:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

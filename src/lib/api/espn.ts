@@ -1,6 +1,7 @@
 import type { MatchEvent, ESPNScoreboardResponse, ESPNCompetitor } from '@/types';
 import { SPORTS_CONFIG } from '@/lib/config';
 import { utcToLocal, espnDateRange } from '@/lib/timezone';
+import { formatWorldCupStage, WORLD_CUP_SPORT_ID } from '@/lib/worldCup';
 
 const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports';
 
@@ -75,6 +76,7 @@ function mapTeamEvents(
   sportConfig: { id: string; label: string; category: string; logo: string }
 ): MatchEvent[] {
   if (!data.events || !Array.isArray(data.events)) return [];
+  const isWorldCup = sportConfig.id === WORLD_CUP_SPORT_ID;
 
   return data.events.map((event) => {
     const comp = event.competitions?.[0];
@@ -93,7 +95,9 @@ function mapTeamEvents(
     // Determine round info from event name if available
     let round = '';
     const name = event.name || '';
-    if (name.includes(' - ')) {
+    if (isWorldCup) {
+      round = formatWorldCupStage(event.season?.slug);
+    } else if (name.includes(' - ')) {
       const parts = name.split(' - ');
       if (parts.length > 1) {
         round = parts[parts.length - 1].trim();
@@ -117,8 +121,14 @@ function mapTeamEvents(
       tags: [],
       isFeatured: false,
       isSelected: false,
+      ...(isWorldCup ? {
+        sourceEventId: event.id,
+        isoDate: event.date,
+        stageSlug: event.season?.slug || 'group-stage',
+      } : {}),
     };
   }).filter((event) => {
+    if (isWorldCup) return true;
     const placeholderPattern = /\bwinner\b|\btbd\b|\bloser\b|\bqualifier\b/i;
     return !placeholderPattern.test(event.home) && !placeholderPattern.test(event.away);
   });

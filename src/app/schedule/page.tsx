@@ -67,6 +67,71 @@ interface ScheduleHistoryState {
   signature: string;
 }
 
+interface EmbedInstanceState {
+  display_id: string;
+  embed_id: string | null;
+  registered?: boolean;
+}
+
+const EMBED_ORDER_STORAGE_KEY = 'sportglobe_embed_order_v1';
+
+function getEmbedInstanceKey(instance: EmbedInstanceState): string {
+  return instance.embed_id ?? instance.display_id;
+}
+
+function loadStoredEmbedOrder(): string[] | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(EMBED_ORDER_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as string[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveStoredEmbedOrder(instances: EmbedInstanceState[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    const order = instances.map(getEmbedInstanceKey).filter(Boolean);
+    localStorage.setItem(EMBED_ORDER_STORAGE_KEY, JSON.stringify(order));
+  } catch { /* ignore */ }
+}
+
+function mergeEmbedInstances(
+  registeredInstances: EmbedInstanceState[],
+  publishedTargets: string[],
+): EmbedInstanceState[] {
+  const merged = new Map<string, EmbedInstanceState>();
+
+  for (const instance of registeredInstances) {
+    const key = getEmbedInstanceKey(instance);
+    if (!key) continue;
+    merged.set(key, { ...instance, registered: true });
+  }
+
+  for (const target of publishedTargets) {
+    const key = target.trim();
+    if (!key || merged.has(key)) continue;
+    merged.set(key, { display_id: key, embed_id: key, registered: false });
+  }
+
+  return Array.from(merged.values());
+}
+
+function applyStoredEmbedOrder(instances: EmbedInstanceState[]): EmbedInstanceState[] {
+  const savedOrder = loadStoredEmbedOrder();
+  if (!savedOrder) return instances;
+
+  const ordered = [
+    ...savedOrder
+      .map((id) => instances.find((instance) => getEmbedInstanceKey(instance) === id))
+      .filter((instance): instance is EmbedInstanceState => instance !== undefined),
+    ...instances.filter((instance) => !savedOrder.includes(getEmbedInstanceKey(instance))),
+  ];
+  saveStoredEmbedOrder(ordered);
+  return ordered;
+}
+
 function cloneEventsForHistory(events: MatchEvent[]): MatchEvent[] {
   return events.map((e) => ({
     ...e,
@@ -261,7 +326,7 @@ export default function SchedulePage() {
   );
 
   const [flashKey, setFlashKey] = useState(0);
-  const [embedInstances, setEmbedInstances] = useState<{ display_id: string; embed_id: string | null }[]>([]);
+  const [embedInstances, setEmbedInstances] = useState<EmbedInstanceState[]>([]);
   const [publishTarget, setPublishTarget] = useState<string>('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -307,27 +372,17 @@ export default function SchedulePage() {
     return fetch('/api/embed-instances')
       .then((r) => r.json())
       .then((d) => {
-        const fetched: { display_id: string; embed_id: string | null }[] = d.instances ?? [];
-        // Restore user-sorted order from localStorage
-        const savedOrder = (() => {
-          try {
-            const raw = typeof window !== 'undefined' && localStorage.getItem('sportglobe_embed_order_v1');
-            return raw ? (JSON.parse(raw) as string[]) : null;
-          } catch { return null; }
-        })();
-        const instances = savedOrder
-          ? [
-              ...savedOrder
-                .map(id => fetched.find(f => (f.embed_id ?? f.display_id) === id))
-                .filter((x): x is typeof fetched[number] => x !== undefined),
-              ...fetched.filter(f => !savedOrder.includes(f.embed_id ?? f.display_id)),
-            ]
-          : fetched;
+        const fetched: EmbedInstanceState[] = d.instances ?? [];
+        const publishedTargets = Array.isArray(d.publishedTargets)
+          ? d.publishedTargets.filter((target: unknown): target is string => typeof target === 'string')
+          : [];
+        const instances = applyStoredEmbedOrder(mergeEmbedInstances(fetched, publishedTargets));
         setEmbedInstances(instances);
-        // Prune localStorage selection keys for embeds that no longer exist.
+        // Prune localStorage selection keys for embeds that no longer exist in
+        // either registered widgets or published schedule targets.
         // Sequential IDs ("1", "2", …) get recycled on delete+recreate, so stale
         // keys would silently populate a brand-new embed with the old one's selections.
-        const liveIds = new Set(fetched.map(f => f.embed_id ?? f.display_id));
+        const liveIds = new Set(instances.map(getEmbedInstanceKey));
         pruneStaleSelectionKeys(liveIds);
         // Auto-select first embed on first load (no "All" option).
         if (!didAutoSelectEmbed.current && instances.length > 0) {
@@ -362,11 +417,15 @@ export default function SchedulePage() {
       });
       const d = await r.json();
       if (!r.ok) { alert(d.error ?? 'Rename failed'); return; }
-      setEmbedInstances(prev => prev.map(i =>
-        (i.embed_id ?? i.display_id) === oldId
-          ? { ...i, embed_id: trimmed, display_id: trimmed }
-          : i
-      ));
+      setEmbedInstances(prev => {
+        const next = prev.map(i =>
+          getEmbedInstanceKey(i) === oldId
+            ? { ...i, embed_id: trimmed, display_id: trimmed }
+            : i
+        );
+        saveStoredEmbedOrder(next);
+        return next;
+      });
       if (publishTarget === oldId) setPublishTarget(trimmed);
     } catch { /* ignore */ }
   }
@@ -2411,7 +2470,7 @@ export default function SchedulePage() {
                   onRenameChange={setRenameValue}
                   onRenameCommit={(val) => commitRename(val)}
                   onRenameCancel={() => setRenamingId(null)}
-                  onReorder={(next) => setEmbedInstances(next)}
+                  onReorder={(next) => { setEmbedInstances(next); saveStoredEmbedOrder(next); }}
                 />
               </div>
 
