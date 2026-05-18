@@ -38,7 +38,7 @@ function schedule_shortcode_default_atts() {
         'layout'          => 'list',
         'embed_id'        => '',
         'cat_labels'      => '',
-        'seo'             => '1',
+        'seo'             => '0',
     ];
 }
 }
@@ -193,7 +193,8 @@ function schedule_fetch_seo_payload($iframe_url) {
     $app = schedule_get_app_domain();
     $is_local = strpos($app, 'localhost') !== false || strpos($app, '127.0.0.1') !== false || strpos($app, '.local') !== false;
     $response = wp_remote_get($seo_url, [
-        'timeout' => 4,
+        'timeout' => 1.5,
+        'redirection' => 2,
         'sslverify' => !$is_local,
     ]);
     if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
@@ -205,7 +206,7 @@ function schedule_fetch_seo_payload($iframe_url) {
         return null;
     }
 
-    set_transient($cache_key, $payload, MINUTE_IN_SECONDS);
+    set_transient($cache_key, $payload, 5 * MINUTE_IN_SECONDS);
     return $payload;
 }
 }
@@ -253,31 +254,13 @@ function schedule_render_seo_block($iframe_url) {
 
     $title = sanitize_text_field($payload['title'] ?? 'Sports schedule');
     $description = sanitize_text_field($payload['description'] ?? 'Upcoming sports schedule.');
-    $body = wp_kses($payload['bodyHtml'], schedule_allowed_seo_html());
     $json_ld = !empty($payload['jsonLd']) ? wp_json_encode($payload['jsonLd'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : '';
+
+    if (!$json_ld) return '';
 
     ob_start();
     ?>
-    <style>
-    .scorebar-seo-details{margin-top:16px;font-size:14px;line-height:1.55;color:inherit}
-    .scorebar-seo-details summary{cursor:pointer;font-weight:700;margin-bottom:8px}
-    .scorebar-seo-content h3{font-size:1em;margin:16px 0 8px}
-    .scorebar-seo-content h4{font-size:0.95em;margin:12px 0 6px}
-    .scorebar-seo-content h5{font-size:0.78em;text-transform:uppercase;letter-spacing:.08em;margin:10px 0 4px;opacity:.72}
-    .scorebar-seo-content ul{margin:0 0 10px 0;padding-left:1.2em}
-    .scorebar-seo-content li{margin:3px 0}
-    .scorebar-seo-content time{font-weight:700;margin-right:6px}
-    </style>
-    <details class="scorebar-seo-details">
-        <summary><?php echo esc_html($title); ?></summary>
-        <div class="scorebar-seo-content" aria-label="Searchable sports schedule">
-            <p><?php echo esc_html($description); ?></p>
-            <?php echo $body; ?>
-        </div>
-    </details>
-    <?php if ($json_ld): ?>
     <script type="application/ld+json"><?php echo $json_ld; ?></script>
-    <?php endif; ?>
     <?php
     return ob_get_clean();
 }

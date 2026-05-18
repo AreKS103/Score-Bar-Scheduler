@@ -38,7 +38,7 @@ function schedule_shortcode_render($atts) {
         'layout'          => 'list',
         'embed_id'        => '',
         'cat_labels'      => '',
-        'seo'             => '1',
+        'seo'             => '0',
     ], $atts, 'schedule');
 
     $query_args = [
@@ -117,15 +117,15 @@ function schedule_shortcode_render($atts) {
     </div>
     <script>
     function sbToggle_<?php echo esc_js($uid); ?>(btn, layout) {
-        var frame = document.getElementById('<?php echo esc_js($uid); ?>-frame');
-        if (!frame) return;
+        var mainFrame = document.getElementById('<?php echo esc_js($uid); ?>-frame');
+        var altFrame = document.getElementById('<?php echo esc_js($uid); ?>-frame-alt');
+        if (!mainFrame || !altFrame) return;
+        var frame = mainFrame.getAttribute('data-layout') === layout ? mainFrame : altFrame;
         try {
-            var u = new URL(frame.src);
-            u.searchParams.set('layout', layout);
-            if (layout === 'list') { u.searchParams.set('listStyle', '<?php echo esc_js($atts['list_style'] !== 'calendar' ? $atts['list_style'] : 'default'); ?>'); }
-            u.searchParams.set('noInlineToggle', '1');
-            frame.style.height = '480px';
-            frame.src = u.toString();
+            if (!frame.src) frame.src = sbBuildUrl_<?php echo esc_js($uid); ?>(layout);
+            mainFrame.style.display = frame === mainFrame ? 'block' : 'none';
+            altFrame.style.display = frame === altFrame ? 'block' : 'none';
+            frame.style.height = (frame.getAttribute('data-sb-height') || '480') + 'px';
         } catch(e) {}
         var ac = '#<?php echo esc_js($accent_hex); ?>';
         var seg = 'cursor:pointer;padding:5px 14px;font-size:13px;font-family:inherit;transition:all .15s;border-radius:0';
@@ -141,15 +141,41 @@ function schedule_shortcode_render($atts) {
             }
         });
     }
+    function sbBuildUrl_<?php echo esc_js($uid); ?>(layout) {
+        var base = document.getElementById('<?php echo esc_js($uid); ?>-frame');
+        var u = new URL(base.src);
+        u.searchParams.set('layout', layout);
+        if (layout === 'list') { u.searchParams.set('listStyle', '<?php echo esc_js($atts['list_style'] !== 'calendar' ? $atts['list_style'] : 'default'); ?>'); }
+        u.searchParams.set('noInlineToggle', '1');
+        return u.toString();
+    }
+    function sbPreloadAlt_<?php echo esc_js($uid); ?>() {
+        var alt = document.getElementById('<?php echo esc_js($uid); ?>-frame-alt');
+        if (!alt || alt.src) return;
+        alt.src = sbBuildUrl_<?php echo esc_js($uid); ?>(alt.getAttribute('data-layout'));
+    }
+    (function(){
+        if ('requestIdleCallback' in window) {
+            window.requestIdleCallback(sbPreloadAlt_<?php echo esc_js($uid); ?>, { timeout: 1200 });
+        } else {
+            setTimeout(sbPreloadAlt_<?php echo esc_js($uid); ?>, 600);
+        }
+    })();
     </script>
     <?php endif; ?>
     <div class="schedule-wrapper" id="<?php echo esc_attr($uid); ?>" style="position:relative;width:100%!important;max-width:100%!important;height:<?php echo $height_css; ?>;overflow:<?php echo $overflow; ?>;border:none!important;background:transparent!important;">
         <!-- Narrow grab-handle at top: lets Elementor select the widget without blocking iframe content -->
             <div class="schedule-editor-overlay" style="display:none;position:absolute;top:0;left:0;right:0;height:20px;z-index:2;cursor:grab;" title="Drag to reposition"><span style="display:flex;align-items:center;justify-content:center;height:100%;font-size:13px;color:rgba(150,150,150,0.55);pointer-events:none;user-select:none;">&#8942;</span></div>
         <iframe id="<?php echo esc_attr($uid); ?>-frame"
+            data-layout="<?php echo $is_cal ? 'calendar' : 'list'; ?>"
             src="<?php echo esc_url($iframe_url); ?>"
             style="position:relative;z-index:1;width:100%!important;height:<?php echo ($auto ? '480px' : $height_css); ?>;border:none!important;display:block!important;"
             scrolling="auto" loading="<?php echo $auto ? 'eager' : 'lazy'; ?>" title="Score Bar schedule" referrerpolicy="strict-origin-when-cross-origin" allowtransparency="true"></iframe>
+        <iframe id="<?php echo esc_attr($uid); ?>-frame-alt"
+            data-layout="<?php echo $is_cal ? 'list' : 'calendar'; ?>"
+            src=""
+            style="position:relative;z-index:1;width:100%!important;height:480px;border:none!important;display:none!important;"
+            scrolling="auto" loading="eager" title="Score Bar schedule" referrerpolicy="strict-origin-when-cross-origin" allowtransparency="true"></iframe>
     </div>
     <script>
     (function(){
@@ -175,11 +201,18 @@ function schedule_shortcode_render($atts) {
     </script>
     <script>
     (function(){
-        var fid = '<?php echo esc_js($uid); ?>-frame';
+        var frames = [document.getElementById('<?php echo esc_js($uid); ?>-frame'), document.getElementById('<?php echo esc_js($uid); ?>-frame-alt')].filter(Boolean);
         window.addEventListener('message', function(e){
             if (e.data && typeof e.data.sbHeight === 'number') {
-                var f = document.getElementById(fid);
-                try { if (f && e.source === f.contentWindow) { f.style.height = e.data.sbHeight + 'px'; } } catch(err) {}
+                for (var i = 0; i < frames.length; i++) {
+                    var f = frames[i];
+                    try {
+                        if (f && e.source === f.contentWindow) {
+                            f.setAttribute('data-sb-height', String(e.data.sbHeight));
+                            if (f.style.display !== 'none') f.style.height = e.data.sbHeight + 'px';
+                        }
+                    } catch(err) {}
+                }
             }
         });
         // MutationObserver: fire DELETE when this embed is permanently removed from the DOM.

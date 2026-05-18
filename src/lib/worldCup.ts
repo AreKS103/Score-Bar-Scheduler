@@ -226,13 +226,31 @@ function getBroadcasts(comp: ESPNCompetition | undefined): string[] {
   return Array.from(new Set(names.filter(Boolean)));
 }
 
+export function isWorldCupPlaceholderTeamName(value?: string | null): boolean {
+  const name = (value ?? '').trim();
+  if (!name) return false;
+  return /\btbd\b/i.test(name)
+    || /\b(winner|loser|qualifier)\b/i.test(name)
+    || /^group\s+[a-l]\s+(winner|\d+(st|nd|rd|th)\s+place)$/i.test(name)
+    || /^third\s+place\s+group\b/i.test(name)
+    || /^round\s+of\s+\d+\b/i.test(name)
+    || /^quarterfinal\s+\d+\b/i.test(name)
+    || /^semifinal\s+\d+\b/i.test(name);
+}
+
+function formatWorldCupTeamName(value?: string | null): string {
+  const name = (value ?? '').trim();
+  if (!name) return '';
+  return isWorldCupPlaceholderTeamName(name) ? 'TBD' : name;
+}
+
 function mapESPNWorldCupEvent(event: ESPNWorldCupEvent, timeZone: string): WorldCupFixture | null {
   const comp = event.competitions?.[0];
   const competitors = comp?.competitors ?? [];
   const home = competitors.find((c) => c.homeAway === 'home') ?? competitors.find((c) => c.order === 0) ?? competitors[0];
   const away = competitors.find((c) => c.homeAway === 'away') ?? competitors.find((c) => c.order === 1) ?? competitors[1];
-  const homeName = getCompetitorName(home) || event.name || 'TBD';
-  const awayName = getCompetitorName(away) || '';
+  const homeName = formatWorldCupTeamName(getCompetitorName(home) || event.name || 'TBD');
+  const awayName = formatWorldCupTeamName(getCompetitorName(away) || '');
   const local = formatUtcDateInTimeZone(event.date, timeZone);
   if (!local.date) return null;
 
@@ -251,8 +269,8 @@ function mapESPNWorldCupEvent(event: ESPNWorldCupEvent, timeZone: string): World
     time: local.time,
     home: homeName,
     away: awayName,
-    homeLogo: getCompetitorLogo(home),
-    awayLogo: getCompetitorLogo(away),
+    homeLogo: homeName === 'TBD' ? '' : getCompetitorLogo(home),
+    awayLogo: awayName === 'TBD' ? '' : getCompetitorLogo(away),
     round: stage,
     tags: [],
     isFeatured: false,
@@ -274,6 +292,9 @@ function mapSportsDBWorldCupEvent(event: SportsDBWorldCupEvent, timeZone: string
   const local = formatUtcDateInTimeZone(`${event.dateEvent}T${time}Z`, timeZone);
   const stage = event.strRound || 'Group Stage';
 
+  const homeName = formatWorldCupTeamName(event.strHomeTeam || event.strEvent || 'TBD');
+  const awayName = formatWorldCupTeamName(event.strAwayTeam || '');
+
   return {
     id: `sportsdb-${event.idEvent}`,
     source: 'sportsdb',
@@ -284,10 +305,10 @@ function mapSportsDBWorldCupEvent(event: SportsDBWorldCupEvent, timeZone: string
     leagueLogo: WORLD_CUP_LOGO,
     date: local.date,
     time: local.time,
-    home: event.strHomeTeam || event.strEvent || 'TBD',
-    away: event.strAwayTeam || '',
-    homeLogo: event.strHomeTeamBadge || '',
-    awayLogo: event.strAwayTeamBadge || '',
+    home: homeName,
+    away: awayName,
+    homeLogo: homeName === 'TBD' ? '' : event.strHomeTeamBadge || '',
+    awayLogo: awayName === 'TBD' ? '' : event.strAwayTeamBadge || '',
     round: stage,
     tags: [],
     isFeatured: false,

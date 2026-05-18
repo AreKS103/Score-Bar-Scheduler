@@ -57,7 +57,7 @@ import { Button } from '@/components/ui/button';
 import { useOrgRealtime } from '@/hooks/useOrgRealtime';
 import { useEmbedRealtime } from '@/hooks/useEmbedRealtime';
 import { useTimezoneStore } from '@/lib/timezoneStore';
-import { WORLD_CUP_SPORT_ID } from '@/lib/worldCup';
+import { isWorldCupPlaceholderTeamName, WORLD_CUP_SPORT_ID } from '@/lib/worldCup';
 import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
@@ -1105,8 +1105,12 @@ export default function SchedulePage() {
     if (worldCupLoadingRef.current) return;
 
     const currentEvents = useScheduleStore.getState().events;
-    const existingWorldCupCount = currentEvents.filter((event) => event.sportId === WORLD_CUP_SPORT_ID).length;
-    if (!forceRefresh && existingWorldCupCount >= 100) return;
+    const existingWorldCupEvents = currentEvents.filter((event) => event.sportId === WORLD_CUP_SPORT_ID);
+    const hasVerbosePlaceholders = existingWorldCupEvents.some((event) =>
+      (event.home !== 'TBD' && isWorldCupPlaceholderTeamName(event.home))
+      || Boolean(event.away && event.away !== 'TBD' && isWorldCupPlaceholderTeamName(event.away)),
+    );
+    if (!forceRefresh && existingWorldCupEvents.length >= 100 && !hasVerbosePlaceholders) return;
 
     worldCupLoadingRef.current = true;
     setFetchStatuses({

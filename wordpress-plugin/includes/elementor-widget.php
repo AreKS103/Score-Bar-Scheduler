@@ -33,7 +33,7 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
         $this->add_control('show_date',       ['label' => 'Date Rows',            'type' => \Elementor\Controls_Manager::SWITCHER, 'label_on' => 'Show', 'label_off' => 'Hide', 'return_value' => '1', 'default' => '1']);
         $this->add_control('show_time',       ['label' => 'Match Time',           'type' => \Elementor\Controls_Manager::SWITCHER, 'label_on' => 'Show', 'label_off' => 'Hide', 'return_value' => '1', 'default' => '1']);
         $this->add_control('auto_height', ['label' => 'Auto Height (fit content)', 'type' => \Elementor\Controls_Manager::SWITCHER, 'label_on' => 'On', 'label_off' => 'Off', 'return_value' => '1', 'default' => '1', 'description' => 'Expands to show all matches with no scrollbar']);
-        $this->add_control('seo_content', ['label' => 'SEO Text Summary', 'type' => \Elementor\Controls_Manager::SWITCHER, 'label_on' => 'Show', 'label_off' => 'Hide', 'return_value' => '1', 'default' => '1', 'description' => 'Adds crawlable schedule text and structured data to the WordPress page.']);
+        $this->add_control('seo_content', ['label' => 'SEO Metadata', 'type' => \Elementor\Controls_Manager::SWITCHER, 'label_on' => 'Show', 'label_off' => 'Hide', 'return_value' => '1', 'default' => '', 'description' => 'Adds structured data without rendering a second visible schedule.']);
         $this->add_control('show_view_toggle', ['label' => 'View Toggle Button', 'type' => \Elementor\Controls_Manager::SWITCHER, 'label_on' => 'Show', 'label_off' => 'Hide', 'return_value' => '1', 'default' => '1', 'description' => 'Show/hide the List ↔ Calendar toggle button.']);
         $this->add_responsive_control('iframe_height', ['label' => 'Fixed Height (Auto off only)', 'type' => \Elementor\Controls_Manager::SLIDER, 'size_units' => ['px', 'vh'], 'range' => ['px' => ['min' => 200, 'max' => 3000], 'vh' => ['min' => 10, 'max' => 100]], 'default' => ['unit' => 'px', 'size' => 600]]);
         $this->end_controls_section();
@@ -135,8 +135,9 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
             background-color: transparent !important;
         }
         </style>
-        <?php if (!empty($settings['show_view_toggle'])) :
-            $is_cal = ($view_mode === 'calendar');
+        <?php
+        $is_cal = ($view_mode === 'calendar');
+        if (!empty($settings['show_view_toggle'])) :
             $ac = '#' . esc_attr($accent_hex);
             $seg = 'cursor:pointer;padding:5px 14px;font-size:13px;font-family:inherit;transition:all .15s;border-radius:0';
             $list_active   = $seg . ';border:1px solid ' . $ac . ';border-right:none;background:' . $ac . ';color:#fff;font-weight:600';
@@ -150,17 +151,15 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
         </div>
         <script>
         function sbToggle_<?php echo esc_js($uid); ?>(btn, layout) {
-            var frame = document.getElementById('<?php echo esc_js($uid); ?>-frame');
-            if (!frame) return;
+            var mainFrame = document.getElementById('<?php echo esc_js($uid); ?>-frame');
+            var altFrame = document.getElementById('<?php echo esc_js($uid); ?>-frame-alt');
+            if (!mainFrame || !altFrame) return;
+            var frame = mainFrame.getAttribute('data-layout') === layout ? mainFrame : altFrame;
             try {
-                var u = new URL(frame.src);
-                u.searchParams.set('layout', layout);
-                if (layout === 'list') {
-                    u.searchParams.set('listStyle', '<?php echo esc_js($view_mode === 'calendar' ? 'default' : $view_mode); ?>');
-                }
-                u.searchParams.set('noInlineToggle', '1');
-                frame.style.height = '480px';
-                frame.src = u.toString();
+                if (!frame.src) frame.src = sbBuildUrl_<?php echo esc_js($uid); ?>(layout);
+                mainFrame.style.display = frame === mainFrame ? 'block' : 'none';
+                altFrame.style.display = frame === altFrame ? 'block' : 'none';
+                frame.style.height = (frame.getAttribute('data-sb-height') || '480') + 'px';
             } catch(e) {}
             var ac = '#<?php echo esc_js($accent_hex); ?>';
             var seg = 'cursor:pointer;padding:5px 14px;font-size:13px;font-family:inherit;transition:all .15s;border-radius:0';
@@ -176,15 +175,43 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
                 }
             });
         }
+        function sbBuildUrl_<?php echo esc_js($uid); ?>(layout) {
+            var base = document.getElementById('<?php echo esc_js($uid); ?>-frame');
+            var u = new URL(base.src);
+            u.searchParams.set('layout', layout);
+            if (layout === 'list') {
+                u.searchParams.set('listStyle', '<?php echo esc_js($view_mode === 'calendar' ? 'default' : $view_mode); ?>');
+            }
+            u.searchParams.set('noInlineToggle', '1');
+            return u.toString();
+        }
+        function sbPreloadAlt_<?php echo esc_js($uid); ?>() {
+            var alt = document.getElementById('<?php echo esc_js($uid); ?>-frame-alt');
+            if (!alt || alt.src) return;
+            alt.src = sbBuildUrl_<?php echo esc_js($uid); ?>(alt.getAttribute('data-layout'));
+        }
+        (function(){
+            if ('requestIdleCallback' in window) {
+                window.requestIdleCallback(sbPreloadAlt_<?php echo esc_js($uid); ?>, { timeout: 1200 });
+            } else {
+                setTimeout(sbPreloadAlt_<?php echo esc_js($uid); ?>, 600);
+            }
+        })();
         </script>
         <?php endif; ?>
         <div class="schedule-wrapper" id="<?php echo esc_attr($uid); ?>" style="position:relative;width:100%!important;max-width:100%!important;height:<?php echo $height_css; ?>;overflow:<?php echo $overflow; ?>;border:none!important;background:transparent!important;">
             <!-- Narrow grab-handle at top: lets Elementor select the widget without blocking iframe content -->
             <div class="schedule-editor-overlay" style="display:none;position:absolute;top:0;left:0;right:0;height:20px;z-index:2;cursor:grab;" title="Drag to reposition"><span style="display:flex;align-items:center;justify-content:center;height:100%;font-size:13px;color:rgba(150,150,150,0.55);pointer-events:none;user-select:none;">&#8942;</span></div>
             <iframe id="<?php echo esc_attr($uid); ?>-frame"
+                data-layout="<?php echo $is_cal ? 'calendar' : 'list'; ?>"
                 src="<?php echo esc_url($iframe_url); ?>"
                 style="position:relative;z-index:1;width:100%!important;height:<?php echo ($auto_height ? '480px' : esc_attr($height_val)); ?>;border:none!important;display:block!important;"
                 scrolling="auto" loading="<?php echo $auto_height ? 'eager' : 'lazy'; ?>" title="Score Bar schedule" referrerpolicy="strict-origin-when-cross-origin" allowtransparency="true"></iframe>
+            <iframe id="<?php echo esc_attr($uid); ?>-frame-alt"
+                data-layout="<?php echo $is_cal ? 'list' : 'calendar'; ?>"
+                src=""
+                style="position:relative;z-index:1;width:100%!important;height:480px;border:none!important;display:none!important;"
+                scrolling="auto" loading="eager" title="Score Bar schedule" referrerpolicy="strict-origin-when-cross-origin" allowtransparency="true"></iframe>
         </div>
         <script>
         (function(){
@@ -211,20 +238,21 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
         </script>
         <script>
         (function(){
-            var fid = '<?php echo esc_js($uid); ?>-frame';
+            var frames = [document.getElementById('<?php echo esc_js($uid); ?>-frame'), document.getElementById('<?php echo esc_js($uid); ?>-frame-alt')].filter(Boolean);
             window.addEventListener('message', function(e){
                 if (e.data && typeof e.data.sbHeight === 'number') {
-                    var f = document.getElementById(fid);
-                    // Use e.source identity check — origin-only check would resize ALL widgets
-                    // on the page whenever any single iframe posts a height message, because
-                    // all embeds share the same origin (score-bar-scheduler.vercel.app).
-                    try { if (f && e.source === f.contentWindow) { f.style.height = e.data.sbHeight + 'px'; } } catch(err) {}
-                    // Relay to the Elementor editor window (parent of the preview iframe)
-                    try {
-                        if (window.parent && window.parent !== window) {
-                            window.parent.postMessage({ sbHeight: e.data.sbHeight, sbFromWidget: true }, '*');
-                        }
-                    } catch(er) {}
+                    for (var i = 0; i < frames.length; i++) {
+                        var f = frames[i];
+                        try {
+                            if (f && e.source === f.contentWindow) {
+                                f.setAttribute('data-sb-height', String(e.data.sbHeight));
+                                if (f.style.display !== 'none') f.style.height = e.data.sbHeight + 'px';
+                                if (window.parent && window.parent !== window) {
+                                    window.parent.postMessage({ sbHeight: e.data.sbHeight, sbFromWidget: true }, '*');
+                                }
+                            }
+                        } catch(err) {}
+                    }
                 }
             });
             // MutationObserver: fire DELETE when this embed is permanently removed from the DOM.
