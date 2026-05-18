@@ -1475,9 +1475,25 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url);
+  const sportId = searchParams.get('sportId');
+  const scope = searchParams.get('scope');
   const startDate = searchParams.get('start');
   const endDate = searchParams.get('end');
   const timeZone = normalizeTimeZone(searchParams.get('timeZone'));
+
+  if (sportId === WORLD_CUP_SPORT_ID && scope === 'all') {
+    const payload = await fetchWorldCupFixtures(timeZone);
+    return NextResponse.json({
+      events: payload.fixtures,
+      cached: false,
+      source: payload.source,
+      complete: payload.complete,
+      updatedAt: payload.updatedAt,
+      scope: 'world-cup-all',
+    }, {
+      headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=900' },
+    });
+  }
 
   if (!startDate || !endDate) {
     return NextResponse.json(

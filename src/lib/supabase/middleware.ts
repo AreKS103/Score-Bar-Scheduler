@@ -67,11 +67,6 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
-  // Allow the public World Cup fixture viewer.
-  if (request.nextUrl.pathname === '/world-cup') {
-    return supabaseResponse;
-  }
-
   // Allow embed pages (served in iframes on external sites)
   if (request.nextUrl.pathname.startsWith('/embed/')) {
     return supabaseResponse;

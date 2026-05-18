@@ -57,6 +57,7 @@ import { Button } from '@/components/ui/button';
 import { useOrgRealtime } from '@/hooks/useOrgRealtime';
 import { useEmbedRealtime } from '@/hooks/useEmbedRealtime';
 import { useTimezoneStore } from '@/lib/timezoneStore';
+import { WORLD_CUP_SPORT_ID } from '@/lib/worldCup';
 import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
@@ -873,6 +874,7 @@ export default function SchedulePage() {
   const [activeSortLeague, setActiveSortLeague] = useState<string | null>(null);
   const [headerHeight, setHeaderHeight] = useState(116);
   const hasFetchedRef = useRef(false);
+  const worldCupLoadingRef = useRef(false);
   const previousTimezoneRef = useRef(selectedTimezone);
   const prevPreviewContentCountRef = useRef(0);
   const isSwitchingEmbedRef = useRef(false);
@@ -1040,11 +1042,22 @@ export default function SchedulePage() {
         : (getCachedEvents(currentRange, timeZone) ?? []);
       const prevById = new Map(prevForFallback.map(e => [e.id, e]));
       const preserved: MatchEvent[] = [];
+      const preservedIds = new Set<string>();
       for (const [id, sel] of Object.entries(savedSel)) {
         if (!mergedRawById.has(id) && (sel.isSelected || sel.isFeatured)) {
           // Prefer snapshot (full event survives Supabase round-trip) over prev cache
           const eventData = sel.snapshot ?? prevById.get(id);
-          if (eventData) preserved.push({ ...eventData, isSelected: sel.isSelected, isFeatured: sel.isFeatured, tags: sel.tags });
+          if (eventData) {
+            preserved.push({ ...eventData, isSelected: sel.isSelected, isFeatured: sel.isFeatured, tags: sel.tags });
+            preservedIds.add(id);
+          }
+        }
+      }
+      for (const eventData of prevForFallback) {
+        if (mergedRawById.has(eventData.id) || preservedIds.has(eventData.id)) continue;
+        if (eventData.isSelected || eventData.isFeatured || eventData.tags.length > 0) {
+          preserved.push(eventData);
+          preservedIds.add(eventData.id);
         }
       }
       if (preserved.length > 0) {
@@ -1088,6 +1101,82 @@ export default function SchedulePage() {
     }
   }, [events, setEvents, setFetchStatuses]);
 
+  const loadWorldCupFixtures = useCallback(async (forceRefresh = false) => {
+    if (worldCupLoadingRef.current) return;
+
+    const currentEvents = useScheduleStore.getState().events;
+    const existingWorldCupCount = currentEvents.filter((event) => event.sportId === WORLD_CUP_SPORT_ID).length;
+    if (!forceRefresh && existingWorldCupCount >= 100) return;
+
+    worldCupLoadingRef.current = true;
+    setFetchStatuses({
+      ...useScheduleStore.getState().fetchStatuses,
+      [WORLD_CUP_SPORT_ID]: { loading: true, error: null },
+    });
+
+    try {
+      const timeZone = useTimezoneStore.getState().timezone;
+      const res = await fetch(`/api/events?sportId=${encodeURIComponent(WORLD_CUP_SPORT_ID)}&scope=all&timeZone=${encodeURIComponent(timeZone)}`, {
+        cache: 'no-store',
+      });
+      if (!res.ok) throw new Error(`World Cup API error: ${res.status}`);
+
+      const data = await res.json();
+      const fixtures = (data.events ?? []) as MatchEvent[];
+      if (fixtures.length === 0) {
+        setFetchStatuses({
+          ...useScheduleStore.getState().fetchStatuses,
+          [WORLD_CUP_SPORT_ID]: { loading: false, error: null },
+        });
+        return;
+      }
+
+      const latestEvents = useScheduleStore.getState().events;
+      const latestWorldCupCount = latestEvents.filter((event) => event.sportId === WORLD_CUP_SPORT_ID).length;
+      if (data.complete === false && latestWorldCupCount >= fixtures.length) {
+        setFetchStatuses({
+          ...useScheduleStore.getState().fetchStatuses,
+          [WORLD_CUP_SPORT_ID]: { loading: false, error: null },
+        });
+        return;
+      }
+
+      const currentById = new Map(latestEvents.map((event) => [event.id, event]));
+      const savedSel = loadSelectionState(effectiveTargetRef.current)?.selections ?? {};
+      const nonWorldCupEvents = latestEvents.filter((event) => event.sportId !== WORLD_CUP_SPORT_ID);
+      const mergedFixtures = fixtures.map((fixture) => {
+        const current = currentById.get(fixture.id);
+        const saved = savedSel[fixture.id];
+
+        if (current && (current.isSelected || current.isFeatured || current.tags.length > 0)) {
+          return {
+            ...fixture,
+            isSelected: current.isSelected,
+            isFeatured: current.isFeatured,
+            tags: current.tags,
+          };
+        }
+        if (saved) return { ...fixture, ...saved };
+        return fixture;
+      });
+
+      setEvents([...nonWorldCupEvents, ...mergedFixtures]);
+      setFetchStatuses({
+        ...useScheduleStore.getState().fetchStatuses,
+        [WORLD_CUP_SPORT_ID]: { loading: false, error: null },
+      });
+      console.log(`[Schedule] Loaded ${mergedFixtures.length} World Cup fixtures for builder selection`);
+    } catch (err) {
+      console.error('[Schedule] World Cup fixture load failed:', err);
+      setFetchStatuses({
+        ...useScheduleStore.getState().fetchStatuses,
+        [WORLD_CUP_SPORT_ID]: { loading: false, error: 'Fetch failed' },
+      });
+    } finally {
+      worldCupLoadingRef.current = false;
+    }
+  }, [setEvents, setFetchStatuses]);
+
   // ─── Auto-fetch on mount ───────────────────────────────────────────────────
   useEffect(() => {
     if (!hasFetchedRef.current) {
@@ -1105,7 +1194,9 @@ export default function SchedulePage() {
         setPanelWidth(vw);
         widthRef.current = vw;
       }
-      handleFetch();
+      void handleFetch().finally(() => {
+        void loadWorldCupFixtures();
+      });
       useFavoritesStore.getState().loadFromSupabase();
       // Retry syncing any locally stored custom events to Supabase (best-effort).
       syncLocalCustomEventsToSupabase()
@@ -1118,14 +1209,21 @@ export default function SchedulePage() {
       // NOTE: Supabase selection sync is handled by the isInitialEmbedRef effect
       // which fires when embedInstances load and fires with the correct embed key.
     }
-  }, [handleFetch, setEvents]);
+  }, [handleFetch, loadWorldCupFixtures, setEvents]);
 
   useEffect(() => {
     if (previousTimezoneRef.current === selectedTimezone) return;
     previousTimezoneRef.current = selectedTimezone;
     if (!hasFetchedRef.current) return;
-    handleFetch(true);
-  }, [handleFetch, selectedTimezone]);
+    void handleFetch(true).finally(() => {
+      void loadWorldCupFixtures(true);
+    });
+  }, [handleFetch, loadWorldCupFixtures, selectedTimezone]);
+
+  useEffect(() => {
+    if (activeSportFilter !== WORLD_CUP_SPORT_ID) return;
+    void loadWorldCupFixtures();
+  }, [activeSportFilter, loadWorldCupFixtures]);
 
   // ─── Filtered events (sport filter + search) ──────────────────────────────
   const filteredEvents = useMemo(() => {
