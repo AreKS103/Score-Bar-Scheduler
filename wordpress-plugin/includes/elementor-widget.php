@@ -157,9 +157,10 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
             var frame = mainFrame.getAttribute('data-layout') === layout ? mainFrame : altFrame;
             try {
                 if (!frame.src) frame.src = sbBuildUrl_<?php echo esc_js($uid); ?>(layout);
-                mainFrame.style.display = frame === mainFrame ? 'block' : 'none';
-                altFrame.style.display = frame === altFrame ? 'block' : 'none';
-                frame.style.height = (frame.getAttribute('data-sb-height') || '480') + 'px';
+                sbSetFrame_<?php echo esc_js($uid); ?>(mainFrame, frame === mainFrame);
+                sbSetFrame_<?php echo esc_js($uid); ?>(altFrame, frame === altFrame);
+                frame.style.height = sbFrameHeight_<?php echo esc_js($uid); ?>(frame) + 'px';
+                sbRequestHeight_<?php echo esc_js($uid); ?>(frame);
             } catch(e) {}
             var ac = '#<?php echo esc_js($accent_hex); ?>';
             var seg = 'cursor:pointer;padding:5px 14px;font-size:13px;font-family:inherit;transition:all .15s;border-radius:0';
@@ -174,6 +175,27 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
                     b.style.cssText = seg + ';border:1px solid #d1d5db' + br + ';background:rgba(128,128,128,0.08);color:#555;font-weight:500';
                 }
             });
+        }
+        function sbFrameHeight_<?php echo esc_js($uid); ?>(frame) {
+            var h = parseInt(frame.getAttribute('data-sb-height') || '', 10);
+            return h >= 120 ? h : 480;
+        }
+        function sbSetFrame_<?php echo esc_js($uid); ?>(frame, active) {
+            frame.setAttribute('data-active', active ? '1' : '0');
+            frame.style.display = 'block';
+            frame.style.visibility = active ? 'visible' : 'hidden';
+            frame.style.position = active ? 'relative' : 'absolute';
+            frame.style.inset = active ? 'auto' : '0';
+            frame.style.pointerEvents = active ? 'auto' : 'none';
+            frame.style.zIndex = active ? '1' : '0';
+        }
+        function sbRequestHeight_<?php echo esc_js($uid); ?>(frame) {
+            function send() {
+                try { if (frame.contentWindow) frame.contentWindow.postMessage({ sbRequestHeight: true }, '*'); } catch(e) {}
+            }
+            requestAnimationFrame(function(){ requestAnimationFrame(send); });
+            setTimeout(send, 250);
+            setTimeout(send, 900);
         }
         function sbBuildUrl_<?php echo esc_js($uid); ?>(layout) {
             var base = document.getElementById('<?php echo esc_js($uid); ?>-frame');
@@ -203,14 +225,16 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
             <!-- Narrow grab-handle at top: lets Elementor select the widget without blocking iframe content -->
             <div class="schedule-editor-overlay" style="display:none;position:absolute;top:0;left:0;right:0;height:20px;z-index:2;cursor:grab;" title="Drag to reposition"><span style="display:flex;align-items:center;justify-content:center;height:100%;font-size:13px;color:rgba(150,150,150,0.55);pointer-events:none;user-select:none;">&#8942;</span></div>
             <iframe id="<?php echo esc_attr($uid); ?>-frame"
+                data-active="1"
                 data-layout="<?php echo $is_cal ? 'calendar' : 'list'; ?>"
                 src="<?php echo esc_url($iframe_url); ?>"
-                style="position:relative;z-index:1;width:100%!important;height:<?php echo ($auto_height ? '480px' : esc_attr($height_val)); ?>;border:none!important;display:block!important;"
+                style="position:relative;z-index:1;width:100%!important;height:<?php echo ($auto_height ? '480px' : esc_attr($height_val)); ?>;border:none!important;display:block!important;visibility:visible;pointer-events:auto;"
                 scrolling="auto" loading="<?php echo $auto_height ? 'eager' : 'lazy'; ?>" title="Score Bar schedule" referrerpolicy="strict-origin-when-cross-origin" allowtransparency="true"></iframe>
             <iframe id="<?php echo esc_attr($uid); ?>-frame-alt"
+                data-active="0"
                 data-layout="<?php echo $is_cal ? 'list' : 'calendar'; ?>"
                 src=""
-                style="position:relative;z-index:1;width:100%!important;height:480px;border:none!important;display:none!important;"
+                style="position:absolute;inset:0;z-index:0;width:100%!important;height:480px;border:none!important;display:block!important;visibility:hidden;pointer-events:none;"
                 scrolling="auto" loading="eager" title="Score Bar schedule" referrerpolicy="strict-origin-when-cross-origin" allowtransparency="true"></iframe>
         </div>
         <script>
@@ -240,14 +264,16 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
         (function(){
             var frames = [document.getElementById('<?php echo esc_js($uid); ?>-frame'), document.getElementById('<?php echo esc_js($uid); ?>-frame-alt')].filter(Boolean);
             window.addEventListener('message', function(e){
-                if (e.data && typeof e.data.sbHeight === 'number') {
+                if (e.data && typeof e.data.sbHeight === 'number' && e.data.sbHeight >= 120) {
                     for (var i = 0; i < frames.length; i++) {
                         var f = frames[i];
                         try {
                             if (f && e.source === f.contentWindow) {
                                 f.setAttribute('data-sb-height', String(e.data.sbHeight));
-                                if (f.style.display !== 'none') f.style.height = e.data.sbHeight + 'px';
-                                if (window.parent && window.parent !== window) {
+                                if (f.getAttribute('data-active') === '1') {
+                                    f.style.height = e.data.sbHeight + 'px';
+                                }
+                                if (f.getAttribute('data-active') === '1' && window.parent && window.parent !== window) {
                                     window.parent.postMessage({ sbHeight: e.data.sbHeight, sbFromWidget: true }, '*');
                                 }
                             }
