@@ -50,6 +50,7 @@ const PLUGIN_FILES = [
   'includes/settings.php',
   'includes/shortcode.php',
   'includes/schedule-frontend.js',
+  'includes/overflow-diagnostic.php',
 ];
 
 // ─── Build ───────────────────────────────────────────────────────────────────

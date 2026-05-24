@@ -200,8 +200,8 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
             <iframe id="<?php echo esc_attr($uid); ?>-frame"
                 data-layout="<?php echo $is_cal ? 'calendar' : 'list'; ?>"
                 src="<?php echo esc_url($iframe_url); ?>"
-                style="position:relative;z-index:1;width:100%!important;height:<?php echo ($auto_height ? '480px' : esc_attr($height_val)); ?>;border:none!important;display:block!important;"
-                scrolling="auto" loading="<?php echo $auto_height ? 'eager' : 'lazy'; ?>" title="Score Bar schedule" referrerpolicy="strict-origin-when-cross-origin" allowtransparency="true"></iframe>
+                style="position:relative;z-index:1;width:100%!important;height:<?php echo ($auto_height ? '480px' : esc_attr($height_val)); ?>;border:none!important;display:block!important;<?php echo $auto_height ? 'overflow:hidden!important;' : ''; ?>"
+                scrolling="<?php echo $auto_height ? 'no' : 'auto'; ?>" loading="<?php echo $auto_height ? 'eager' : 'lazy'; ?>" title="Score Bar schedule" referrerpolicy="strict-origin-when-cross-origin" allowtransparency="true"></iframe>
         </div>
         <script>
         (function(){

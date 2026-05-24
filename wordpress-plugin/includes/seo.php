@@ -227,9 +227,12 @@ function schedule_compose_seo_title($payload_title) {
     $parts = [];
     $seen = [];
 
+    // Page name FIRST so the WordPress page title is never replaced/hidden
+    // by widget content. Payload title is appended as descriptive context
+    // and site name closes the chain.
     $candidates = [
-        sanitize_text_field($payload_title),
         is_singular() ? sanitize_text_field(get_the_title()) : '',
+        sanitize_text_field($payload_title),
         sanitize_text_field(get_bloginfo('name')),
     ];
 
@@ -273,7 +276,10 @@ function schedule_find_first_shortcode_iframe_url($content) {
     if (!preg_match_all('/' . get_shortcode_regex($tags) . '/s', $content, $matches, PREG_SET_ORDER)) return '';
     foreach ($matches as $match) {
         $atts = shortcode_parse_atts($match[3] ?? '');
-        return schedule_shortcode_embed_url(is_array($atts) ? $atts : []);
+        if (!is_array($atts)) continue;
+        // Only treat shortcode as SEO-bearing when user explicitly opted in.
+        if (empty($atts['seo']) || $atts['seo'] !== '1') continue;
+        return schedule_shortcode_embed_url($atts);
     }
     return '';
 }
@@ -285,7 +291,10 @@ function schedule_find_first_elementor_iframe_url($elements) {
     foreach ($elements as $element) {
         if (!is_array($element)) continue;
         if (($element['elType'] ?? '') === 'widget' && ($element['widgetType'] ?? '') === 'schedule_widget') {
-            return schedule_elementor_embed_url($element['settings'] ?? [], $element['id'] ?? '');
+            $settings = $element['settings'] ?? [];
+            // Only treat widget as SEO-bearing when user explicitly opted in.
+            if (empty($settings['seo_content'])) continue;
+            return schedule_elementor_embed_url($settings, $element['id'] ?? '');
         }
         $nested = schedule_find_first_elementor_iframe_url($element['elements'] ?? []);
         if ($nested) return $nested;

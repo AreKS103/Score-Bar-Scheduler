@@ -247,7 +247,6 @@ export function renderCalendarContent(
   </div>
   ${navHTML}
 </div>
-<div class="cal-mobile-orientation-hint" role="note">Rotate your phone for the best weekly calendar view.</div>
 <div class="cal-weeks" data-total="${weeks.length}">
   ${weekPages.join('\n  ')}
 </div>`;
@@ -440,19 +439,26 @@ export function getCalendarCSS(accent: string): string {
   box-shadow:0 0 0 2px color-mix(in srgb,${accent} 25%,transparent);
 }
 
-.cal-mobile-orientation-hint{
-  display:none;
-  margin:-4px 0 12px;
-  padding:9px 12px;
-  border:1px solid color-mix(in srgb,${accent} 28%,var(--border,#e5e7eb));
-  border-radius:10px;
-  background:color-mix(in srgb,${accent} 8%,var(--surface,#f8f9fa));
-  color:var(--heading,var(--text));
-  font-size:12px;
-  font-weight:650;
-  line-height:1.35;
-}
+.cal-mobile-orientation-hint{display:none!important}
 
+
+/* ── Responsive: tablet calendar, paged in 4-day increments ── */
+@media (min-width:768px) and (max-width:1023px){
+  .cal-nav-mobile-only{display:flex}
+  .cal-columns{
+    display:grid!important;
+    grid-template-columns:repeat(4,minmax(0,1fr))!important;
+    gap:8px!important;
+  }
+  body:not(.cal-mobile-ready) .cal-week-active .cal-day:nth-child(n+5),
+  .cal-day.cal-tablet-hidden{display:none!important}
+  .cal-day{min-height:0}
+  .cal-card{padding:8px 8px}
+  .cal-team{font-size:.82em;line-height:1.25}
+  .cal-team-logo{height:14px}
+  .cal-league{font-size:.66em}
+  .cal-time{font-size:.7em}
+}
 
 /* ── Responsive: phone calendar, paged in 3-day increments ── */
 @media (max-width:767px){
@@ -478,9 +484,6 @@ export function getCalendarCSS(accent: string): string {
     width:auto;
     min-width:0;
     min-height:0;
-    border:1px solid var(--border,#e5e7eb);
-    border-radius:10px;
-    background:color-mix(in srgb,var(--surface,#f8f9fa) 72%,var(--bg,#fff));
     overflow:hidden;
   }
   .cal-day-header{
@@ -489,10 +492,10 @@ export function getCalendarCSS(accent: string): string {
     justify-content:space-between;
     gap:10px;
     text-align:left;
-    padding:8px 7px;
-    margin:0;
-    border-bottom:1px solid color-mix(in srgb,${accent} 35%,var(--border,#e5e7eb));
-    background:var(--bg,#fff);
+    padding:6px 2px;
+    margin:0 0 6px;
+    border-bottom:2px solid ${accent};
+    background:transparent;
   }
   .cal-day-name{font-size:.72em;letter-spacing:.07em}
   .cal-day-date{font-size:.67em;margin:0;white-space:nowrap}
@@ -515,13 +518,9 @@ export function getCalendarCSS(accent: string): string {
   .cal-day-events[data-count="2"] .cal-teams{font-size:1em}
 }
 
-@media (max-width:767px) and (orientation:portrait){
-  .cal-mobile-orientation-hint{display:block}
-}
 
 @media (max-width:932px) and (max-height:520px) and (orientation:landscape){
   .cal-header{margin-bottom:10px}
-  .cal-mobile-orientation-hint{display:none!important}
   .cal-columns{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:8px!important}
   .cal-card{padding:7px 7px}
   .cal-team{font-size:.82em;line-height:1.25;word-break:normal;overflow-wrap:anywhere}
@@ -558,36 +557,42 @@ export function getCalendarNavJS(): string {
   var next=document.querySelector('.cal-nav-next');
   var label=document.querySelector('.cal-nav-label');
   if(!prev||!next||!label)return;
-  var media=window.matchMedia?window.matchMedia('(max-width: 767px)'):{matches:false};
+  var mqPhone=window.matchMedia?window.matchMedia('(max-width: 767px)'):{matches:false};
+  var mqTablet=window.matchMedia?window.matchMedia('(min-width: 768px) and (max-width: 1023px)'):{matches:false};
   var current=Math.max(0,weeks.findIndex(function(w){return w.classList.contains('cal-week-active');}));
   var chunk=0;
+  function chunkSize(){return mqPhone.matches?3:(mqTablet.matches?4:7);}
+  function isPaged(){return mqPhone.matches||mqTablet.matches;}
   function daysOf(week){return Array.prototype.slice.call(week.querySelectorAll('.cal-day'));}
-  function chunkCount(week){return Math.max(1,Math.ceil(daysOf(week).length/3));}
+  function chunkCount(week){return Math.max(1,Math.ceil(daysOf(week).length/chunkSize()));}
   function send(){try{if(window._sbSendHeight){window._sbSendHeight();}else{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}}catch(e){}}
   function setActiveWeek(index){
     weeks.forEach(function(week,weekIndex){week.classList.toggle('cal-week-active',weekIndex===index);});
     current=index;
   }
   function chunkLabel(week,index){
+    var size=chunkSize();
     var days=daysOf(week);
-    var first=days[index*3];
-    var last=days[Math.min(days.length-1,index*3+2)];
+    var first=days[index*size];
+    var last=days[Math.min(days.length-1,index*size+size-1)];
     if(!first||!last)return week.getAttribute('data-week-label')||'';
     var start=first.getAttribute('data-date-label')||'';
     var end=last.getAttribute('data-date-label')||'';
     return start&&end&&start!==end?start+' - '+end:(start||end||week.getAttribute('data-week-label')||'');
   }
   function render(){
-    var mobile=!!media.matches;
-    document.body.classList.toggle('cal-mobile-ready',mobile);
+    var paged=isPaged();
+    var size=chunkSize();
+    document.body.classList.toggle('cal-mobile-ready',paged);
     setActiveWeek(current);
     weeks.forEach(function(week,weekIndex){
       daysOf(week).forEach(function(day,dayIndex){
-        var hidden=mobile&&(weekIndex!==current||dayIndex<chunk*3||dayIndex>=chunk*3+3);
+        var hidden=paged&&(weekIndex!==current||dayIndex<chunk*size||dayIndex>=chunk*size+size);
         day.classList.toggle('cal-mobile-hidden',hidden);
+        day.classList.toggle('cal-tablet-hidden',hidden);
       });
     });
-    if(mobile){
+    if(paged){
       var total=chunkCount(weeks[current]);
       if(chunk>=total){chunk=total-1;return render();}
       label.textContent=chunkLabel(weeks[current],chunk);
@@ -595,7 +600,7 @@ export function getCalendarNavJS(): string {
       next.disabled=current===weeks.length-1&&chunk>=total-1;
     }else{
       chunk=0;
-      weeks.forEach(function(week){daysOf(week).forEach(function(day){day.classList.remove('cal-mobile-hidden');});});
+      weeks.forEach(function(week){daysOf(week).forEach(function(day){day.classList.remove('cal-mobile-hidden');day.classList.remove('cal-tablet-hidden');});});
       label.textContent=weeks[current].getAttribute('data-week-label')||'';
       prev.disabled=current===0;
       next.disabled=current===weeks.length-1;
@@ -603,7 +608,7 @@ export function getCalendarNavJS(): string {
     requestAnimationFrame(function(){requestAnimationFrame(send);});
   }
   prev.addEventListener('click',function(){
-    if(media.matches){
+    if(isPaged()){
       if(chunk>0){chunk--;render();return;}
       if(current>0){current--;chunk=chunkCount(weeks[current])-1;render();}
       return;
@@ -611,7 +616,7 @@ export function getCalendarNavJS(): string {
     if(current>0){current--;render();}
   });
   next.addEventListener('click',function(){
-    if(media.matches){
+    if(isPaged()){
       var total=chunkCount(weeks[current]);
       if(chunk<total-1){chunk++;render();return;}
       if(current<weeks.length-1){current++;chunk=0;render();}
@@ -619,7 +624,9 @@ export function getCalendarNavJS(): string {
     }
     if(current<weeks.length-1){current++;render();}
   });
-  if(media.addEventListener){media.addEventListener('change',render);}else if(media.addListener){media.addListener(render);}
+  function onMQ(){chunk=0;render();}
+  if(mqPhone.addEventListener){mqPhone.addEventListener('change',onMQ);}else if(mqPhone.addListener){mqPhone.addListener(onMQ);}
+  if(mqTablet.addEventListener){mqTablet.addEventListener('change',onMQ);}else if(mqTablet.addListener){mqTablet.addListener(onMQ);}
   render();
 })();
 `;
