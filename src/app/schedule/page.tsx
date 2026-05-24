@@ -1379,7 +1379,7 @@ export default function SchedulePage() {
     });
   }, [selectedByLeague]);
 
-  // ─── Auto-save selection state (debounced 800ms) ──────────────────────────
+  // ─── Auto-save selection state (debounced 250ms) ──────────────────────────
   // Persists selections, tags, league order, and featured leagues to localStorage
   // so they survive page refreshes. Skips while fetching to avoid overwriting
   // saved state with intermediate (unmerged) event data.
@@ -1410,12 +1410,12 @@ export default function SchedulePage() {
         featuredLeagues: Object.fromEntries(featuredLeagues),
         savedAt: Date.now(),
       }, effectiveTargetRef.current);
-    }, 800);
+    }, 250);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [events, leagueOrder, featuredLeagues, isFetching, embedInstances]);
 
   // ─── Flush selection state on page unload (prevents losing recent changes) ─
-  // The debounced save above may not fire if the user refreshes within 800ms.
+  // The debounced save above may not fire if the user refreshes within 250ms.
   // This ensures the latest state is persisted synchronously before the page dies.
   useEffect(() => {
     const flush = () => {

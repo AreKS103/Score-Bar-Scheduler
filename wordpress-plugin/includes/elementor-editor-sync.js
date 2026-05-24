@@ -24,6 +24,88 @@
   var registeredWidgets = new Set();
   var registeredEmbedIds = {}; // widgetId → last embedId sent, for rename detection
 
+  function describeElement(el) {
+    if (!el || !el.tagName) return '';
+    var out = el.tagName.toLowerCase();
+    if (el.id) out += '#' + el.id;
+    if (el.className && typeof el.className === 'string') {
+      out += '.' + el.className.trim().split(/\s+/).slice(0, 4).join('.');
+    }
+    return out;
+  }
+
+  function findHorizontalOverflow(doc) {
+    var win = doc.defaultView || window;
+    var viewport = doc.documentElement.clientWidth;
+    var results = [];
+    Array.prototype.slice.call(doc.body.querySelectorAll('*')).forEach(function (el) {
+      var rect = el.getBoundingClientRect();
+      if (!rect.width || rect.height === 0) return;
+      var style = win.getComputedStyle(el);
+      var rightOverflow = Math.ceil(rect.right - viewport);
+      var leftOverflow = Math.ceil(0 - rect.left);
+      var scrollOverflow = Math.ceil((el.scrollWidth || 0) - (el.clientWidth || 0));
+      if (rightOverflow > 1 || leftOverflow > 1 || scrollOverflow > 1) {
+        results.push({
+          selector: describeElement(el),
+          rightOverflow: rightOverflow > 0 ? rightOverflow : 0,
+          leftOverflow: leftOverflow > 0 ? leftOverflow : 0,
+          scrollOverflow: scrollOverflow > 0 ? scrollOverflow : 0,
+          width: Math.round(rect.width),
+          left: Math.round(rect.left),
+          right: Math.round(rect.right),
+          marginLeft: style.marginLeft,
+          marginRight: style.marginRight,
+          transform: style.transform === 'none' ? '' : style.transform,
+          position: style.position,
+          element: el
+        });
+      }
+    });
+    results.sort(function (a, b) {
+      return (b.rightOverflow + b.leftOverflow + b.scrollOverflow) - (a.rightOverflow + a.leftOverflow + a.scrollOverflow);
+    });
+    return results;
+  }
+
+  window.sbFindHorizontalOverflow = function () {
+    var iframe = document.getElementById('elementor-preview-iframe');
+    if (!iframe || !iframe.contentDocument) {
+      console.warn('[SB] Elementor preview iframe is not ready yet.');
+      return [];
+    }
+    var offenders = findHorizontalOverflow(iframe.contentDocument);
+    offenders.slice(0, 10).forEach(function (item) {
+      item.element.style.outline = '2px solid #ef4444';
+      item.element.style.outlineOffset = '-2px';
+    });
+    console.table(offenders.slice(0, 20).map(function (item) {
+      return {
+        selector: item.selector,
+        rightOverflow: item.rightOverflow,
+        leftOverflow: item.leftOverflow,
+        scrollOverflow: item.scrollOverflow,
+        width: item.width,
+        left: item.left,
+        right: item.right,
+        marginLeft: item.marginLeft,
+        marginRight: item.marginRight,
+        transform: item.transform,
+        position: item.position
+      };
+    }));
+    return offenders;
+  };
+
+  function warnHorizontalOverflow(doc) {
+    setTimeout(function () {
+      var offenders = findHorizontalOverflow(doc);
+      if (offenders.length) {
+        console.warn('[SB] Horizontal overflow detected. Run sbFindHorizontalOverflow() in this console to outline the source element.', offenders[0]);
+      }
+    }, 500);
+  }
+
   /* ── HTTP helpers ──────────────────────────────────────────────────────── */
 
   function apiDelete(widgetId, embedId) {
@@ -350,6 +432,7 @@
             // that already registered won't re-register even after the doc swaps.
             registeredWidgets.clear();
             attachDocObserver(currentDoc);
+            warnHorizontalOverflow(currentDoc);
           }
         } catch (e) {}
       }, 2000);
@@ -359,6 +442,7 @@
           var newDoc = iframe.contentDocument || iframe.contentWindow.document;
           if (newDoc && newDoc.body) {
             attachDocObserver(newDoc);
+            warnHorizontalOverflow(newDoc);
           }
           // Re-attach message relay on the new window after reload
           if (iframe.contentWindow) attachMessageRelay(iframe.contentWindow);

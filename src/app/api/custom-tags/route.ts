@@ -12,7 +12,9 @@ export async function GET() {
     .eq('user_id', user.id)
     .single();
 
-  return NextResponse.json({ tags: data?.tags ?? [] });
+  return NextResponse.json({ tags: data?.tags ?? [] }, {
+    headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=120' },
+  });
 }
 
 export async function POST(req: NextRequest) {

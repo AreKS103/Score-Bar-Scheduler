@@ -43,6 +43,8 @@ export async function GET() {
       avatarUrl: profile?.avatar_url ?? metaAvatar ?? null,
       email: user.email ?? null,
       displayName: profile?.username || user.email || null,
+    }, {
+      headers: { 'Cache-Control': 'private, max-age=60, stale-while-revalidate=300' },
     });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown error' }, { status: 500 });

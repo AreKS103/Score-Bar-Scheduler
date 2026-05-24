@@ -258,6 +258,10 @@ function getLeagueAbbrev(sportId: string, label: string): string {
     'afl': 'AFL',
     'tennis-atp': 'ATP',
     'tennis-wta': 'WTA',
+    'tennis-australian-open': 'AO',
+    'tennis-roland-garros': 'RG',
+    'tennis-wimbledon': 'WIM',
+    'tennis-us-open': 'USO',
     'golf-pga': 'PGA',
     'golf-lpga': 'LPGA',
   };

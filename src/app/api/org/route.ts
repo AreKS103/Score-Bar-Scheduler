@@ -17,7 +17,9 @@ export async function GET(req: NextRequest) {
 
     try {
       const orgs = await getUserOrgs(user.id);
-      return NextResponse.json({ organizations: orgs });
+      return NextResponse.json({ organizations: orgs }, {
+        headers: { 'Cache-Control': 'private, max-age=60, stale-while-revalidate=300' },
+      });
     } catch {
       return NextResponse.json({ organizations: [] });
     }

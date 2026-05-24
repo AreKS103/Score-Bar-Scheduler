@@ -96,7 +96,9 @@ export async function GET(req: NextRequest) {
       if (schedule && Array.isArray(schedule.events_snapshot)) {
         schedule.events_snapshot = await refreshWorldCupSnapshotEvents(schedule.events_snapshot as MatchEvent[]);
       }
-      return NextResponse.json({ schedule });
+      return NextResponse.json({ schedule }, {
+        headers: { 'Cache-Control': 'private, max-age=15, stale-while-revalidate=60' },
+      });
     }
 
     // No ?target → return history list (for PublishButton history drawer).
@@ -110,7 +112,9 @@ export async function GET(req: NextRequest) {
       .order('published_at', { ascending: false });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ schedules: data ?? [] });
+    return NextResponse.json({ schedules: data ?? [] }, {
+      headers: { 'Cache-Control': 'private, max-age=15, stale-while-revalidate=60' },
+    });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown error' }, { status: 500 });
   }

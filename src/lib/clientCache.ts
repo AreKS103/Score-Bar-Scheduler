@@ -273,7 +273,7 @@ export async function syncLocalCustomEventsToSupabase(): Promise<{ synced: numbe
   let synced = 0;
   let failed = 0;
 
-  const BATCH_SIZE = 3;
+  const BATCH_SIZE = 25;
   for (let i = 0; i < store.events.length; i += BATCH_SIZE) {
     const batch = store.events.slice(i, i + BATCH_SIZE);
     const results = await Promise.allSettled(
@@ -481,9 +481,9 @@ export function saveSelectionToSupabase(state: SavedSelectionState, embedTarget 
     } catch (e) {
       console.warn('[SelectionSync] Failed to save to Supabase:', e);
     }
-  // 300 ms — batches rapid clicks while still saving well before a typical reload.
-  // Combined with the 800 ms outer debounce in page.tsx: total latency ~1.1 s.
-  }, 300));
+  // 150 ms — batches rapid clicks while still saving well before a typical reload.
+  // Combined with the 250 ms outer debounce in page.tsx: total latency ~400 ms.
+  }, 150));
 }
 
 /**

@@ -93,6 +93,11 @@ const ESPN_SECONDARY_LEAGUES = [
   // Americas & Asia
   { id: 'soccer-mls', slug: 'soccer/usa.1' },
   { id: 'soccer-ligamx', slug: 'soccer/mex.1' },
+  { id: 'soccer-brasileirao', slug: 'soccer/bra.1' },
+  { id: 'soccer-arg-primera', slug: 'soccer/arg.1' },
+  { id: 'soccer-portugal', slug: 'soccer/por.1' },
+  { id: 'soccer-superlig', slug: 'soccer/tur.1' },
+  { id: 'soccer-concacaf', slug: 'soccer/concacaf.champions' },
   { id: 'soccer-aleague', slug: 'soccer/aus.1' },
   { id: 'soccer-saudipro', slug: 'soccer/ksa.1' },
   { id: 'soccer-jleague', slug: 'soccer/jpn.1' },
@@ -144,6 +149,11 @@ const LEAGUE_METADATA: Record<string, { label: string; category: string; logo: s
   'soccer-eredivisie': { label: 'Eredivisie', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/11.png' },
   'soccer-mls': { label: 'MLS', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/19.png' },
   'soccer-ligamx': { label: 'Liga MX', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/29.png' },
+  'soccer-brasileirao': { label: 'Brasileirão Série A', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/890.png' },
+  'soccer-arg-primera': { label: 'Argentine Primera', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/13.png' },
+  'soccer-portugal': { label: 'Liga Portugal', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/14.png' },
+  'soccer-superlig': { label: 'Süper Lig', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/18.png' },
+  'soccer-concacaf': { label: 'CONCACAF Champions Cup', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/2766.png' },
   'soccer-aleague': { label: 'A-League', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/1003.png' },
   'soccer-saudipro': { label: 'Saudi Pro League', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/4710.png' },
   'soccer-jleague': { label: 'J-League', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/3j8bni1675170553.png' },
@@ -181,9 +191,45 @@ const LEAGUE_METADATA: Record<string, { label: string; category: string; logo: s
   'afl': { label: 'AFL', category: 'Australian Football', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/afl.png' },
   'tennis-atp': { label: 'ATP Tour', category: 'Tennis', logo: 'https://r2.thesportsdb.com/images/media/league/badge/q7aej51769857150.png' },
   'tennis-wta': { label: 'WTA Tour', category: 'Tennis', logo: 'https://www.thesportsdb.com/images/media/league/badge/bddhun1768210678.png' },
+  'tennis-australian-open': { label: 'Australian Open', category: 'Tennis', logo: 'https://r2.thesportsdb.com/images/media/league/badge/q7aej51769857150.png' },
+  'tennis-roland-garros': { label: 'Roland Garros', category: 'Tennis', logo: 'https://r2.thesportsdb.com/images/media/league/badge/q7aej51769857150.png' },
+  'tennis-wimbledon': { label: 'Wimbledon', category: 'Tennis', logo: 'https://r2.thesportsdb.com/images/media/league/badge/q7aej51769857150.png' },
+  'tennis-us-open': { label: 'US Open', category: 'Tennis', logo: 'https://r2.thesportsdb.com/images/media/league/badge/q7aej51769857150.png' },
   'golf-pga': { label: 'PGA Tour', category: 'Golf', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/pga.png' },
   'golf-lpga': { label: 'LPGA Tour', category: 'Golf', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/lpga.png' },
 };
+
+const TENNIS_GRAND_SLAMS = [
+  { id: 'tennis-australian-open', patterns: [/australian open/i] },
+  { id: 'tennis-roland-garros', patterns: [/roland garros/i, /french open/i] },
+  { id: 'tennis-wimbledon', patterns: [/wimbledon/i] },
+  { id: 'tennis-us-open', patterns: [/\bus open\b/i, /u\.s\. open/i] },
+] as const;
+
+function resolveTennisCompetition(
+  tournamentName: string,
+  drawSlug: string,
+  fallbackMeta: { label: string; category: string; logo: string },
+  fallbackSportId: string
+): { sportId: string; meta: { label: string; category: string; logo: string }; leagueLabel: string } {
+  const grandSlam = TENNIS_GRAND_SLAMS.find(t => t.patterns.some(pattern => pattern.test(tournamentName)));
+  if (grandSlam) {
+    const meta = LEAGUE_METADATA[grandSlam.id] ?? fallbackMeta;
+    return { sportId: grandSlam.id, meta, leagueLabel: meta.label };
+  }
+
+  if (drawSlug.startsWith('mens-')) {
+    const meta = LEAGUE_METADATA['tennis-atp'] ?? fallbackMeta;
+    return { sportId: 'tennis-atp', meta, leagueLabel: `${meta.label}: ${tournamentName}` };
+  }
+
+  if (drawSlug.startsWith('womens-')) {
+    const meta = LEAGUE_METADATA['tennis-wta'] ?? fallbackMeta;
+    return { sportId: 'tennis-wta', meta, leagueLabel: `${meta.label}: ${tournamentName}` };
+  }
+
+  return { sportId: fallbackSportId, meta: fallbackMeta, leagueLabel: `${fallbackMeta.label}: ${tournamentName}` };
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // UTILITY FUNCTIONS
@@ -354,6 +400,7 @@ interface ESPNCompetitorRaw {
 }
 
 interface ESPNCompetitionRaw {
+  id?: string;
   date?: string;
   competitors?: ESPNCompetitorRaw[];
   type?: { abbreviation?: string; text?: string; slug?: string };
@@ -597,6 +644,9 @@ function mapMotorsportSessions(
 }
 
 // ── Tennis mapper — flattens groupings→competitions into individual matches ──
+// When a tournament has groupings but every match is still TBD (e.g. Grand Slam
+// week before the draw is confirmed), emit ONE tournament-level placeholder per
+// draw so users can still see "Roland Garros – Singles" on the schedule.
 function mapTennisMatches(
   events: ESPNEvent[],
   league: { id: string; slug: string },
@@ -607,13 +657,42 @@ function mapTennisMatches(
 
   for (const event of events) {
     const tournamentName = event.shortName || event.name || meta.label;
+    const groupings = event.groupings ?? [];
 
-    for (const group of event.groupings ?? []) {
+    // No groupings at all → ESPN sometimes returns a top-level competitions array
+    // for early-week tournament announcements. Render a single tournament card.
+    if (groupings.length === 0) {
+      const compTop = event.competitions?.[0];
+      const matchTime = compTop?.date ? utcToLocal(compTop.date, timeZone) : utcToLocal(event.date, timeZone);
+      results.push({
+        id: `espn-${league.id}-${event.id}-tournament`,
+        source: 'espn',
+        sportId: league.id,
+        category: meta.category,
+        leagueLabel: `${meta.label}: ${tournamentName}`,
+        leagueLogo: meta.logo,
+        date: matchTime.date,
+        time: matchTime.time,
+        home: tournamentName,
+        away: '',
+        homeLogo: meta.logo,
+        awayLogo: '',
+        round: '',
+        tags: [],
+        isFeatured: false,
+        isSelected: false,
+      });
+      continue;
+    }
+
+    for (const group of groupings) {
       const drawSlug = group.grouping.slug || '';
-      // Skip doubles — ESPN often has missing athlete names for doubles
-      if (drawSlug.includes('doubles')) continue;
+      const tennisCompetition = resolveTennisCompetition(tournamentName, drawSlug, meta, league.id);
 
-      for (const comp of group.competitions ?? []) {
+      const competitionsInDraw = group.competitions ?? [];
+      let realMatchesEmitted = 0;
+
+      for (const comp of competitionsInDraw) {
         const competitors = comp.competitors ?? [];
         const p1 = competitors.find(c => c.order === 1) ?? competitors[0];
         const p2 = competitors.find(c => c.order === 2) ?? competitors[1];
@@ -625,14 +704,15 @@ function mapTennisMatches(
         const roundName = comp.round?.displayName || '';
         const drawLabel = group.grouping.displayName || '';
         const round = roundName ? `${drawLabel} – ${roundName}` : drawLabel;
+        const compKey = comp.id || `${drawSlug}-${p1Name}-${p2Name}`;
 
         results.push({
-          id: `espn-${league.id}-${event.id}-${comp.competitors?.[0]?.athlete?.displayName || ''}-${comp.competitors?.[1]?.athlete?.displayName || ''}`.replace(/\s+/g, '-'),
+          id: `espn-${tennisCompetition.sportId}-${event.id}-${compKey}`.replace(/\s+/g, '-'),
           source: 'espn',
-          sportId: league.id,
-          category: meta.category,
-          leagueLabel: `${meta.label}: ${tournamentName}`,
-          leagueLogo: meta.logo,
+          sportId: tennisCompetition.sportId,
+          category: tennisCompetition.meta.category,
+          leagueLabel: tennisCompetition.leagueLabel,
+          leagueLogo: tennisCompetition.meta.logo,
           date: matchTime.date,
           time: matchTime.time,
           home: p1Name,
@@ -640,6 +720,33 @@ function mapTennisMatches(
           homeLogo: p1?.athlete?.flag?.href || '',
           awayLogo: p2?.athlete?.flag?.href || '',
           round,
+          tags: [],
+          isFeatured: false,
+          isSelected: false,
+        });
+        realMatchesEmitted++;
+      }
+
+      // Draw exists but no resolved match-ups → render a single tournament-level
+      // card so users see Grand Slams (Roland Garros, Wimbledon, AO, US Open)
+      // during the pre-draw / quiet week instead of an empty Tennis section.
+      if (realMatchesEmitted === 0 && competitionsInDraw.length > 0) {
+        const matchTime = utcToLocal(event.date, timeZone);
+        const drawLabel = group.grouping.displayName || 'Singles';
+        results.push({
+          id: `espn-${tennisCompetition.sportId}-${event.id}-${drawSlug || 'draw'}-tba`,
+          source: 'espn',
+          sportId: tennisCompetition.sportId,
+          category: tennisCompetition.meta.category,
+          leagueLabel: tennisCompetition.leagueLabel,
+          leagueLogo: tennisCompetition.meta.logo,
+          date: matchTime.date,
+          time: matchTime.time,
+          home: tournamentName,
+          away: '',
+          homeLogo: tennisCompetition.meta.logo,
+          awayLogo: '',
+          round: drawLabel,
           tags: [],
           isFeatured: false,
           isSelected: false,
@@ -749,6 +856,7 @@ async function fetchESPNLeague(
     const isMMA = league.slug.startsWith('mma/') || league.slug.startsWith('boxing/');
     const isMotorsport = league.slug.startsWith('racing/');
     const isTennis = league.slug.startsWith('tennis/');
+    const isCricket = league.slug.startsWith('cricket/');
     const isNCAA_BB = league.id === 'basketball-ncaam' || league.id === 'basketball-ncaaw';
     const dateParam = espnDateRange(startDate, endDate);
 
@@ -786,6 +894,21 @@ async function fetchESPNLeague(
           data = fallbackData;
           console.log(`[ESPN-NCAA] ${league.id}: single-day + schedule both empty → no-dates fallback returned ${fallbackData.events.length} events`);
         }
+      }
+    } else if (isCricket || isTennis) {
+      // ── Cricket: ESPN cricket scoreboards 404 with ?dates= parameter.
+      // ── Tennis: ESPN scoreboard's ?dates= filters by tournament START date,
+      //    which drops multi-week Grand Slams (e.g. Roland Garros runs
+      //    May 18 → Jun 8 — a query for dates=20260520+ silently excludes it
+      //    even though hundreds of singles matches are scheduled inside the
+      //    requested window).
+      //    For both sports: fetch the full league scoreboard (no dates) and let
+      //    the downstream per-match date filter trim to the requested window.
+      const url = `${ESPN_BASE}/${league.slug}/scoreboard?limit=1000`;
+      data = await espnFetchWithRetry<ESPNScoreboardResponse>(url, 4_000);
+      if (data?.events?.length) {
+        const tag = isCricket ? 'Cricket' : 'Tennis';
+        console.log(`[ESPN-${tag}] ${league.id}: no-dates fetch returned ${data.events.length} events`);
       }
     } else {
       // ── All other leagues: standard date-range query ───────────────────────
@@ -983,6 +1106,12 @@ async function sdbFetch(endpoint: string, responseKey: 'events' | 'results' = 'e
     if (!res.ok) return []; // 429 / 5xx — do NOT cache failures
     const json = await res.json();
     const data = (json[responseKey] as SportsDBEvent[]) ?? [];
+
+    // Do NOT persist empty responses. TheSportsDB occasionally returns []
+    // on transient rate-limit, and caching that for 10 min / 7 days poisons
+    // the cache for endpoints that DO have data. Empty results are cheap to
+    // refetch and almost always indicate "try again", not "no events exist".
+    if (data.length === 0) return data;
 
     // Store in both caches
     SDB_ENDPOINT_CACHE.set(ck, { data, ts: Date.now() });
@@ -1350,8 +1479,131 @@ async function fetchSportsDBLeague(
   if (COMBAT_SPORT_IDS.has(league.sportsdbId)) {
     return fetchSportsDBCombatBySeason(league, startDate, endDate, timeZone);
   }
-  // All other leagues (AFC, MotoGP): efficient next+past strategy (2 API calls)
+  // MotoGP: TheSportsDB's free tier rate-limits requests to the MotoGP
+  // league heavily (HTTP 429 after just a few calls). The official MotoGP
+  // API has no rate-limit issues, returns the full season calendar with
+  // proper multi-day date ranges, and uses canonical event names like
+  // "GRAND PRIX OF ITALY".
+  if (league.id === 'motogp') {
+    return fetchMotoGPOfficial(league, startDate, endDate, timeZone);
+  }
+  // All other leagues (AFC, UCI World Tour): efficient next+past strategy (2 API calls)
   return fetchSportsDBLeagueByNextPast(league, startDate, endDate, timeZone);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Official MotoGP API (api.motogp.pulselive.com)
+// Used instead of TheSportsDB because the free-tier eventsround / eventsnext
+// endpoints rate-limit heavily and miss the bulk of the calendar.
+// ─────────────────────────────────────────────────────────────────────────────
+interface MotoGPSeason { id: string; year: number; current: boolean }
+interface MotoGPEventRaw { id: string; date_start: string; date_end: string; name: string; status?: string; test?: boolean }
+
+const MOTOGP_API_BASE = 'https://api.motogp.pulselive.com/motogp/v1/results';
+const MOTOGP_HDR = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+  'Accept':     'application/json',
+};
+const MOTOGP_CACHE_TTL = 60 * 60 * 1000; // 1 hour — calendar rarely changes
+const motoGpApiCache = new Map<string, { data: unknown; ts: number }>();
+
+async function motoGpFetch<T>(path: string): Promise<T | null> {
+  const hit = motoGpApiCache.get(path);
+  if (hit && Date.now() - hit.ts < MOTOGP_CACHE_TTL) return hit.data as T;
+  try {
+    const res = await fetch(`${MOTOGP_API_BASE}${path}`, {
+      headers: MOTOGP_HDR,
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    const j = (await res.json()) as T;
+    motoGpApiCache.set(path, { data: j, ts: Date.now() });
+    return j;
+  } catch { return null; }
+}
+
+async function fetchMotoGPOfficial(
+  league: typeof SPORTSDB_ONLY_LEAGUES[0],
+  startDate: string,
+  endDate: string,
+  timeZone: string
+): Promise<MatchEvent[]> {
+  const seasons = await motoGpFetch<MotoGPSeason[]>('/seasons');
+  if (!seasons || !Array.isArray(seasons)) {
+    console.warn('[MotoGP-Official] seasons fetch failed');
+    return [];
+  }
+  const startYear = parseInt(startDate.slice(0, 4), 10);
+  const endYear = parseInt(endDate.slice(0, 4), 10);
+  const wanted = seasons.filter(s => s.year >= startYear && s.year <= endYear);
+  if (wanted.length === 0) return [];
+
+  const allEvents: MotoGPEventRaw[] = [];
+  for (const s of wanted) {
+    const list = await motoGpFetch<MotoGPEventRaw[]>(`/events?seasonUuid=${s.id}`);
+    if (Array.isArray(list)) {
+      for (const e of list) if (!e.test) allEvents.push(e);
+    }
+  }
+
+  const out: MatchEvent[] = [];
+  for (const e of allEvents) {
+    // "GRAND PRIX OF ITALY" → "Italy"
+    const country = e.name
+      .replace(/^grand prix of /i, '')
+      .toLowerCase()
+      .replace(/\b\w+/g, w => w.charAt(0).toUpperCase() + w.slice(1));
+
+    // Race weekend: Sprint Saturday + Main GP Sunday.
+    // MotoGP race weekends span Friday → Sunday; date_end is race day (Sunday).
+    const sunday = e.date_end; // YYYY-MM-DD
+    const satDt = new Date(`${e.date_end}T00:00:00Z`);
+    satDt.setUTCDate(satDt.getUTCDate() - 1);
+    const saturday = satDt.toISOString().slice(0, 10);
+
+    // Sprint Race — typically ~15:00 CET (~13:00 UTC) Saturday
+    if (saturday >= startDate && saturday <= endDate) {
+      const { date, time } = sportsDBToLocal(saturday, '13:00:00', timeZone);
+      out.push({
+        id: `motogp-official-${e.id}-sprint`,
+        source: 'sportsdb',
+        sportId: league.id,
+        category: league.category,
+        leagueLabel: league.label,
+        leagueLogo: league.logo,
+        date, time,
+        home: `${country} Sprint Race`,
+        away: '',
+        round: '',
+        tags: [],
+        isFeatured: false,
+        isSelected: false,
+      });
+    }
+
+    // Main GP — typically ~14:00 CET (~12:00 UTC) Sunday
+    if (sunday >= startDate && sunday <= endDate) {
+      const { date, time } = sportsDBToLocal(sunday, '12:00:00', timeZone);
+      out.push({
+        id: `motogp-official-${e.id}-gp`,
+        source: 'sportsdb',
+        sportId: league.id,
+        category: league.category,
+        leagueLabel: league.label,
+        leagueLogo: league.logo,
+        date, time,
+        home: `${country} GP`,
+        away: '',
+        round: '',
+        tags: [],
+        isFeatured: false,
+        isSelected: false,
+      });
+    }
+  }
+
+  console.log(`[MotoGP-Official] ${league.label}: ${out.length} race cards in range (${allEvents.length} events across ${wanted.length} season(s))`);
+  return out;
 }
 
 async function fetchAllSportsDB(startDate: string, endDate: string, timeZone: string): Promise<MatchEvent[]> {
@@ -1452,6 +1704,28 @@ async function fetchAllEvents(startDate: string, endDate: string, timeZone: stri
 
   const elapsed = Date.now() - startTime;
   console.log(`[Events API] ✓ Fetched ${deduped.length} events in ${elapsed}ms`);
+
+  // ── Structured per-source / per-sport diagnostics ─────────────────────────
+  // Makes it trivial to spot "missing sport" issues from logs alone.
+  const espnAll = espnEvents.status === 'fulfilled' ? espnEvents.value : [];
+  const sdbAll  = sportsDBEvents.status === 'fulfilled' && sportsDBEvents.value ? sportsDBEvents.value : [];
+  const sourceCounts = { espn: espnAll.length, sportsdb: sdbAll.length };
+  const perSport = new Map<string, { espn: number; sportsdb: number }>();
+  for (const e of espnAll) {
+    const row = perSport.get(e.sportId) ?? { espn: 0, sportsdb: 0 };
+    row.espn++;
+    perSport.set(e.sportId, row);
+  }
+  for (const e of sdbAll) {
+    const row = perSport.get(e.sportId) ?? { espn: 0, sportsdb: 0 };
+    row.sportsdb++;
+    perSport.set(e.sportId, row);
+  }
+  const zeroSports = [...perSport.entries()].filter(([, c]) => c.espn === 0 && c.sportsdb === 0).map(([id]) => id);
+  console.log(`[Events API] sources: espn=${sourceCounts.espn} sportsdb=${sourceCounts.sportsdb} merged=${deduped.length}`);
+  if (zeroSports.length > 0) {
+    console.log(`[Events API] sports with zero events in window: ${zeroSports.join(', ')}`);
+  }
 
   return deduped;
 }
@@ -1578,12 +1852,14 @@ export async function GET(req: NextRequest) {
 
     const p = fetchAllEvents(startDate, endDate, timeZone);
     fetchPromises.set(cacheKey, { promise: p, startedAt: Date.now() });
-    const events = await p;
+    // ── Parallel-fetch custom events from Supabase alongside the external
+    //    sports APIs so the user's manual events don't add ~50-200ms of
+    //    serial Supabase latency on top of the (already slow) ESPN/SportsDB fan-out.
+    const [events, customEvents] = await Promise.all([p, getCustomEvents()]);
 
     CACHE.set(cacheKey, { data: events, timestamp: Date.now() });
     fetchPromises.delete(cacheKey);
 
-    const customEvents = await getCustomEvents();
     return NextResponse.json({ events: [...events, ...customEvents], cached: false }, {
       headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600' },
     });

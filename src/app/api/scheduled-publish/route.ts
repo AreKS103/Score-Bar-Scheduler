@@ -73,7 +73,9 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to fetch schedules' }, { status: 500 });
     }
 
-    return NextResponse.json({ schedules: data ?? [] });
+    return NextResponse.json({ schedules: data ?? [] }, {
+      headers: { 'Cache-Control': 'private, max-age=15, stale-while-revalidate=60' },
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });

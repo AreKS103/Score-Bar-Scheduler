@@ -125,9 +125,10 @@ function schedule_shortcode_render($atts) {
         try {
             var next = sbBuildUrl_<?php echo esc_js($uid); ?>(layout);
             sbLog_<?php echo esc_js($uid); ?>('toggle', layout, next);
-            frame.style.height = '480px';
             frame.setAttribute('data-layout', layout);
             frame.src = next;
+            setTimeout(sbRequestHeight_<?php echo esc_js($uid); ?>, 120);
+            setTimeout(sbRequestHeight_<?php echo esc_js($uid); ?>, 500);
         } catch(e) { sbLog_<?php echo esc_js($uid); ?>('toggle error', e); }
         var ac = '#<?php echo esc_js($accent_hex); ?>';
         var seg = 'cursor:pointer;padding:5px 14px;font-size:13px;font-family:inherit;transition:all .15s;border-radius:0';
@@ -151,30 +152,10 @@ function schedule_shortcode_render($atts) {
         u.searchParams.set('noInlineToggle', '1');
         return u.toString();
     }
-    function sbPrefetch_<?php echo esc_js($uid); ?>(layout) {
-        try {
-            var href = sbBuildUrl_<?php echo esc_js($uid); ?>(layout);
-            if (document.querySelector('link[data-scorebar-prefetch="' + layout + '"][href="' + href + '"]')) return;
-            var link = document.createElement('link');
-            link.rel = 'prefetch';
-            link.as = 'document';
-            link.href = href;
-            link.setAttribute('data-scorebar-prefetch', layout);
-            document.head.appendChild(link);
-            sbLog_<?php echo esc_js($uid); ?>('prefetch', layout, href);
-        } catch(e) { sbLog_<?php echo esc_js($uid); ?>('prefetch error', e); }
+    function sbRequestHeight_<?php echo esc_js($uid); ?>() {
+        var frame = document.getElementById('<?php echo esc_js($uid); ?>-frame');
+        try { if (frame && frame.contentWindow) frame.contentWindow.postMessage({ sbRequestHeight: true }, '*'); } catch(e) {}
     }
-    (function(){
-        var listBtn = document.getElementById('<?php echo esc_js($uid); ?>-btn-list');
-        var calBtn = document.getElementById('<?php echo esc_js($uid); ?>-btn-cal');
-        if (listBtn) listBtn.addEventListener('mouseenter', function(){ sbPrefetch_<?php echo esc_js($uid); ?>('list'); });
-        if (calBtn) calBtn.addEventListener('mouseenter', function(){ sbPrefetch_<?php echo esc_js($uid); ?>('calendar'); });
-        if ('requestIdleCallback' in window) {
-            window.requestIdleCallback(function(){ sbPrefetch_<?php echo esc_js($uid); ?>('<?php echo $is_cal ? 'list' : 'calendar'; ?>'); }, { timeout: 1200 });
-        } else {
-            setTimeout(function(){ sbPrefetch_<?php echo esc_js($uid); ?>('<?php echo $is_cal ? 'list' : 'calendar'; ?>'); }, 600);
-        }
-    })();
     </script>
     <?php endif; ?>
     <div class="schedule-wrapper" id="<?php echo esc_attr($uid); ?>" style="position:relative;width:100%!important;max-width:100%!important;height:<?php echo $height_css; ?>;overflow:<?php echo $overflow; ?>;border:none!important;background:transparent!important;">
@@ -212,13 +193,20 @@ function schedule_shortcode_render($atts) {
     (function(){
         var fid = '<?php echo esc_js($uid); ?>-frame';
         var frame = document.getElementById(fid);
-        if (frame) frame.addEventListener('load', function(){ sbLog_<?php echo esc_js($uid); ?>('iframe loaded', frame.getAttribute('data-layout'), frame.src); });
+        function requestHeight() {
+            try { if (frame && frame.contentWindow) frame.contentWindow.postMessage({ sbRequestHeight: true }, '*'); } catch(e) {}
+        }
+        if (frame) frame.addEventListener('load', function(){
+            try { if (typeof sbLog_<?php echo esc_js($uid); ?> === 'function') sbLog_<?php echo esc_js($uid); ?>('iframe loaded', frame.getAttribute('data-layout'), frame.src); } catch(e) {}
+            setTimeout(requestHeight, 60);
+            setTimeout(requestHeight, 300);
+        });
         window.addEventListener('message', function(e){
             if (e.data && typeof e.data.sbHeight === 'number') {
                 var f = document.getElementById(fid);
                 try {
                     if (f && e.source === f.contentWindow) {
-                        sbLog_<?php echo esc_js($uid); ?>('height', e.data.sbHeight, f.getAttribute('data-layout'));
+                        try { if (typeof sbLog_<?php echo esc_js($uid); ?> === 'function') sbLog_<?php echo esc_js($uid); ?>('height', e.data.sbHeight, f.getAttribute('data-layout')); } catch(logErr) {}
                         if (e.data.sbHeight >= 120) f.style.height = e.data.sbHeight + 'px';
                     }
                 } catch(err) { sbLog_<?php echo esc_js($uid); ?>('height error', err); }

@@ -89,22 +89,27 @@ export async function GET() {
 
     const orgMemberIds = await getOrgMemberIds(user.id);
 
-    // Cleanup expired rows (+ stored logos) opportunistically.
-    const { data: expiredRows } = await supabase
-      .from('custom_events')
-      .select('id, event_data')
-      .in('user_id', orgMemberIds)
-      .lte('expires_at', new Date().toISOString());
+    // Cleanup expired rows (+ stored logos) probabilistically (~5% of requests).
+    // Running this on every GET added 1-2 extra Supabase round-trips to the
+    // hot path; sampling keeps the cleanup happening regularly without taxing
+    // every page load.
+    if (Math.random() < 0.05) {
+      const { data: expiredRows } = await supabase
+        .from('custom_events')
+        .select('id, event_data')
+        .in('user_id', orgMemberIds)
+        .lte('expires_at', new Date().toISOString());
 
-    if (expiredRows && expiredRows.length > 0) {
-      const expiredIds = expiredRows.map((r) => r.id);
-      const logoPaths = expiredRows
-        .map((r) => getLogoPath(r.event_data as MatchEvent))
-        .filter((v): v is string => Boolean(v));
+      if (expiredRows && expiredRows.length > 0) {
+        const expiredIds = expiredRows.map((r) => r.id);
+        const logoPaths = expiredRows
+          .map((r) => getLogoPath(r.event_data as MatchEvent))
+          .filter((v): v is string => Boolean(v));
 
-      await supabase.from('custom_events').delete().in('id', expiredIds);
-      if (logoPaths.length > 0) {
-        await supabase.storage.from(BUCKET).remove(Array.from(new Set(logoPaths)));
+        await supabase.from('custom_events').delete().in('id', expiredIds);
+        if (logoPaths.length > 0) {
+          await supabase.storage.from(BUCKET).remove(Array.from(new Set(logoPaths)));
+        }
       }
     }
 
@@ -125,7 +130,9 @@ export async function GET() {
       _expiresAt: row.expires_at,
     }));
 
-    return NextResponse.json({ events });
+    return NextResponse.json({ events }, {
+      headers: { 'Cache-Control': 'private, max-age=15, stale-while-revalidate=60' },
+    });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown error' }, { status: 500 });
   }

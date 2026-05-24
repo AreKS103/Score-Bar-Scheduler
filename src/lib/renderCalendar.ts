@@ -72,12 +72,12 @@ function renderCard(e: MatchEvent, opts: CalendarRenderOpts): string {
   const leagueLabel = e.leagueLabel || config?.label || '';
 
   const homeTeam = e.homeLogo
-    ? `<span class="cal-team"><img class="cal-team-logo" src="${esc(e.homeLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />${esc(e.home)}</span>`
-    : `<span class="cal-team">${esc(e.home)}</span>`;
+    ? `<span class="cal-team"><img class="cal-team-logo" src="${esc(e.homeLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" /><span class="cal-team-name">${esc(e.home)}</span></span>`
+    : `<span class="cal-team"><span class="cal-team-name">${esc(e.home)}</span></span>`;
   const awayTeam = e.away
     ? (e.awayLogo
-      ? `<span class="cal-team"><img class="cal-team-logo" src="${esc(e.awayLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />${esc(e.away)}</span>`
-      : `<span class="cal-team">${esc(e.away)}</span>`)
+      ? `<span class="cal-team"><img class="cal-team-logo" src="${esc(e.awayLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" /><span class="cal-team-name">${esc(e.away)}</span></span>`
+      : `<span class="cal-team"><span class="cal-team-name">${esc(e.away)}</span></span>`)
     : null;
   const matchHtml = awayTeam
     ? `${homeTeam}<span class="cal-vs">vs</span>${awayTeam}`
@@ -107,7 +107,7 @@ function renderDayColumn(date: string, dayEvents: MatchEvent[], opts: CalendarRe
   dayEvents.sort((a, b) => a.time.localeCompare(b.time));
   const cards = dayEvents.map((e) => renderCard(e, opts));
 
-  return `<div class="cal-day">
+  return `<div class="cal-day" data-date="${esc(date)}" data-date-label="${esc(shortDate(date))}">
   <div class="cal-day-header">
     <span class="cal-day-name">${dayName(date)}</span>
     <span class="cal-day-date">${shortDate(date)}</span>
@@ -126,7 +126,6 @@ export function renderCalendarContent(
     return { html: '<div class="cal-empty">No events scheduled.</div>' };
   }
 
-  // Group events by date
   const byDate = new Map<string, MatchEvent[]>();
   for (const e of events) {
     if (!byDate.has(e.date)) byDate.set(e.date, []);
@@ -134,60 +133,58 @@ export function renderCalendarContent(
   }
   const sortedDates = Array.from(byDate.keys()).sort();
 
-  // Determine unique weeks (Mon–Sun) that contain events
   const weekSet = new Set<string>();
-  for (const d of sortedDates) weekSet.add(weekMonday(d));
+  for (const date of sortedDates) weekSet.add(weekMonday(date));
   const weeks = Array.from(weekSet).sort();
 
   const titleText = opts.title || 'Weekly Lineup';
-
-  // Build highlights section
   const featured = events.filter(e => e.isFeatured);
   const featuredLeagues = opts.featuredLeagues ?? new Map<string, string>();
   let highlightsHTML = '';
+
   if (featured.length > 0 || featuredLeagues.size > 0) {
     const hlParts: string[] = [
       '<div class="hl-section">',
       '<h2 class="hl-title">This Week\'s Highlights</h2>',
     ];
-    // Group by date
     const hlByDate = new Map<string, MatchEvent[]>();
     [...featured]
       .sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time))
-      .forEach(e => {
-        if (!hlByDate.has(e.date)) hlByDate.set(e.date, []);
-        hlByDate.get(e.date)!.push(e);
+      .forEach(event => {
+        if (!hlByDate.has(event.date)) hlByDate.set(event.date, []);
+        hlByDate.get(event.date)!.push(event);
       });
+
     for (const [date, dayEvents] of hlByDate) {
       const displayDate = format(parseISO(date), 'EEEE d MMMM');
-      hlParts.push(`<div class="hl-date-group">`);
+      hlParts.push('<div class="hl-date-group">');
       hlParts.push(`<div class="hl-date-header">${esc(displayDate)}</div>`);
-      for (const e of dayEvents) {
-        const isCombat = ['boxing', 'ufc', 'bellator'].includes(e.sportId);
-        const homeFlag = isCombat && e.homeCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(e.homeCountry)}</span>` : '';
-        const awayFlag = isCombat && e.awayCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(e.awayCountry)}</span>` : '';
-        const homeImg = e.homeLogo ? `<img class="hl-team-logo" src="${esc(e.homeLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
-        const awayImg = e.awayLogo && e.away ? `<img class="hl-team-logo" src="${esc(e.awayLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
-        const leagueFallback = !e.away && !homeImg ? (() => {
-          const cfg = SPORTS_CONFIG.find(s => s.id === e.sportId);
-          return cfg ? resolvePublishLogoUrl(cfg.logo || e.leagueLogo || '', cfg.publishLogo) : '';
+      for (const event of dayEvents) {
+        const isCombat = ['boxing', 'ufc', 'bellator'].includes(event.sportId);
+        const homeFlag = isCombat && event.homeCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(event.homeCountry)}</span>` : '';
+        const awayFlag = isCombat && event.awayCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(event.awayCountry)}</span>` : '';
+        const homeImg = event.homeLogo ? `<img class="hl-team-logo" src="${esc(event.homeLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
+        const awayImg = event.awayLogo && event.away ? `<img class="hl-team-logo" src="${esc(event.awayLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
+        const leagueFallback = !event.away && !homeImg ? (() => {
+          const cfg = SPORTS_CONFIG.find(s => s.id === event.sportId);
+          return cfg ? resolvePublishLogoUrl(cfg.logo || event.leagueLogo || '', cfg.publishLogo) : '';
         })() : '';
         const leagueFallbackImg = leagueFallback ? `<img class="hl-team-logo" src="${esc(leagueFallback)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
-        const teamsHtml = e.away
-          ? `<span class="hl-team">${homeImg}${homeFlag}${esc(e.home)}</span><span class="hl-vs">vs</span><span class="hl-team">${awayImg}${awayFlag}${esc(e.away)}</span>`
-          : `<span class="hl-team">${leagueFallbackImg}${homeImg}${esc(e.home)}</span>`;
-        const roundStr = e.round ? `<div class="hl-round">${esc(e.round)}</div>` : '';
-        hlParts.push(`<div class="hl-event"><div class="hl-event-meta">${e.time ? `<span class="hl-time">${esc(e.time)}</span>` : ''}<span class="hl-league-name">${esc(e.leagueLabel || '')}</span></div><div class="hl-teams">${teamsHtml}</div>${roundStr}</div>`);
+        const teamsHtml = event.away
+          ? `<span class="hl-team">${homeImg}${homeFlag}${esc(event.home)}</span><span class="hl-vs">vs</span><span class="hl-team">${awayImg}${awayFlag}${esc(event.away)}</span>`
+          : `<span class="hl-team">${leagueFallbackImg}${homeImg}${esc(event.home)}</span>`;
+        const roundStr = event.round ? `<div class="hl-round">${esc(event.round)}</div>` : '';
+        hlParts.push(`<div class="hl-event"><div class="hl-event-meta">${event.time ? `<span class="hl-time">${esc(event.time)}</span>` : ''}<span class="hl-league-name">${esc(event.leagueLabel || '')}</span></div><div class="hl-teams">${teamsHtml}</div>${roundStr}</div>`);
       }
       hlParts.push('</div>');
     }
+
     for (const [sportId, customLabel] of featuredLeagues) {
       const config = SPORTS_CONFIG.find(s => s.id === sportId);
       const leagueLabel = config?.label || sportId;
-      // Prefer a starred event; fall back to any team-vs-team event for this league
       const teamEvent =
-        events.find(e => e.sportId === sportId && !!e.away && e.isFeatured) ||
-        events.find(e => e.sportId === sportId && !!e.away);
+        events.find(event => event.sportId === sportId && !!event.away && event.isFeatured) ||
+        events.find(event => event.sportId === sportId && !!event.away);
       if (teamEvent) {
         const homeImg = teamEvent.homeLogo ? `<img class="hl-team-logo" src="${esc(teamEvent.homeLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
         const awayImg = teamEvent.awayLogo ? `<img class="hl-team-logo" src="${esc(teamEvent.awayLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
@@ -204,40 +201,39 @@ export function renderCalendarContent(
     highlightsHTML = `<div class="cal-highlights">${hlParts.join('')}</div>`;
   }
 
-  // Build week pages — one <div class="cal-week"> per Mon–Sun span
   const weekPages: string[] = [];
-  for (let wi = 0; wi < weeks.length; wi++) {
-    const monStr = weeks[wi];
+  let needsMobileDayNav = false;
+  for (let weekIndex = 0; weekIndex < weeks.length; weekIndex++) {
+    const monStr = weeks[weekIndex];
     const sunStr = weekSunday(monStr);
     const monDate = parseISO(monStr);
     const sunDate = parseISO(sunStr);
-
-    // Collect dates within this week that have events
-    const weekDates = sortedDates.filter(d => {
-      const dd = parseISO(d);
-      return !isBefore(dd, monDate) && !isAfter(dd, sunDate);
+    const weekDates = sortedDates.filter(date => {
+      const parsedDate = parseISO(date);
+      return !isBefore(parsedDate, monDate) && !isAfter(parsedDate, sunDate);
     });
 
-    const cols = weekDates.map(d => renderDayColumn(d, byDate.get(d)!, opts));
+    if (weekDates.length > 3) needsMobileDayNav = true;
+    const cols = weekDates.map(date => renderDayColumn(date, byDate.get(date)!, opts));
     const colCount = Math.min(weekDates.length, 7);
-    const activeClass = wi === 0 ? ' cal-week-active' : '';
+    const activeClass = weekIndex === 0 ? ' cal-week-active' : '';
 
-    weekPages.push(`<div class="cal-week${activeClass}" data-week="${wi}" data-week-label="${esc(weekRangeLabel(monStr))}">
+    weekPages.push(`<div class="cal-week${activeClass}" data-week="${weekIndex}" data-week-label="${esc(weekRangeLabel(monStr))}">
   <div class="cal-columns" data-cols="${colCount}">
     ${cols.join('\n    ')}
   </div>
 </div>`);
   }
 
-  // Week navigation (only if multiple weeks)
   let navHTML = '';
-  if (weeks.length > 1) {
-    navHTML = `<div class="cal-nav">
-  <button class="cal-nav-btn cal-nav-prev" aria-label="Previous week" disabled>
+  if (weeks.length > 1 || needsMobileDayNav) {
+    const mobileOnlyClass = weeks.length === 1 ? ' cal-nav-mobile-only' : '';
+    navHTML = `<div class="cal-nav${mobileOnlyClass}">
+  <button class="cal-nav-btn cal-nav-prev" aria-label="Previous days" disabled>
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
   </button>
   <span class="cal-nav-label">${esc(weekRangeLabel(weeks[0]))}</span>
-  <button class="cal-nav-btn cal-nav-next" aria-label="Next week">
+  <button class="cal-nav-btn cal-nav-next" aria-label="Next days">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
   </button>
 </div>`;
@@ -251,6 +247,7 @@ export function renderCalendarContent(
   </div>
   ${navHTML}
 </div>
+<div class="cal-mobile-orientation-hint" role="note">Rotate your phone for the best weekly calendar view.</div>
 <div class="cal-weeks" data-total="${weeks.length}">
   ${weekPages.join('\n  ')}
 </div>`;
@@ -271,6 +268,7 @@ export function getCalendarCSS(accent: string): string {
 
 /* ── Week Navigation ── */
 .cal-nav{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.cal-nav-mobile-only{display:none}
 .cal-nav-btn{
   display:inline-flex;align-items:center;justify-content:center;
   width:28px;height:28px;border-radius:6px;border:1px solid var(--border,#e5e7eb);
@@ -292,7 +290,6 @@ export function getCalendarCSS(accent: string): string {
   grid-template-columns:repeat(var(--cal-cols,7),minmax(0,1fr));
   gap:8px;
   width:100%;
-  container-type:inline-size;
   align-items:stretch;
 }
 .cal-columns[data-cols="1"]{--cal-cols:1}
@@ -373,12 +370,18 @@ export function getCalendarCSS(accent: string): string {
 }
 .cal-team{
   display:flex;
-  align-items:center;
+  align-items:flex-start;
   gap:4px;
   font-size:.88em;
   font-weight:600;
   color:var(--text);
-  word-break:break-word;
+  word-break:normal;
+  overflow-wrap:anywhere;
+  min-width:0;
+}
+.cal-team-name{
+  min-width:0;
+  overflow-wrap:anywhere;
 }
 .cal-team-logo{
   height:16px;
@@ -437,17 +440,92 @@ export function getCalendarCSS(accent: string): string {
   box-shadow:0 0 0 2px color-mix(in srgb,${accent} 25%,transparent);
 }
 
-
-/* ── Responsive: container queries ── */
-@container(max-width:900px){
-  .cal-columns{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))!important}
+.cal-mobile-orientation-hint{
+  display:none;
+  margin:-4px 0 12px;
+  padding:9px 12px;
+  border:1px solid color-mix(in srgb,${accent} 28%,var(--border,#e5e7eb));
+  border-radius:10px;
+  background:color-mix(in srgb,${accent} 8%,var(--surface,#f8f9fa));
+  color:var(--heading,var(--text));
+  font-size:12px;
+  font-weight:650;
+  line-height:1.35;
 }
-@container(max-width:560px){
-  .cal-columns{grid-template-columns:1fr!important}
-  .cal-card{padding:6px}
-  .cal-teams{font-size:.8em}
-  .cal-header{flex-direction:column;align-items:flex-start;gap:8px}
-  .cal-nav{width:100%;justify-content:center}
+
+
+/* ── Responsive: phone calendar, paged in 3-day increments ── */
+@media (max-width:767px){
+  .cal-header{align-items:flex-start;gap:10px;margin-bottom:12px}
+  .cal-header-left{width:100%;gap:8px}
+  .cal-title{font-size:1.18em;line-height:1.15}
+  .cal-badge{font-size:9px;padding:3px 8px}
+  .cal-nav-mobile-only{display:flex}
+  .cal-nav{width:100%;justify-content:space-between;gap:8px}
+  .cal-nav-label{flex:1;min-width:0;text-align:center;font-size:.84em}
+  .cal-nav-btn{width:34px;height:34px;border-radius:9px;flex:0 0 34px}
+
+  .cal-columns{
+    display:grid!important;
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    gap:7px!important;
+    width:100%!important;
+    min-width:0!important;
+  }
+  body:not(.cal-mobile-ready) .cal-week-active .cal-day:nth-child(n+4),
+  .cal-day.cal-mobile-hidden{display:none!important}
+  .cal-day{
+    width:auto;
+    min-width:0;
+    min-height:0;
+    border:1px solid var(--border,#e5e7eb);
+    border-radius:10px;
+    background:color-mix(in srgb,var(--surface,#f8f9fa) 72%,var(--bg,#fff));
+    overflow:hidden;
+  }
+  .cal-day-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    text-align:left;
+    padding:8px 7px;
+    margin:0;
+    border-bottom:1px solid color-mix(in srgb,${accent} 35%,var(--border,#e5e7eb));
+    background:var(--bg,#fff);
+  }
+  .cal-day-name{font-size:.72em;letter-spacing:.07em}
+  .cal-day-date{font-size:.67em;margin:0;white-space:nowrap}
+  .cal-day-events{display:grid;grid-template-columns:1fr;gap:6px;padding:6px;flex:none}
+  .cal-card{padding:7px 6px;border-radius:8px;background:var(--card-bg,var(--surface,#f4f6f9));min-width:0}
+  .cal-time{display:block;margin:0 0 3px;font-size:.68em;line-height:1.2;white-space:nowrap}
+  .cal-league{display:flex;max-width:100%;margin:0 0 4px;font-size:.62em;line-height:1.2;min-width:0}
+  .cal-league span{min-width:0;overflow-wrap:anywhere}
+  .cal-league-logo{height:12px;max-width:14px}
+  .cal-teams{margin-top:1px;gap:3px;min-width:0}
+  .cal-team{font-size:.74em;line-height:1.22;gap:3px;word-break:normal;overflow-wrap:anywhere}
+  .cal-team-logo{height:14px;max-width:16px;object-fit:contain;margin-top:1px}
+  .cal-vs{font-size:.62em;padding:0;margin:0;color:var(--muted,#888)}
+  .cal-round{font-size:.62em;line-height:1.25;margin-top:4px;overflow-wrap:anywhere}
+  .cal-tags{gap:3px;margin-top:5px}
+  .cal-tag{font-size:.58em;padding:1px 5px;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  .cal-day-events[data-count="1"] .cal-card,
+  .cal-day-events[data-count="2"] .cal-card{padding:7px 6px}
+  .cal-day-events[data-count="1"] .cal-teams,
+  .cal-day-events[data-count="2"] .cal-teams{font-size:1em}
+}
+
+@media (max-width:767px) and (orientation:portrait){
+  .cal-mobile-orientation-hint{display:block}
+}
+
+@media (max-width:932px) and (max-height:520px) and (orientation:landscape){
+  .cal-header{margin-bottom:10px}
+  .cal-mobile-orientation-hint{display:none!important}
+  .cal-columns{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:8px!important}
+  .cal-card{padding:7px 7px}
+  .cal-team{font-size:.82em;line-height:1.25;word-break:normal;overflow-wrap:anywhere}
+  .cal-league{font-size:.66em}
 }
 
 /* ── Highlights section ── */
@@ -474,25 +552,75 @@ export function getCalendarCSS(accent: string): string {
 export function getCalendarNavJS(): string {
   return `
 (function(){
-  var weeks=document.querySelectorAll('.cal-week');
-  if(weeks.length<2)return;
+  var weeks=Array.prototype.slice.call(document.querySelectorAll('.cal-week'));
+  if(!weeks.length)return;
   var prev=document.querySelector('.cal-nav-prev');
   var next=document.querySelector('.cal-nav-next');
   var label=document.querySelector('.cal-nav-label');
   if(!prev||!next||!label)return;
-  var current=0;
-  function send(){try{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}catch(e){}}
-  function show(i){
-    weeks[current].classList.remove('cal-week-active');
-    current=i;
-    weeks[current].classList.add('cal-week-active');
-    label.textContent=weeks[current].getAttribute('data-week-label')||'';
-    prev.disabled=current===0;
-    next.disabled=current===weeks.length-1;
+  var media=window.matchMedia?window.matchMedia('(max-width: 767px)'):{matches:false};
+  var current=Math.max(0,weeks.findIndex(function(w){return w.classList.contains('cal-week-active');}));
+  var chunk=0;
+  function daysOf(week){return Array.prototype.slice.call(week.querySelectorAll('.cal-day'));}
+  function chunkCount(week){return Math.max(1,Math.ceil(daysOf(week).length/3));}
+  function send(){try{if(window._sbSendHeight){window._sbSendHeight();}else{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}}catch(e){}}
+  function setActiveWeek(index){
+    weeks.forEach(function(week,weekIndex){week.classList.toggle('cal-week-active',weekIndex===index);});
+    current=index;
+  }
+  function chunkLabel(week,index){
+    var days=daysOf(week);
+    var first=days[index*3];
+    var last=days[Math.min(days.length-1,index*3+2)];
+    if(!first||!last)return week.getAttribute('data-week-label')||'';
+    var start=first.getAttribute('data-date-label')||'';
+    var end=last.getAttribute('data-date-label')||'';
+    return start&&end&&start!==end?start+' - '+end:(start||end||week.getAttribute('data-week-label')||'');
+  }
+  function render(){
+    var mobile=!!media.matches;
+    document.body.classList.toggle('cal-mobile-ready',mobile);
+    setActiveWeek(current);
+    weeks.forEach(function(week,weekIndex){
+      daysOf(week).forEach(function(day,dayIndex){
+        var hidden=mobile&&(weekIndex!==current||dayIndex<chunk*3||dayIndex>=chunk*3+3);
+        day.classList.toggle('cal-mobile-hidden',hidden);
+      });
+    });
+    if(mobile){
+      var total=chunkCount(weeks[current]);
+      if(chunk>=total){chunk=total-1;return render();}
+      label.textContent=chunkLabel(weeks[current],chunk);
+      prev.disabled=current===0&&chunk===0;
+      next.disabled=current===weeks.length-1&&chunk>=total-1;
+    }else{
+      chunk=0;
+      weeks.forEach(function(week){daysOf(week).forEach(function(day){day.classList.remove('cal-mobile-hidden');});});
+      label.textContent=weeks[current].getAttribute('data-week-label')||'';
+      prev.disabled=current===0;
+      next.disabled=current===weeks.length-1;
+    }
     requestAnimationFrame(function(){requestAnimationFrame(send);});
   }
-  prev.addEventListener('click',function(){if(current>0)show(current-1);});
-  next.addEventListener('click',function(){if(current<weeks.length-1)show(current+1);});
+  prev.addEventListener('click',function(){
+    if(media.matches){
+      if(chunk>0){chunk--;render();return;}
+      if(current>0){current--;chunk=chunkCount(weeks[current])-1;render();}
+      return;
+    }
+    if(current>0){current--;render();}
+  });
+  next.addEventListener('click',function(){
+    if(media.matches){
+      var total=chunkCount(weeks[current]);
+      if(chunk<total-1){chunk++;render();return;}
+      if(current<weeks.length-1){current++;chunk=0;render();}
+      return;
+    }
+    if(current<weeks.length-1){current++;render();}
+  });
+  if(media.addEventListener){media.addEventListener('change',render);}else if(media.addListener){media.addListener(render);}
+  render();
 })();
 `;
 }
