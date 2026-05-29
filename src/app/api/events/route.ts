@@ -197,7 +197,8 @@ const LEAGUE_METADATA: Record<string, { label: string; category: string; logo: s
   'tennis-us-open': { label: 'US Open', category: 'Tennis', logo: '/league-logos/tennis-us-open.webp' },
   'golf-pga': { label: 'PGA Tour', category: 'Golf', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/pga.png' },
   'golf-lpga': { label: 'LPGA Tour', category: 'Golf', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/lpga.png' },
-  'cycling-giro': { label: "Giro d'Italia", category: 'Cycling', logo: '/league-logos/cycling-giro.svg' },
+  'cycling-giro': { label: "Giro d'Italia Men", category: 'Cycling', logo: '/league-logos/cycling-giro.svg' },
+  'cycling-giro-women': { label: "Giro d'Italia Women", category: 'Cycling', logo: '/league-logos/cycling-giro.svg' },
 };
 
 const TENNIS_GRAND_SLAMS = [
@@ -600,7 +601,6 @@ function mapMotorsportSessions(
 
   for (const event of events) {
     const gpName = (event.shortName || event.name || 'TBD')
-      .replace(/Grand Prix/gi, 'GP')
       .replace(/\s+/g, ' ')
       .trim();
 
@@ -1141,53 +1141,6 @@ function sportsDBToLocal(dateStr: string, timeStr: string, timeZone: string): { 
   }
 }
 
-function timeZoneOffsetMs(utc: Date, timeZone: string): number {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(utc);
-
-  const lookup = Object.fromEntries(
-    parts
-      .filter(part => part.type !== 'literal')
-      .map(part => [part.type, part.value])
-  ) as Record<string, string>;
-
-  const localAsUtc = Date.UTC(
-    Number(lookup.year),
-    Number(lookup.month) - 1,
-    Number(lookup.day),
-    Number(lookup.hour),
-    Number(lookup.minute),
-    Number(lookup.second),
-  );
-
-  return localAsUtc - utc.getTime();
-}
-
-function zonedWallTimeToUtc(dateStr: string, timeStr: string, sourceTimeZone: string): Date | null {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  const [hour, minute, second = 0] = timeStr.split(':').map(Number);
-  if (![year, month, day, hour, minute, second].every(Number.isFinite)) return null;
-
-  const wallTimeUtc = Date.UTC(year, month - 1, day, hour, minute, second);
-  let utc = new Date(wallTimeUtc);
-
-  for (let i = 0; i < 3; i++) {
-    const next = new Date(wallTimeUtc - timeZoneOffsetMs(utc, sourceTimeZone));
-    if (Math.abs(next.getTime() - utc.getTime()) < 1000) return next;
-    utc = next;
-  }
-
-  return utc;
-}
-
 function mapSDBEvent(event: SportsDBEvent, league: typeof SPORTSDB_ONLY_LEAGUES[0], timeZone: string): MatchEvent {
   const { date, time } = sportsDBToLocal(event.dateEvent, event.strTime || '00:00:00', timeZone);
   return {
@@ -1527,11 +1480,8 @@ async function fetchSportsDBLeague(
   if (COMBAT_SPORT_IDS.has(league.sportsdbId)) {
     return fetchSportsDBCombatBySeason(league, startDate, endDate, timeZone);
   }
-  // MotoGP: TheSportsDB's free tier rate-limits requests to the MotoGP
-  // league heavily (HTTP 429 after just a few calls). The official MotoGP
-  // API has no rate-limit issues, returns the full season calendar with
-  // proper multi-day date ranges, and uses canonical event names like
-  // "GRAND PRIX OF ITALY".
+  // MotoGP: use the official MotoGP site API for canonical event names and
+  // session times. TheSportsDB is too sparse for the full race-weekend slate.
   if (league.id === 'motogp') {
     return fetchMotoGPOfficial(league, startDate, endDate, timeZone);
   }
@@ -1540,20 +1490,73 @@ async function fetchSportsDBLeague(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Official MotoGP API (api.motogp.pulselive.com)
-// Used instead of TheSportsDB because the free-tier eventsround / eventsnext
-// endpoints rate-limit heavily and miss the bulk of the calendar.
+// Official MotoGP API used by motogp.com.
 // ─────────────────────────────────────────────────────────────────────────────
-interface MotoGPSeason { id: string; year: number; current: boolean }
-interface MotoGPEventRaw { id: string; date_start: string; date_end: string; name: string; status?: string; test?: boolean }
+interface MotoGPCalendarEvent {
+  id: string;
+  name: string;
+  additional_name?: string;
+  kind?: string;
+  date_start: string;
+  date_end: string;
+  status?: string;
+  country?: string;
+  shortname?: string;
+  time_zone?: string;
+  circuit?: { name?: string; region?: string };
+}
 
-const MOTOGP_API_BASE = 'https://api.motogp.pulselive.com/motogp/v1/results';
+interface MotoGPBroadcast {
+  id: string;
+  name: string;
+  shortname?: string;
+  date_start: string;
+  date_end?: string;
+  status?: string;
+  live?: boolean;
+  type?: string;
+  category?: { acronym?: string; name?: string };
+}
+
+interface MotoGPEventDetail extends MotoGPCalendarEvent {
+  broadcasts?: MotoGPBroadcast[];
+}
+
+const MOTOGP_API_BASE = 'https://api.pulselive.motogp.com/motogp/v1';
 const MOTOGP_HDR = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
   'Accept':     'application/json',
+  'x-client':   'FE',
+  'x-referer-path': '/en/calendar',
+  'Referer':    'https://www.motogp.com/en/calendar',
 };
 const MOTOGP_CACHE_TTL = 60 * 60 * 1000; // 1 hour — calendar rarely changes
 const motoGpApiCache = new Map<string, { data: unknown; ts: number }>();
+
+const MOTOGP_SESSION_SHORTNAMES = new Set(['FP1', 'FP2', 'FP3', 'P1', 'P2', 'P3', 'PR', 'Q1', 'Q2', 'WUP', 'SPR', 'RAC']);
+
+function cleanMotoGPText(value: string | undefined | null): string {
+  return (value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function parseMotoGPDate(value: string | undefined): Date | null {
+  if (!value) return null;
+  const normalized = value.replace(/([+-]\d{2})(\d{2})$/, '$1:$2');
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function motoGPEventTouchesRange(event: MotoGPCalendarEvent, startDate: string, endDate: string): boolean {
+  const eventStart = event.date_start.slice(0, 10);
+  const eventEnd = event.date_end.slice(0, 10);
+  return eventEnd >= startDate && eventStart <= endDate;
+}
+
+function isMotoGPScheduleSession(session: MotoGPBroadcast): boolean {
+  return (session.type === 'SESSION' || session.type === 'SE')
+    && session.category?.acronym === 'MGP'
+    && MOTOGP_SESSION_SHORTNAMES.has(session.shortname ?? '');
+}
 
 async function motoGpFetch<T>(path: string): Promise<T | null> {
   const hit = motoGpApiCache.get(path);
@@ -1564,10 +1567,12 @@ async function motoGpFetch<T>(path: string): Promise<T | null> {
       signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return null;
-    const j = (await res.json()) as T;
-    motoGpApiCache.set(path, { data: j, ts: Date.now() });
-    return j;
-  } catch { return null; }
+    const data = (await res.json()) as T;
+    motoGpApiCache.set(path, { data, ts: Date.now() });
+    return data;
+  } catch {
+    return null;
+  }
 }
 
 async function fetchMotoGPOfficial(
@@ -1576,128 +1581,64 @@ async function fetchMotoGPOfficial(
   endDate: string,
   timeZone: string
 ): Promise<MatchEvent[]> {
-  const seasons = await motoGpFetch<MotoGPSeason[]>('/seasons');
-  if (!seasons || !Array.isArray(seasons)) {
-    console.warn('[MotoGP-Official] seasons fetch failed');
-    return [];
-  }
   const startYear = parseInt(startDate.slice(0, 4), 10);
   const endYear = parseInt(endDate.slice(0, 4), 10);
-  const wanted = seasons.filter(s => s.year >= startYear && s.year <= endYear);
-  if (wanted.length === 0) return [];
+  const years: number[] = [];
+  for (let year = startYear; year <= endYear; year++) years.push(year);
 
-  const allEvents: MotoGPEventRaw[] = [];
-  for (const s of wanted) {
-    const list = await motoGpFetch<MotoGPEventRaw[]>(`/events?seasonUuid=${s.id}`);
-    if (Array.isArray(list)) {
-      for (const e of list) if (!e.test) allEvents.push(e);
-    }
-  }
+  const calendarEvents = (await Promise.all(
+    years.map(year => motoGpFetch<MotoGPCalendarEvent[]>(`/events?seasonYear=${year}`))
+  )).flatMap(list => Array.isArray(list) ? list : []);
 
-  const out: MatchEvent[] = [];
-  for (const e of allEvents) {
-    // "GRAND PRIX OF ITALY" → "Italy"
-    const country = e.name
-      .replace(/^grand prix of /i, '')
-      .toLowerCase()
-      .replace(/\b\w+/g, w => w.charAt(0).toUpperCase() + w.slice(1));
+  const gpEvents = calendarEvents.filter(event =>
+    event.kind === 'GP' && motoGPEventTouchesRange(event, startDate, endDate)
+  );
 
-    // Race weekend: Sprint Saturday + Main GP Sunday.
-    // MotoGP race weekends span Friday → Sunday; date_end is race day (Sunday).
-    const sunday = e.date_end; // YYYY-MM-DD
-    const satDt = new Date(`${e.date_end}T00:00:00Z`);
-    satDt.setUTCDate(satDt.getUTCDate() - 1);
-    const saturday = satDt.toISOString().slice(0, 10);
+  const details = await Promise.all(
+    gpEvents.map(event => motoGpFetch<MotoGPEventDetail>(`/events/${event.id}`))
+  );
 
-    // Sprint Race — typically ~15:00 CET (~13:00 UTC) Saturday
-    if (saturday >= startDate && saturday <= endDate) {
-      const { date, time } = sportsDBToLocal(saturday, '13:00:00', timeZone);
-      out.push({
-        id: `motogp-official-${e.id}-sprint`,
+  const out = details.flatMap((detail): MatchEvent[] => {
+    if (!detail?.broadcasts?.length) return [];
+
+    const eventTitle = cleanMotoGPText(detail.name || detail.additional_name || league.label);
+    const eventRound = cleanMotoGPText(detail.additional_name);
+    const sessions = detail.broadcasts.filter(isMotoGPScheduleSession);
+
+    return sessions.map((session): MatchEvent | null => {
+      const utc = parseMotoGPDate(session.date_start);
+      if (!utc) return null;
+      const { date, time } = formatUtcDateInTimeZone(utc, timeZone);
+      if (date < startDate || date > endDate) return null;
+
+      const sessionName = cleanMotoGPText(session.name);
+      return {
+        id: `motogp-official-${detail.id}-${session.id || session.shortname || date}`,
         source: 'sportsdb',
         sportId: league.id,
         category: league.category,
         leagueLabel: league.label,
         leagueLogo: league.logo,
-        date, time,
-        home: `${country} Sprint Race`,
+        date,
+        time,
+        home: sessionName ? `${eventTitle} - ${sessionName}` : eventTitle,
         away: '',
-        round: '',
+        round: eventRound,
         tags: [],
         isFeatured: false,
         isSelected: false,
-      });
-    }
-
-    // Main GP — typically ~14:00 CET (~12:00 UTC) Sunday
-    if (sunday >= startDate && sunday <= endDate) {
-      const { date, time } = sportsDBToLocal(sunday, '12:00:00', timeZone);
-      out.push({
-        id: `motogp-official-${e.id}-gp`,
-        source: 'sportsdb',
-        sportId: league.id,
-        category: league.category,
-        leagueLabel: league.label,
-        leagueLogo: league.logo,
-        date, time,
-        home: `${country} GP`,
-        away: '',
-        round: '',
-        tags: [],
-        isFeatured: false,
-        isSelected: false,
-      });
-    }
-  }
-
-  console.log(`[MotoGP-Official] ${league.label}: ${out.length} race cards in range (${allEvents.length} events across ${wanted.length} season(s))`);
-  return out;
-}
-
-const GIRO_SPORT_ID = 'cycling-giro';
-const GIRO_SOURCE_TIME_ZONE = 'Europe/Rome';
-const GIRO_META = LEAGUE_METADATA[GIRO_SPORT_ID];
-
-const GIRO_2026_STAGES = [
-  { stage: 18, date: '2026-05-28', time: '13:15:00', route: 'Fai della Paganella - Pieve di Soligo', distance: '171 km' },
-  { stage: 19, date: '2026-05-29', time: '12:30:00', route: 'Feltre - Alleghe (Piani di Pezzè)', distance: '151 km' },
-  { stage: 20, date: '2026-05-30', time: '10:45:00', route: 'Gemona del Friuli 1976-2026 - Piancavallo', distance: '200 km' },
-  { stage: 21, date: '2026-05-31', time: '15:40:00', route: 'Roma - Roma', distance: '131 km' },
-] as const;
-
-function fetchOfficialGiroEvents(startDate: string, endDate: string, timeZone: string): MatchEvent[] {
-  if (!GIRO_META) return [];
-
-  return GIRO_2026_STAGES.map((stage): MatchEvent | null => {
-    const utc = zonedWallTimeToUtc(stage.date, stage.time, GIRO_SOURCE_TIME_ZONE);
-    if (!utc) return null;
-    const { date, time } = formatUtcDateInTimeZone(utc, timeZone);
-
-    return {
-      id: `official-giro-2026-stage-${stage.stage}`,
-      source: 'sportsdb',
-      sportId: GIRO_SPORT_ID,
-      category: GIRO_META.category,
-      leagueLabel: GIRO_META.label,
-      leagueLogo: GIRO_META.logo,
-      date,
-      time,
-      home: stage.route,
-      away: '',
-      round: `Stage ${stage.stage} - ${stage.distance}`,
-      tags: [],
-      isFeatured: false,
-      isSelected: false,
-    };
-  }).filter((event): event is MatchEvent => {
-    if (!event) return false;
-    return event.date >= startDate && event.date <= endDate;
+        sourceEventId: detail.id,
+        isoDate: utc.toISOString(),
+        status: session.status || detail.status,
+        venue: detail.circuit?.name,
+        city: detail.circuit?.region,
+        country: detail.country,
+      };
+    }).filter((event): event is MatchEvent => Boolean(event));
   });
-}
 
-function isSportsDBGiroEvent(event: MatchEvent): boolean {
-  return event.sportId === 'cycling-uci'
-    && /giro|italia/i.test(`${event.leagueLabel} ${event.home} ${event.away} ${event.round}`);
+  console.log(`[MotoGP-Official] ${league.label}: ${out.length} official sessions in range (${gpEvents.length} GP events across ${years.length} season year(s))`);
+  return out;
 }
 
 async function fetchAllSportsDB(startDate: string, endDate: string, timeZone: string): Promise<MatchEvent[]> {
@@ -1772,11 +1713,8 @@ async function fetchAllEvents(startDate: string, endDate: string, timeZone: stri
     console.warn('[Events API] SportsDB timed out for this request; returning ESPN-first payload');
   }
 
-  const officialGiroEvents = fetchOfficialGiroEvents(startDate, endDate, timeZone);
   const rawSportsDBEvents = sportsDBEvents.status === 'fulfilled' && sportsDBEvents.value ? sportsDBEvents.value : [];
-  const sdbEvents = officialGiroEvents.length > 0
-    ? rawSportsDBEvents.filter(event => !isSportsDBGiroEvent(event))
-    : rawSportsDBEvents;
+  const sdbEvents = rawSportsDBEvents;
 
   // Diagnostic: count UFC events from each source
   const espnUFC = (espnEvents.status === 'fulfilled' ? espnEvents.value : []).filter(e => e.sportId === 'ufc');
@@ -1790,7 +1728,6 @@ async function fetchAllEvents(startDate: string, endDate: string, timeZone: stri
   );
   const mergedEvents = [
     ...(espnEvents.status === 'fulfilled' ? espnEvents.value : []),
-    ...officialGiroEvents,
     ...sdbEvents.filter(e => !espnSportDates.has(`${e.sportId}|${e.date}`)),
   ];
   const seen = new Set<string>();

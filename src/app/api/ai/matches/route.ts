@@ -1,22 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createHash } from 'node:crypto';
 import { generateText } from 'ai';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import { getAIModel, getFallbackModel, type AIProviderResult } from '@/lib/ai/provider';
-import { MatchFinderResponseSchema, MatchRatingSchema, type MatchFinderResponse } from '@/lib/ai/schemas';
-import { LEAGUE_MAX_PICKS } from '@/lib/config';
+import { MatchFinderResponseSchema, MatchRatingSchema, type MatchFinderResponse, type MatchCandidate } from '@/lib/ai/schemas';
+import { preFilterCandidates, type ScoreContext, type ScoredCandidate } from '@/lib/ai/scoring';
+import { LEAGUE_MAX_PICKS, getLeagueAbbrev } from '@/lib/config';
 import { createClient } from '@/lib/supabase/server';
 
 export const maxDuration = 30;
 
 // ── Upstash Redis sliding-window rate limiter (50 req/day/IP) ───────────────
 
+const redis = Redis.fromEnv();
 const ratelimit = new Ratelimit({
-  redis: Redis.fromEnv(),
+  redis,
   limiter: Ratelimit.slidingWindow(50, '1 d'),
   analytics: true,
   prefix: 'ai-matches',
 });
+
+// AI response cache: identical candidate set + user profile + filter yields
+// the same answer for 10 minutes. Saves Groq tokens on rapid re-runs.
+const AI_CACHE_TTL_SEC = 600;
+const AI_CACHE_PREFIX = 'ai-matches:v2:';
 
 // ── Resolve client IP (Vercel-safe, spoof-resistant) ────────────────────────
 
@@ -28,165 +36,33 @@ function getClientIP(request: NextRequest): string {
   );
 }
 
-// ── System prompt: sports-bar curator ────────────────────────────────────────
+// ── System prompt: sports-bar curator (concise, judgment-focused) ───────────
+// Deterministic facts (league popularity, marquee teams, derby pairs,
+// race-vs-practice) live in `src/lib/ai/scoring.ts` and are applied
+// server-side. The prompt only carries the judgement rules the model
+// actually needs.
 
-const SYSTEM_PROMPT = `You curate a sports-bar big-screen schedule. Default is EXCLUDE. Only include matches a crowd would genuinely cheer for. Be SELECTIVE — quality over quantity.
+const SYSTEM_PROMPT = `You curate a premium sports-bar big-screen schedule. Default is EXCLUDE.
 
-CRITICAL RULES:
-- You will receive a numbered list of matches grouped by league.
-- You may ONLY return IDs that appear in the input. NEVER invent or hallucinate matches.
-- If an ID is not in the input, do NOT include it.
-- NEVER include matches from Liga MX, Mexican soccer, or any league labeled MX.
-- When in doubt, EXCLUDE. A premium bar schedule should feel curated, not exhaustive.
+CRITICAL:
+- Only return IDs from the input. NEVER invent matches.
+- Exclude Liga MX / any league labelled MX.
+- When in doubt, EXCLUDE. Quality over quantity.
 
-DERBIES & RIVALRIES — always must_watch when they appear:
-Football: Man City v Liverpool, Man Utd v Liverpool, Arsenal v Tottenham, Real Madrid v Barcelona, AC Milan v Inter, Boca v River, Bayern v Dortmund, Celtic v Rangers, Galatasaray v Fenerbahce, Roma v Lazio, Ajax v Feyenoord, PSG v Marseille, Benfica v Porto, Al Ahly v Zamalek, Juventus v Inter, Atletico v Real Madrid, Man Utd v Man City, Chelsea v Arsenal, Liverpool v Everton, Tottenham v West Ham
-NBA: Lakers v Celtics, Lakers v Warriors, Celtics v 76ers, Knicks v Nets, Bulls v Pistons, Heat v Knicks, Warriors v Clippers, Mavs v Spurs, Rockets v Warriors, Rockets v Lakers, Raptors v Celtics, Raptors v Heat, Bulls v Celtics, Knicks v Celtics, Thunder v Nuggets
-NFL: Cowboys v Eagles, Packers v Bears, 49ers v Seahawks, Steelers v Ravens, Chiefs v Raiders, Patriots v Jets, Giants v Eagles, Saints v Falcons
-NHL: Rangers v Islanders, Bruins v Canadiens, Penguins v Capitals, Blackhawks v Red Wings, Oilers v Flames, Maple Leafs v Canadiens
-MLB: Yankees v Red Sox, Dodgers v Giants, Cubs v Cardinals, Mets v Yankees, White Sox v Cubs
+IMPORTANCE TIERS:
+- must_watch — global mega-events: knockouts, finals, derbies, marquee international fixtures, GP races, title fights.
+- high       — strong regional/global interest: top-table league clashes, marquee teams, playoff-implication games.
+- medium/low — DO NOT include in the response.
 
-═══════════════════════════════════════════════════════════
-must_watch — Global mega-events. Bars fill up. 100M+ viewers or culturally defining moments.
-═══════════════════════════════════════════════════════════
+GUIDANCE:
+- Lines may carry " | HH:mm | round" metadata after the title — use it to distinguish a race from practice, a final from a group stage.
+- Prefer matches involving the user's preferred leagues/teams (listed in the USER PROFILE block below).
+- Respect skipped-league signals strongly when confidence is HIGH.
+- A mid-table fixture with no stakes (e.g. Getafe v Espanyol, Sassuolo v Cagliari) is EXCLUDE unless it's a true rivalry.
+- Combat sports / motorsport main events are almost always must_watch; practice / warm-up / qualifying are NOT (the server demotes those automatically).
 
-FOOTBALL (Soccer):
-- UEFA Champions League: knockout rounds, semi-finals, final (400M+ cumulative viewers)
-- UEFA Europa League: semi-finals and final
-- Premier League: top-4 clashes, title deciders, relegation six-pointers
-- La Liga: El Clásico (Real Madrid v Barcelona), top-4 clashes
-- Any domestic cup final (FA Cup, Copa del Rey, DFB-Pokal, Coppa Italia)
-- Copa Libertadores: knockout rounds and final (massive in South America, 100M+)
-- Any rivalry/derby listed above
-
-MOTORSPORT:
-- F1: Grand Prix RACES and Qualifying — always must_watch (~70M+ viewers per race globally). Sprint Races and Practice are secondary (see "high" below).
-- MotoGP: RACES only — always must_watch (~300M+ cumulative viewers globally). Practice and qualifying are secondary.
-
-COMBAT SPORTS:
-- UFC: title fights, main events, and any fight with a top-10 ranked fighter — always must_watch (massive PPV draws, bars pack for fight nights)
-- Boxing: ANY listed professional bout — always must_watch (historic bar sport, every fight draws)
-- PFL: playoff fights and finals only
-
-BASKETBALL:
-- NBA: playoffs, play-in tournament, Finals — always must_watch
-- NBA regular season: games featuring Lakers, Celtics, Warriors, Knicks, Heat, Bucks, Nuggets, Mavericks, 76ers, Suns, Clippers — these are the most-watched NBA teams globally
-- NCAA March Madness: tournament games (not regular season)
-
-AMERICAN FOOTBALL:
-- NFL: ALL regular season and playoff games — always must_watch (Super Bowl alone draws 120M+ US viewers, every NFL game is a bar event)
-- NFL: preseason — exclude unless it's a marquee matchup
-
-CRICKET:
-- IPL: ALL matches — always must_watch (500M+ viewers, biggest cricket league globally)
-- International Test matches: knockout stages, finals, Ashes series
-- Cricket World Cup: ALL matches
-
-TENNIS:
-- Grand Slams: finals, semi-finals, and any match with top-10 players — always must_watch
-- Grand Slams: early rounds with top-20 players
-
-RUGBY:
-- Six Nations: ALL matches — always must_watch (massive in UK, Ireland, France, Italy)
-- Rugby World Cup: ALL matches
-- NRL (Australia): finals series and Grand Final
-
-CYCLING:
-- UCI World Tour: Monuments (Milan-San Remo, Tour of Flanders, Paris-Roubaix, Liège-Bastogne-Liège, Giro di Lombardia) and Grand Tour stages (Tour de France, Giro d'Italia, Vuelta a España) — always must_watch
-
-═══════════════════════════════════════════════════════════
-high — Strong regional/global interest. Dedicated fanbases. Bars show them on available screens.
-═══════════════════════════════════════════════════════════
-
-FOOTBALL (Soccer):
-- Premier League: matches involving top-6 teams (Man City, Arsenal, Liverpool, Man Utd, Chelsea, Tottenham, Newcastle, Aston Villa). Mid-table clashes (e.g. Bournemouth v Brentford, Wolves v Crystal Palace) = EXCLUDE.
-- La Liga: matches involving Real Madrid, Barcelona, Atletico Madrid, Real Sociedad, Athletic Club, Villarreal, Real Betis. Mid/lower-table clashes (e.g. Getafe v Celta Vigo, Valencia v Espanyol, Levante v Alaves) = EXCLUDE.
-- Bundesliga: matches involving Bayern Munich, Borussia Dortmund, RB Leipzig, Bayer Leverkusen. Mid-table clashes (e.g. Hoffenheim v Mainz, Werder Bremen v Augsburg) = EXCLUDE.
-- Serie A: matches involving Inter, AC Milan, Juventus, Napoli, Roma, Lazio, Atalanta, Fiorentina. Mid/lower-table clashes (e.g. Sassuolo v Cagliari, Lecce v Empoli, Verona v Monza) = EXCLUDE.
-- Ligue 1: PSG matches and top-4 clashes only. Mid-table = EXCLUDE.
-- EFL Championship: playoff matches, top-2 clashes, and matches involving historically big clubs (Leeds, Leicester, Southampton, Sunderland). Mid-table = EXCLUDE.
-- FA Cup: rounds from quarter-finals onwards, or giant-killings (lower-league team beating top-flight opponent)
-- Carabao Cup: semi-finals and final only
-- UEFA Europa League: knockout rounds from quarter-finals onwards
-- UEFA Conference League: semi-finals and final only
-- MLS: playoffs, finals, and matches with Messi/Inter Miami or other globally recognisable stars
-- Eredivisie: matches involving Ajax, PSV, or Feyenoord only
-- Scottish Premiership: Old Firm (Celtic v Rangers) is must_watch, matches involving Celtic or Rangers are high, all others = EXCLUDE
-- AFC competitions: semi-finals and final only
-- Saudi Pro League: matches with globally recognisable stars (Ronaldo, Neymar, Benzema, Kante) only
-- Copa Libertadores: matches involving Boca Juniors, River Plate, Flamengo, Palmeiras, Fluminense only. Obscure club clashes = EXCLUDE.
-- Cambodian leagues (CPL, Hun Sen Cup): include if within the user's selected leagues
-
-BASKETBALL:
-- NBA: games with clear playoff implications or interesting storylines (even non-marquee teams)
-- EuroLeague: playoffs and finals
-- NCAA: regular season — only ranked matchups or rivalry games
-
-AMERICAN FOOTBALL:
-- NCAA Football: ranked team matchups, rivalry games (e.g. Alabama v Auburn, Ohio State v Michigan), playoff games
-- CFL: playoffs and Grey Cup only
-
-BASEBALL:
-- MLB: division leaders, pennant-race games, classic rivalries, playoff games, World Series
-- MLB: regular season games between teams with winning records
-- NPB (Japan): playoffs and Japan Series
-
-ICE HOCKEY:
-- NHL: playoff games, Original Six matchups (Bruins, Canadiens, Maple Leafs, Red Wings, Blackhawks, Rangers), division leaders, traditional rivalries
-- NHL: regular season games between playoff-contending teams
-- IIHF World Championship: knockout rounds
-
-MOTORSPORT:
-- F1: Sprint races and Practice Sessions — high but secondary to the Grand Prix race itself
-- MotoGP: Qualifying sessions and practice — secondary to the race
-- IndyCar: ALL races and qualifying sessions (strong US following, ~2M+ viewers per race)
-
-COMBAT SPORTS:
-- UFC: undercard fights with ranked fighters
-- PFL: regular season fights
-- Boxing: amateur or lower-card events
-
-CRICKET:
-- IPL: exclude if already covered by must_watch (all IPL is must_watch)
-- Big Bash League (BBL): matches with recognisable international stars
-- International T20: matches between top-8 ranked nations
-
-TENNIS:
-- ATP Tour: finals and semi-finals of Masters 1000 events
-- WTA Tour: finals and semi-finals of WTA 1000 events
-- Grand Slams: early rounds with players ranked 20-50
-- Davis Cup / Billie Jean King Cup: knockout stages
-
-RUGBY:
-- Six Nations: exclude if already must_watch (all Six Nations is must_watch)
-- Premiership Rugby (England): playoffs and top-4 clashes
-- Top 14 (France): playoffs and top-4 clashes
-- Super Rugby Pacific: playoffs and finals
-- Champions Cup: knockout rounds
-- The Rugby Championship: ALL matches (Southern Hemisphere's premier international competition)
-- NRL (Australia): regular season matches (massive in Australia, growing globally)
-- United Rugby Championship: playoffs and finals
-
-GOLF:
-- PGA Tour: final rounds of major championships (Masters, US Open, The Open, PGA Championship)
-- PGA Tour: final rounds of regular events with top-20 players in contention
-- LPGA Tour: major championships and final rounds
-
-CYCLING:
-- UCI World Tour: stage races (Tour de France, Giro, Vuelta) — individual stages are high
-- UCI World Tour: one-day races and classics not listed as must_watch
-- World Championships and Olympic cycling events
-
-AUSTRALIAN FOOTBALL:
-- AFL: ALL matches during season (massive in Australia, 600K+ per game) — high for global bars, must_watch for Australian venues
-- AFL: finals series and Grand Final — always must_watch
-
-DEFAULT RULE:
-EXCLUDE unless a sports-bar crowd would genuinely care. No-name teams with no stakes = skip.
-Order by importance: must_watch first, then high.
-
-Respond in JSON using EXACTLY this structure — no other keys:
-{"ids":[{"id":"<match id string>","importance":"must_watch"},{"id":"<match id string>","importance":"high"}]}`
+Respond in JSON, no other keys:
+{"ids":[{"id":"<id>","importance":"must_watch","reason":"<short why>"}]}`
 
 // ── Call AI — plain text generation + manual JSON parse ──────────────────────
 // Groq does not support `Output.object()` / responseFormat JSON schema with
@@ -541,9 +417,36 @@ export async function POST(request: NextRequest) {
 
     // ── Parse & validate body ───────────────────────────────────────────────
     const body = await request.json();
-    const groups: Record<string, string[]> | undefined = body.groups;
+    const candidates: MatchCandidate[] | undefined = Array.isArray(body.candidates) ? body.candidates : undefined;
+    let groups: Record<string, string[]> | undefined = body.groups;
     const filterType: string = body.filterType ?? 'week'; // 'today' | 'week' | 'month'
     const scanMode: boolean = body.scanMode ?? false; // 'all matches' scan — more inclusive
+
+    // If only candidates were provided, derive the legacy `groups` map so the
+    // existing per-league logic below still works without a rewrite. Lines now
+    // also carry time + round so the AI can rank with real context.
+    if (candidates && !groups) {
+      groups = {};
+      for (const c of candidates) {
+        const abbrev = String(c.l || 'UNK');
+        if (!groups[abbrev]) groups[abbrev] = [];
+        const parts = [c.id, c.t];
+        if (c.tm) parts.push(c.tm);
+        if (c.r) parts.push(c.r);
+        // Format: "<id>:<title>|<time>|<round>"  — pipes are ignored by the
+        // post-processing that only splits on the first ":".
+        groups[abbrev].push(parts.length > 2 ? `${c.id}:${c.t} | ${parts.slice(2).join(' · ')}` : `${c.id}:${c.t}`);
+      }
+    }
+
+    // Helper used by promotion logic below: strip metadata suffix so we match
+    // on the actual event title, not the appended time/round string.
+    const titleOnly = (line: string): string => {
+      const colon = line.indexOf(':');
+      const raw = colon >= 0 ? line.slice(colon + 1) : line;
+      const pipe = raw.indexOf('|');
+      return (pipe >= 0 ? raw.slice(0, pipe) : raw).trim();
+    };
 
     // ── Extract user patterns from historical published schedules ─────────
     // Reads existing published_schedules from Supabase — no new storage.
@@ -555,9 +458,47 @@ export async function POST(request: NextRequest) {
 
     if (!groups || typeof groups !== 'object' || Object.keys(groups).length === 0) {
       return NextResponse.json(
-        { error: 'groups object is required.' },
+        { error: 'candidates or groups required.' },
         { status: 400 }
       );
+    }
+
+    // ── Deterministic pre-filtering ──────────────────────────────────
+    // Score every candidate locally (free) and trim to a tight set BEFORE
+    // paying Groq tokens. The trimmed set is what gets sent to the model.
+    // Skipped when only legacy `groups` was supplied (no per-candidate metadata).
+    let scoredById: Map<string, ScoredCandidate> | null = null;
+    if (candidates) {
+      const scoreCtx: ScoreContext = {
+        preferredLeagues: new Map(
+          (userPatterns?.leaguePrefs ?? []).map((l) => [getLeagueAbbrev(l.league), Math.min(1, l.selectionRate)])
+        ),
+        preferredTeams: new Set(
+          (userPatterns?.teamPrefs ?? []).map((t) => t.team.toLowerCase())
+        ),
+        excludedLeagues: new Set(
+          (userPatterns?.leagueExclusions ?? []).map((l) => getLeagueAbbrev(l.league))
+        ),
+      };
+      // Token budgets per filter view — keeps prompts well under Groq's 30K TPM
+      // window even on month view with many leagues.
+      const filterCap = filterType === 'today' ? 120 : filterType === 'month' ? 350 : 220;
+      const scanCap = scanMode ? Math.round(filterCap * 1.6) : filterCap;
+      const { kept, scores } = preFilterCandidates(candidates, scoreCtx, scanCap);
+      scoredById = scores;
+
+      // Rebuild groups from the trimmed candidate set so downstream code
+      // (prompt builder, promotion logic, per-league caps) sees the same view.
+      const trimmedGroups: Record<string, string[]> = {};
+      for (const c of kept) {
+        const abbrev = String(c.l || 'UNK');
+        if (!trimmedGroups[abbrev]) trimmedGroups[abbrev] = [];
+        const parts: string[] = [];
+        if (c.tm) parts.push(c.tm);
+        if (c.r) parts.push(c.r);
+        trimmedGroups[abbrev].push(parts.length ? `${c.id}:${c.t} | ${parts.join(' · ')}` : `${c.id}:${c.t}`);
+      }
+      groups = trimmedGroups;
     }
 
     // Build token-efficient plain-text prompt grouped by league
@@ -712,19 +653,42 @@ export async function POST(request: NextRequest) {
     // Combine everything into the final prompt
     const finalPrompt = `${userPrompt}${preferenceContext}`;
 
-    // ── Try primary → fallback ──────────────────────────────────────────────
+    // ── Cache check ─────────────────────────────────────────────────────────
+    // Hash the exact prompt + filter + scan mode + model + user-profile
+    // fingerprint. If we've answered the same question in the last 10 min,
+    // reuse the answer instead of burning Groq tokens.
     const primary = getAIModel();
-    let output;
+    const profileFingerprint = userPatterns
+      ? `${userPatterns.confidence}:${userPatterns.totalPublishes}:${userPatterns.leaguePrefs.length}:${userPatterns.leagueExclusions.length}`
+      : 'none';
+    const cacheKey = AI_CACHE_PREFIX + createHash('sha256')
+      .update(`${primary.modelId}|${filterType}|${scanMode}|${profileFingerprint}|${finalPrompt}`)
+      .digest('hex');
 
+    let output: MatchFinderResponse | undefined;
+    let cacheHit = false;
     try {
-      output = await callAI(primary, finalPrompt);
-    } catch (primaryError) {
-      console.error(`[AI Matches] Primary (${primary.provider}) failed:`, primaryError);
+      const cached = await redis.get<MatchFinderResponse>(cacheKey);
+      if (cached && Array.isArray(cached.ids)) {
+        output = cached;
+        cacheHit = true;
+      }
+    } catch {
+      // Cache miss / Redis hiccup: fall through to live AI call.
+    }
 
-      const fallback = getFallbackModel();
-      if (!fallback || fallback.modelId === primary.modelId) throw primaryError;
+    // ── Try primary → fallback ──────────────────────────────────────────────
+    if (!output) {
+      try {
+        output = await callAI(primary, finalPrompt);
+      } catch (primaryError) {
+        console.error(`[AI Matches] Primary (${primary.provider}) failed:`, primaryError);
 
-      output = await callAI(fallback, finalPrompt);
+        const fallback = getFallbackModel();
+        if (!fallback || fallback.modelId === primary.modelId) throw primaryError;
+
+        output = await callAI(fallback, finalPrompt);
+      }
     }
 
     // ── Zod safeParse + strip low/medium — only return high & must_watch ───
@@ -747,11 +711,18 @@ export async function POST(request: NextRequest) {
 
     // ── Auto-promote sparse live-sport categories ────────────────────────────
     // MotoGP, UFC, Boxing, Cycling have so few events per window that every
-    // one is worth showing. Inject any the AI missed as must_watch.
+    // RACE / FIGHT / STAGE is worth showing. Practice, warm-up, and qualifying
+    // sessions for these are NOT auto-promoted — they're optional viewing.
     // F1 is special: always include the Grand Prix race, but let the AI decide
     // on qualifying/sprint sessions (they're lower priority than the race itself).
     // RESPECTS user exclusions: if user consistently skips a sport, don't force it.
     const ALWAYS_INCLUDE_ABBREVS = new Set(['MGP', 'UFC', 'BOX', 'UCI']);
+    const NON_RACE_KEYWORDS = ['practice', 'warm up', 'warm-up', 'warmup', 'fp1', 'fp2', 'fp3', 'fp4',
+      'free practice', 'shakedown', 'press conf', 'pre-race show', 'post-race', 'qualifying'];
+    const isNonRaceSession = (title: string): boolean => {
+      const t = title.toLowerCase();
+      return NON_RACE_KEYWORDS.some((k) => t.includes(k));
+    };
     if (output && Array.isArray(output.ids)) {
       const selectedIds = new Set(output.ids.map((r: { id: string }) => r.id));
       for (const [abbrev, matches] of Object.entries(groups)) {
@@ -759,7 +730,9 @@ export async function POST(request: NextRequest) {
         if (userExcludedLeagues.has(abbrev)) continue; // Respect user's exclusion
         if (!Array.isArray(matches)) continue;
         for (const m of matches) {
-          const idx = String(m).split(':')[0];
+          const line = String(m);
+          const idx = line.split(':')[0];
+          if (isNonRaceSession(titleOnly(line))) continue; // skip practice/warmup
           if (!selectedIds.has(idx)) {
             output.ids.push({ id: idx, importance: 'must_watch' as const });
             selectedIds.add(idx);
@@ -775,10 +748,11 @@ export async function POST(request: NextRequest) {
       const selectedIds = new Set(output.ids.map((r: { id: string }) => r.id));
       const f1Matches = Array.isArray(groups['F1']) ? groups['F1'] : [];
       for (const m of f1Matches) {
-        const idx = String(m).split(':')[0];
-        const title = String(m).slice(idx.length + 1).toLowerCase();
+        const line = String(m);
+        const idx = line.split(':')[0];
+        const title = titleOnly(line).toLowerCase();
         // Only auto-promote actual Grand Prix races (not qualifying/sprint/practice)
-        if (title.includes('grand prix') || title.includes('race') && !title.includes('sprint') && !title.includes('qualif') && !title.includes('practice')) {
+        if (title.includes('grand prix') || (title.includes('race') && !title.includes('sprint') && !title.includes('qualif') && !title.includes('practice'))) {
           if (!selectedIds.has(idx)) {
             output.ids.push({ id: idx, importance: 'must_watch' as const });
             selectedIds.add(idx);
@@ -803,8 +777,9 @@ export async function POST(request: NextRequest) {
     if (output && Array.isArray(output.ids) && !userExcludedLeagues.has('NBA')) {
       const selectedIds = new Set(output.ids.map((r: { id: string }) => r.id));
       for (const m of (Array.isArray(groups['NBA']) ? groups['NBA'] : [])) {
-        const idx = String(m).split(':')[0];
-        const title = String(m).slice(idx.length + 1);
+        const line = String(m);
+        const idx = line.split(':')[0];
+        const title = titleOnly(line);
         if (nbaMarquee.some((t) => title.includes(t)) && !selectedIds.has(idx)) {
           output.ids.push({ id: idx, importance: 'must_watch' as const });
           selectedIds.add(idx);
@@ -833,10 +808,12 @@ export async function POST(request: NextRequest) {
         const league = idToLeague.get(r.id) ?? '';
 
         // Determine per-league cap: learned budget → config default → 2
+        // Trust the learned budget directly when the user has a clear pattern
+        // — don't Math.max with the config default or we'd ignore users who
+        // consistently pick FEWER matches per league than the default.
         let baseMax: number;
         if (userPatterns?.perLeagueBudget.has(league)) {
-          // Use learned budget — the user consistently picks this many
-          baseMax = Math.max(userPatterns.perLeagueBudget.get(league)!, LEAGUE_MAX_PICKS[league] ?? 2);
+          baseMax = userPatterns.perLeagueBudget.get(league)!;
         } else {
           baseMax = LEAGUE_MAX_PICKS[league] ?? 2;
         }
@@ -866,8 +843,25 @@ export async function POST(request: NextRequest) {
       output.ids = output.ids.slice(0, totalBudget);
     }
 
+    // ── Backfill deterministic reasons for picks the model didn't justify ─────
+    if (output && Array.isArray(output.ids) && scoredById) {
+      for (const r of output.ids) {
+        if (r.reason && r.reason.trim().length) continue;
+        const s = scoredById.get(r.id);
+        if (s) (r as { reason?: string }).reason = s.reason;
+      }
+    }
+
+    // ── Write result back to cache (best-effort) ────────────────────────────
+    if (!cacheHit && output) {
+      try { await redis.set(cacheKey, output, { ex: AI_CACHE_TTL_SEC }); } catch { /* ignore */ }
+    }
+
     return NextResponse.json(output, {
-      headers: { 'X-RateLimit-Remaining': String(remaining) },
+      headers: {
+        'X-RateLimit-Remaining': String(remaining),
+        'X-AI-Cache': cacheHit ? 'hit' : 'miss',
+      },
     });
   } catch (error) {
     console.error('[AI Matches] Error:', error);

@@ -6,9 +6,9 @@ import { useMatchFinder } from './MatchFinderProvider';
 import AIMatchCard from './AIMatchCard';
 import SmartLogo from '@/components/ui/SmartLogo';
 import type { MatchEvent } from '@/types';
-import type { MatchRating, MatchFinderResponse } from '@/lib/ai/schemas';
+import type { MatchCandidate, MatchRating, MatchFinderResponse } from '@/lib/ai/schemas';
 import { getSportConfig, getLeagueAbbrev, getLeaguePopularity, CATEGORY_ORDER, CATEGORY_LOGOS } from '@/lib/config';
-import { formatDisplayDate } from '@/lib/timezone';
+import { formatDisplayDate, today as activeTodayStr, daysFromToday as activeDateInDays } from '@/lib/timezone';
 import { cn } from '@/lib/utils';
 
 interface EmbedInstance {
@@ -280,22 +280,19 @@ export default function MatchFinderPanel({
 
     try {
       // ── Filter events by time range if quick filter used ──────────────────
+      // Use the active schedule timezone (not browser-local) so users in
+      // different time zones see consistent Today/Week/Month windows.
       let filtered = filteredEvents;
-      const now = new Date();
-      const todayStr = now.toISOString().split('T')[0];
+      const todayStr = activeTodayStr();
 
       if (filter === 'Today') {
         filtered = filteredEvents.filter((e) => e.date === todayStr);
       } else if (filter === 'This Week') {
-        const endOfWeek = new Date(now);
-        endOfWeek.setDate(now.getDate() + (7 - now.getDay()));
-        const endStr = endOfWeek.toISOString().split('T')[0];
+        const endStr = activeDateInDays(7);
         filtered = filteredEvents.filter((e) => e.date >= todayStr && e.date <= endStr);
       } else if (filter === 'This Month') {
         // Use next 30 days so the filter is useful regardless of where we are in the month
-        const next30 = new Date(now);
-        next30.setDate(now.getDate() + 30);
-        const endStr = next30.toISOString().split('T')[0];
+        const endStr = activeDateInDays(30);
         filtered = filteredEvents.filter((e) => e.date >= todayStr && e.date <= endStr);
       }
 
@@ -319,16 +316,32 @@ export default function MatchFinderPanel({
         return;
       }
 
-      // ── Build ultra-compact grouped format with abbreviations ────────────
+      // ── Build structured candidate list ──────────────────────────────────
+      // Richer than the old `idx:title` strings: the AI now sees date, time,
+      // round/session, league, category and source, so it can rank without
+      // hallucinating. We also keep a parallel `groups` payload for back-compat
+      // with the server, but the server prefers `candidates` when present.
       const idMap: string[] = [];
+      const candidates: MatchCandidate[] = [];
       const groups: Record<string, string[]> = {};
 
       for (const e of filtered) {
         const idx = idMap.length;
         idMap.push(e.id);
         const abbrev = getLeagueAbbrev(e.leagueLabel);
-        if (!groups[abbrev]) groups[abbrev] = [];
         const title = e.away ? `${e.home} v ${e.away}` : e.home;
+        candidates.push({
+          id: String(idx),
+          t: title,
+          l: abbrev,
+          c: e.category || undefined,
+          d: e.date,
+          tm: e.time || undefined,
+          r: e.round || undefined,
+          s: e.source,
+          sel: e.isSelected || undefined,
+        });
+        if (!groups[abbrev]) groups[abbrev] = [];
         groups[abbrev].push(`${idx}:${title}`);
       }
 
@@ -346,7 +359,7 @@ export default function MatchFinderPanel({
       const res = await fetch('/api/ai/matches', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ groups, filterType, scanMode, userPreferences }),
+        body: JSON.stringify({ candidates, groups, filterType, scanMode, userPreferences }),
       });
 
       if (!res.ok) {
@@ -387,7 +400,7 @@ export default function MatchFinderPanel({
     } finally {
       setIsLoading(false);
     }
-  }, [filteredEvents]);
+  }, [filteredEvents, events, extractUserPreferences, timeFrom, timeTo]);
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -416,9 +429,31 @@ export default function MatchFinderPanel({
       if (imp) selectedRatings.set(id, imp);
     }
     onAddMatches(Array.from(selectedIds), targetEmbed, selectedRatings);
+
+    // Fire-and-forget feedback log — best-effort, ignored on failure. Lets us
+    // diagnose ranking quality over time without blocking the add flow.
+    try {
+      const filterType = activeFilter === 'Today' ? 'today'
+        : activeFilter === 'This Month' ? 'month'
+        : activeFilter === 'This Week' ? 'week'
+        : activeFilter === 'all' ? 'all'
+        : 'custom';
+      fetch('/api/ai/matches/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        keepalive: true,
+        body: JSON.stringify({
+          filterType,
+          scanMode: activeFilter === 'all',
+          shownIds: Array.from(ratings.keys()),
+          acceptedIds: Array.from(selectedIds),
+        }),
+      }).catch(() => { /* ignore */ });
+    } catch { /* ignore */ }
+
     // Brief feedback before auto-closing
     setTimeout(() => setIsAdding(false), 600);
-  }, [selectedIds, targetEmbed, ratings, onAddMatches, isAdding]);
+  }, [selectedIds, targetEmbed, ratings, onAddMatches, isAdding, activeFilter]);
 
   const handleClose = useCallback(() => {
     setIsClosing(true);

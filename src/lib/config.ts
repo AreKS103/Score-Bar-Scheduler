@@ -69,6 +69,7 @@ const LOCAL_LEAGUE_LOGOS: Record<string, string> = {
   'golf-lpga': '/league-logos/golf-lpga.webp',
   'cycling-uci': '/league-logos/cycling-uci.webp',
   'cycling-giro': '/league-logos/cycling-giro.svg',
+  'cycling-giro-women': '/league-logos/cycling-giro.svg',
 };
 
 export const SPORTS_CONFIG: SportConfig[] = [
@@ -165,7 +166,8 @@ export const SPORTS_CONFIG: SportConfig[] = [
   { id: 'golf-lpga',             label: 'LPGA Tour',                          category: 'Golf',        espnSlug: 'golf/lpga',                 logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/lpga.png' },
   // ── Cycling ────────────────────────────────────────────────────────────────
   { id: 'cycling-uci',           label: 'UCI World Tour',                     category: 'Cycling',     espnSlug: null,                        sportsdbId: '4465', logo: 'https://r2.thesportsdb.com/images/media/league/badge/igahc11535183469.png' },
-  { id: 'cycling-giro',          label: "Giro d'Italia",                     category: 'Cycling',     espnSlug: null,                        logo: 'https://upload.wikimedia.org/wikipedia/commons/b/b3/Giro_d%27Italia_-_Logo_2018.svg' },
+  { id: 'cycling-giro',          label: "Giro d'Italia Men",                 category: 'Cycling',     espnSlug: null,                        logo: 'https://upload.wikimedia.org/wikipedia/commons/b/b3/Giro_d%27Italia_-_Logo_2018.svg' },
+  { id: 'cycling-giro-women',    label: "Giro d'Italia Women",               category: 'Cycling',     espnSlug: null,                        logo: 'https://upload.wikimedia.org/wikipedia/commons/b/b3/Giro_d%27Italia_-_Logo_2018.svg' },
 ].map((sport) => ({
   ...sport,
   logo: LOCAL_LEAGUE_LOGOS[sport.id] ?? sport.logo,
@@ -314,6 +316,8 @@ export const LEAGUE_SHORT: Record<string, string> = {
   'LPGA Tour': 'LPGA',
   'UCI World Tour': 'UCI',
   "Giro d'Italia": 'GDI',
+  "Giro d'Italia Men": 'GDIM',
+  "Giro d'Italia Women": 'GDIW',
 };
 
 // ── League popularity scores (higher = more globally watched) ────────────────
@@ -350,7 +354,7 @@ export const LEAGUE_POPULARITY: Record<string, number> = {
   // Golf
   'PGA': 62, 'LPGA': 45,
   // Cycling
-  'UCI': 40, 'GDI': 65,
+  'UCI': 40, 'GDI': 65, 'GDIM': 65, 'GDIW': 55,
 };
 
 // ── Per-league max picks (hard cap after AI scoring) ─────────────────────────
@@ -381,7 +385,7 @@ export const LEAGUE_MAX_PICKS: Record<string, number> = {
   'AFL': 12,
   'ATP': 12, 'WTA': 8,
   'PGA': 8, 'LPGA': 8,
-  'UCI': 15, 'GDI': 21,
+  'UCI': 15, 'GDI': 21, 'GDIM': 21, 'GDIW': 9,
 };
 
 /** Get abbreviated league name for AI payloads */
