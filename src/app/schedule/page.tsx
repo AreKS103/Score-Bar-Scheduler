@@ -28,7 +28,7 @@ import {
 import { useScheduleStore } from '@/lib/store';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { useFavoritesStore } from '@/lib/favoritesStore';
-import { getCachedEvents, setCachedEvents, appendCachedEvent, removeCachedEvent, saveLocalCustomEvent, loadLocalCustomEvents, removeLocalCustomEvent, syncLocalCustomEventsToSupabase, saveSelectionToSupabase, loadSelectionFromSupabase, loadSelectionState, saveSelectionState, pruneStaleSelectionKeys, loadCustomLeagueLogo, type SavedSelectionState } from '@/lib/clientCache';
+import { getCachedEvents, setCachedEvents, appendCachedEvent, removeCachedEvent, saveLocalCustomEvent, loadLocalCustomEvents, removeLocalCustomEvent, syncLocalCustomEventsToSupabase, saveSelectionToSupabase, loadSelectionFromSupabase, loadSelectionState, saveSelectionState, setLastRemoteSnapshot, pruneStaleSelectionKeys, loadCustomLeagueLogo, type SavedSelectionState } from '@/lib/clientCache';
 import { generateHTML } from '@/lib/generateHTML';
 import { SPORTS_CONFIG, getCategories } from '@/lib/config';
 import { formatDisplayDate } from '@/lib/timezone';
@@ -56,6 +56,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useOrgRealtime } from '@/hooks/useOrgRealtime';
 import { useEmbedRealtime } from '@/hooks/useEmbedRealtime';
+import { useSelectionsRealtime } from '@/hooks/useSelectionsRealtime';
 import { useTimezoneStore } from '@/lib/timezoneStore';
 import { isWorldCupPlaceholderTeamName, WORLD_CUP_SPORT_ID } from '@/lib/worldCup';
 import { Separator } from '@/components/ui/separator';
@@ -846,6 +847,61 @@ export default function SchedulePage() {
     userId,
     onChange: loadEmbedInstances,
     enabled: !!userId,
+  });
+
+  // ── Real-time selection sync (cross-device, e.g. Canada + Cambodia) ──
+  // When another tab/device on this account writes to user_selections, apply
+  // the changes to the in-memory events array so users see each other's edits
+  // within ~1s without reload. The diff-based write in clientCache already
+  // suppresses our own echo (snapshot updated below makes our next diff empty).
+  useSelectionsRealtime({
+    userId,
+    enabled: !!userId,
+    onRemoteChange: ({ embedTarget, state, deleted }) => {
+      // Persist authoritative remote state to localStorage so it survives reloads
+      // and is available when the user switches to that embed.
+      if (deleted) {
+        setLastRemoteSnapshot(embedTarget, {
+          selections: {}, leagueOrder: [], featuredLeagues: {}, savedAt: state.savedAt,
+        });
+      } else {
+        setLastRemoteSnapshot(embedTarget, state);
+        saveSelectionState(state, embedTarget);
+      }
+
+      // Only patch in-memory state for the currently-active embed; other embeds
+      // will pick up the change via loadSelectionState next time they're opened.
+      if (embedTarget !== effectiveTargetRef.current) return;
+
+      const remoteSel = deleted ? {} : state.selections;
+      const current = useScheduleStore.getState().events;
+      if (current.length > 0) {
+        let changed = false;
+        const merged = current.map((e) => {
+          const r = remoteSel[e.id];
+          if (r) {
+            if (e.isSelected !== r.isSelected || e.isFeatured !== r.isFeatured
+                || JSON.stringify(e.tags) !== JSON.stringify(r.tags)) {
+              changed = true;
+              return { ...e, isSelected: r.isSelected, isFeatured: r.isFeatured, tags: r.tags };
+            }
+            return e;
+          }
+          // Remote no longer tracks this event — clear local selection flags.
+          if (e.isSelected || e.isFeatured || e.tags.length > 0) {
+            changed = true;
+            return { ...e, isSelected: false, isFeatured: false, tags: [] as string[] };
+          }
+          return e;
+        });
+        if (changed) setEvents(merged);
+      }
+
+      if (!deleted) {
+        if (state.leagueOrder.length > 0) setLeagueOrder(state.leagueOrder);
+        setFeaturedLeagues(new Map(Object.entries(state.featuredLeagues)));
+      }
+    },
   });
 
   // ── Broadcast channel: server-side push for org membership changes ────
