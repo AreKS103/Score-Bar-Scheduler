@@ -34,6 +34,18 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
+const LAST_SEEN_REFRESH_MS = 60 * 60 * 1000;
+
+function shouldRefreshLastSeen(existingLastSeen: unknown, existingPageUrl: unknown, nextPageUrl: string): boolean {
+  if (existingPageUrl !== nextPageUrl) return true;
+  if (typeof existingLastSeen !== 'string') return true;
+
+  const lastSeenMs = Date.parse(existingLastSeen);
+  if (!Number.isFinite(lastSeenMs)) return true;
+
+  return Date.now() - lastSeenMs >= LAST_SEEN_REFRESH_MS;
+}
+
 function hashKey(raw: string) {
   return crypto.createHash('sha256').update(raw).digest('hex');
 }
@@ -82,7 +94,7 @@ export async function POST(req: NextRequest) {
 
       const { data: existing } = await supabase
         .from('embed_instances')
-        .select('id, embed_id')
+        .select('id, embed_id, page_url, last_seen')
         .eq('user_id', uid)
         .eq('widget_id', safeWidgetId)
         .maybeSingle();
@@ -93,6 +105,10 @@ export async function POST(req: NextRequest) {
         // If the beacon sends no embedId keep the currently stored label;
         // if it sends a name that's a rename operation.
         const newEmbedId = instanceId ?? oldEmbedId;
+
+        if (newEmbedId === oldEmbedId && !shouldRefreshLastSeen(existing.last_seen, existing.page_url, safeUrl)) {
+          return NextResponse.json({ ok: true, skipped: true }, { headers: corsHeaders });
+        }
 
         const { error: updateErr } = await supabase
           .from('embed_instances')
@@ -167,12 +183,16 @@ export async function POST(req: NextRequest) {
       // handle with explicit UPDATE-or-INSERT.
       const { data: existing } = await supabase
         .from('embed_instances')
-        .select('id')
+        .select('id, page_url, last_seen')
         .eq('user_id', uid)
         .is('embed_id', null)
         .maybeSingle();
 
       if (existing?.id) {
+        if (!shouldRefreshLastSeen(existing.last_seen, existing.page_url, safeUrl)) {
+          return NextResponse.json({ ok: true, skipped: true }, { headers: corsHeaders });
+        }
+
         const { error } = await supabase
           .from('embed_instances')
           .update({ page_url: safeUrl, last_seen: now })
@@ -186,6 +206,17 @@ export async function POST(req: NextRequest) {
       }
     } else {
       // ── Named shortcode with no widget ID — standard upsert ─────────────────
+      const { data: existing } = await supabase
+        .from('embed_instances')
+        .select('id, page_url, last_seen')
+        .eq('user_id', uid)
+        .eq('embed_id', instanceId)
+        .maybeSingle();
+
+      if (existing?.id && !shouldRefreshLastSeen(existing.last_seen, existing.page_url, safeUrl)) {
+        return NextResponse.json({ ok: true, skipped: true }, { headers: corsHeaders });
+      }
+
       const { error } = await supabase.from('embed_instances').upsert(
         { user_id: uid, embed_id: instanceId, page_url: safeUrl, last_seen: now, organization_id: orgId },
         { onConflict: 'user_id,embed_id' },
@@ -194,7 +225,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ ok: true }, { headers: corsHeaders });
-  } catch (e) {
+  } catch {
     return NextResponse.json({ error: 'Server error' }, { status: 500, headers: corsHeaders });
   }
 }
