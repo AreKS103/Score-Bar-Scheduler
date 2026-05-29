@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { normalizeTournamentGame, MARCH_MADNESS_LOGO, MARCH_MADNESS_WOMEN_LOGO } from '@/lib/marchMadness';
 import { fetchWorldCupFixtures, formatWorldCupStage, WORLD_CUP_LABEL, WORLD_CUP_LOGO, WORLD_CUP_SPORT_ID, WORLD_CUP_ESPN_SLUG } from '@/lib/worldCup';
+import { fetchAllGiroEvents } from '@/lib/api/giro';
 
 // ── Supabase service-role client for SportsDB endpoint cache ────────────────
 // Created lazily so we don't throw at module load if env vars are absent.
@@ -1702,19 +1703,24 @@ async function fetchAllEvents(startDate: string, endDate: string, timeZone: stri
     sleep(15_000).then(() => null),
   ]);
 
-  const [espnEvents, sportsDBEvents] = await Promise.allSettled([
+  const [espnEvents, sportsDBEvents, giroEvents] = await Promise.allSettled([
     fetchAllESPN(startDate, endDate, timeZone),
     sportsDBBounded,
+    fetchAllGiroEvents(startDate, endDate, timeZone),
   ]);
 
   if (espnEvents.status === 'rejected') console.warn('[Events API] ESPN fetch failed:', espnEvents.reason);
   if (sportsDBEvents.status === 'rejected') console.warn('[Events API] SportsDB fetch failed:', sportsDBEvents.reason);
+  if (giroEvents.status === 'rejected') console.warn('[Events API] Giro fetch failed:', giroEvents.reason);
   if (sportsDBEvents.status === 'fulfilled' && sportsDBEvents.value === null) {
     console.warn('[Events API] SportsDB timed out for this request; returning ESPN-first payload');
   }
 
   const rawSportsDBEvents = sportsDBEvents.status === 'fulfilled' && sportsDBEvents.value ? sportsDBEvents.value : [];
-  const sdbEvents = rawSportsDBEvents;
+  const giroEventsList = giroEvents.status === 'fulfilled' ? giroEvents.value : [];
+  // Merge Giro events into the SportsDB pool so the existing ESPN-priority
+  // dedup + downstream pipeline picks them up automatically.
+  const sdbEvents = [...rawSportsDBEvents, ...giroEventsList];
 
   // Diagnostic: count UFC events from each source
   const espnUFC = (espnEvents.status === 'fulfilled' ? espnEvents.value : []).filter(e => e.sportId === 'ufc');
