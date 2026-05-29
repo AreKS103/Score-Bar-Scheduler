@@ -407,12 +407,18 @@ export async function POST(request: NextRequest) {
 
     // ── IP + rate limit ─────────────────────────────────────────────────────
     const ip = getClientIP(request);
-    const { success, remaining } = await ratelimit.limit(ip);
-    if (!success) {
-      return NextResponse.json(
-        { error: 'Rate limit exceeded. Try again tomorrow.' },
-        { status: 429, headers: { 'X-RateLimit-Remaining': '0' } }
-      );
+    let remaining = -1;
+    try {
+      const limit = await ratelimit.limit(ip);
+      remaining = limit.remaining;
+      if (!limit.success) {
+        return NextResponse.json(
+          { error: 'Rate limit exceeded. Try again tomorrow.' },
+          { status: 429, headers: { 'X-RateLimit-Remaining': '0' } }
+        );
+      }
+    } catch (rateLimitError) {
+      console.warn('[AI Matches] Rate limiter unavailable; continuing without rate-limit enforcement:', rateLimitError);
     }
 
     // ── Parse & validate body ───────────────────────────────────────────────
