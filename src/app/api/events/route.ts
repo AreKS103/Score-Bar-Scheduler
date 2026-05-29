@@ -148,12 +148,12 @@ const LEAGUE_METADATA: Record<string, { label: string; category: string; logo: s
   'soccer-spfl': { label: 'SPFL Scottish Prem', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/55.png' },
   'soccer-eredivisie': { label: 'Eredivisie', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/11.png' },
   'soccer-mls': { label: 'MLS', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/19.png' },
-  'soccer-ligamx': { label: 'Liga MX', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/29.png' },
-  'soccer-brasileirao': { label: 'Brasileirão Série A', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/890.png' },
+  'soccer-ligamx': { label: 'Liga MX', category: 'Football', logo: '/league-logos/soccer-ligamx.webp' },
+  'soccer-brasileirao': { label: 'Brasileirão Série A', category: 'Football', logo: '/league-logos/soccer-brasileirao.webp' },
   'soccer-arg-primera': { label: 'Argentine Primera', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/13.png' },
   'soccer-portugal': { label: 'Liga Portugal', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/14.png' },
   'soccer-superlig': { label: 'Süper Lig', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/18.png' },
-  'soccer-concacaf': { label: 'CONCACAF Champions Cup', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/2766.png' },
+  'soccer-concacaf': { label: 'CONCACAF Champions Cup', category: 'Football', logo: '/league-logos/soccer-concacaf.webp' },
   'soccer-aleague': { label: 'A-League', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/1003.png' },
   'soccer-saudipro': { label: 'Saudi Pro League', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/4710.png' },
   'soccer-jleague': { label: 'J-League', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/3j8bni1675170553.png' },
@@ -166,17 +166,17 @@ const LEAGUE_METADATA: Record<string, { label: string; category: string; logo: s
   'soccer-cpl': { label: 'Cambodian Premier League', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/fdhux61655121747.png' },
   'basketball-nba': { label: 'NBA', category: 'Basketball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/nba.png' },
   'basketball-wnba': { label: 'WNBA', category: 'Basketball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/wnba.png' },
-  'basketball-ncaam': { label: "NCAA Men's Basketball", category: 'Basketball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/ncaa.png' },
+  'basketball-ncaam': { label: "NCAA Men's Basketball", category: 'Basketball', logo: '/league-logos/basketball-ncaam.webp' },
   'basketball-ncaaw': { label: "NCAA Women's Basketball", category: 'Basketball', logo: '/league-logos/basketball-ncaaw.svg' },
   'football-nfl': { label: 'NFL', category: 'American Football', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png' },
-  'football-ncaaf': { label: 'NCAA Football', category: 'American Football', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/ncaa.png' },
+  'football-ncaaf': { label: 'NCAA Football', category: 'American Football', logo: '/league-logos/football-ncaaf.webp' },
   'baseball-mlb': { label: 'MLB', category: 'Baseball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/mlb.png' },
   'hockey-nhl': { label: 'NHL', category: 'Ice Hockey', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/nhl.png' },
   'cricket-ipl': { label: 'IPL', category: 'Cricket', logo: 'https://r2.thesportsdb.com/images/media/league/badge/gaiti11741709844.png' },
   'cricket-bbl': { label: 'Big Bash League', category: 'Cricket', logo: 'https://r2.thesportsdb.com/images/media/league/badge/yko7ny1546635346.png' },
   'f1': { label: 'Formula 1', category: 'Motorsport', logo: 'https://r2.thesportsdb.com/images/media/league/badge/g8cofl1513623681.png' },
   'motogp': { label: 'MotoGP', category: 'Motorsport', logo: 'https://r2.thesportsdb.com/images/media/league/badge/gg3c201768486075.png' },
-  'indycar': { label: 'IndyCar', category: 'Motorsport', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/indycar.png' },
+  'indycar': { label: 'IndyCar', category: 'Motorsport', logo: '/league-logos/indycar.webp' },
   'ufc': { label: 'UFC / MMA', category: 'Combat Sports', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/ufc.png' },
   'bellator': { label: 'PFL / Bellator', category: 'Combat Sports', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/pfl.png' },
   'boxing': { label: 'Boxing', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/6enin21740228549.png' },
@@ -190,13 +190,14 @@ const LEAGUE_METADATA: Record<string, { label: string; category: string; logo: s
   'nrl': { label: 'NRL', category: 'Rugby League', logo: 'https://r2.thesportsdb.com/images/media/league/badge/gsztcj1552071996.png' },
   'afl': { label: 'AFL', category: 'Australian Football', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/afl.png' },
   'tennis-atp': { label: 'ATP Tour', category: 'Tennis', logo: 'https://r2.thesportsdb.com/images/media/league/badge/q7aej51769857150.png' },
-  'tennis-wta': { label: 'WTA Tour', category: 'Tennis', logo: 'https://www.thesportsdb.com/images/media/league/badge/bddhun1768210678.png' },
-  'tennis-australian-open': { label: 'Australian Open', category: 'Tennis', logo: 'https://r2.thesportsdb.com/images/media/league/badge/q7aej51769857150.png' },
-  'tennis-roland-garros': { label: 'Roland Garros', category: 'Tennis', logo: 'https://r2.thesportsdb.com/images/media/league/badge/q7aej51769857150.png' },
-  'tennis-wimbledon': { label: 'Wimbledon', category: 'Tennis', logo: 'https://r2.thesportsdb.com/images/media/league/badge/q7aej51769857150.png' },
-  'tennis-us-open': { label: 'US Open', category: 'Tennis', logo: 'https://r2.thesportsdb.com/images/media/league/badge/q7aej51769857150.png' },
+  'tennis-wta': { label: 'WTA Tour', category: 'Tennis', logo: '/league-logos/tennis-wta.webp' },
+  'tennis-australian-open': { label: 'Australian Open', category: 'Tennis', logo: '/league-logos/tennis-australian-open.svg' },
+  'tennis-roland-garros': { label: 'Roland Garros', category: 'Tennis', logo: '/league-logos/tennis-roland-garros.svg' },
+  'tennis-wimbledon': { label: 'Wimbledon', category: 'Tennis', logo: '/league-logos/tennis-wimbledon.svg' },
+  'tennis-us-open': { label: 'US Open', category: 'Tennis', logo: '/league-logos/tennis-us-open.webp' },
   'golf-pga': { label: 'PGA Tour', category: 'Golf', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/pga.png' },
   'golf-lpga': { label: 'LPGA Tour', category: 'Golf', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/lpga.png' },
+  'cycling-giro': { label: "Giro d'Italia", category: 'Cycling', logo: '/league-logos/cycling-giro.svg' },
 };
 
 const TENNIS_GRAND_SLAMS = [
@@ -1140,6 +1141,53 @@ function sportsDBToLocal(dateStr: string, timeStr: string, timeZone: string): { 
   }
 }
 
+function timeZoneOffsetMs(utc: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(utc);
+
+  const lookup = Object.fromEntries(
+    parts
+      .filter(part => part.type !== 'literal')
+      .map(part => [part.type, part.value])
+  ) as Record<string, string>;
+
+  const localAsUtc = Date.UTC(
+    Number(lookup.year),
+    Number(lookup.month) - 1,
+    Number(lookup.day),
+    Number(lookup.hour),
+    Number(lookup.minute),
+    Number(lookup.second),
+  );
+
+  return localAsUtc - utc.getTime();
+}
+
+function zonedWallTimeToUtc(dateStr: string, timeStr: string, sourceTimeZone: string): Date | null {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const [hour, minute, second = 0] = timeStr.split(':').map(Number);
+  if (![year, month, day, hour, minute, second].every(Number.isFinite)) return null;
+
+  const wallTimeUtc = Date.UTC(year, month - 1, day, hour, minute, second);
+  let utc = new Date(wallTimeUtc);
+
+  for (let i = 0; i < 3; i++) {
+    const next = new Date(wallTimeUtc - timeZoneOffsetMs(utc, sourceTimeZone));
+    if (Math.abs(next.getTime() - utc.getTime()) < 1000) return next;
+    utc = next;
+  }
+
+  return utc;
+}
+
 function mapSDBEvent(event: SportsDBEvent, league: typeof SPORTSDB_ONLY_LEAGUES[0], timeZone: string): MatchEvent {
   const { date, time } = sportsDBToLocal(event.dateEvent, event.strTime || '00:00:00', timeZone);
   return {
@@ -1606,6 +1654,52 @@ async function fetchMotoGPOfficial(
   return out;
 }
 
+const GIRO_SPORT_ID = 'cycling-giro';
+const GIRO_SOURCE_TIME_ZONE = 'Europe/Rome';
+const GIRO_META = LEAGUE_METADATA[GIRO_SPORT_ID];
+
+const GIRO_2026_STAGES = [
+  { stage: 18, date: '2026-05-28', time: '13:15:00', route: 'Fai della Paganella - Pieve di Soligo', distance: '171 km' },
+  { stage: 19, date: '2026-05-29', time: '12:30:00', route: 'Feltre - Alleghe (Piani di Pezzè)', distance: '151 km' },
+  { stage: 20, date: '2026-05-30', time: '10:45:00', route: 'Gemona del Friuli 1976-2026 - Piancavallo', distance: '200 km' },
+  { stage: 21, date: '2026-05-31', time: '15:40:00', route: 'Roma - Roma', distance: '131 km' },
+] as const;
+
+function fetchOfficialGiroEvents(startDate: string, endDate: string, timeZone: string): MatchEvent[] {
+  if (!GIRO_META) return [];
+
+  return GIRO_2026_STAGES.map((stage): MatchEvent | null => {
+    const utc = zonedWallTimeToUtc(stage.date, stage.time, GIRO_SOURCE_TIME_ZONE);
+    if (!utc) return null;
+    const { date, time } = formatUtcDateInTimeZone(utc, timeZone);
+
+    return {
+      id: `official-giro-2026-stage-${stage.stage}`,
+      source: 'sportsdb',
+      sportId: GIRO_SPORT_ID,
+      category: GIRO_META.category,
+      leagueLabel: GIRO_META.label,
+      leagueLogo: GIRO_META.logo,
+      date,
+      time,
+      home: stage.route,
+      away: '',
+      round: `Stage ${stage.stage} - ${stage.distance}`,
+      tags: [],
+      isFeatured: false,
+      isSelected: false,
+    };
+  }).filter((event): event is MatchEvent => {
+    if (!event) return false;
+    return event.date >= startDate && event.date <= endDate;
+  });
+}
+
+function isSportsDBGiroEvent(event: MatchEvent): boolean {
+  return event.sportId === 'cycling-uci'
+    && /giro|italia/i.test(`${event.leagueLabel} ${event.home} ${event.away} ${event.round}`);
+}
+
 async function fetchAllSportsDB(startDate: string, endDate: string, timeZone: string): Promise<MatchEvent[]> {
   const results: MatchEvent[] = [];
 
@@ -1678,9 +1772,14 @@ async function fetchAllEvents(startDate: string, endDate: string, timeZone: stri
     console.warn('[Events API] SportsDB timed out for this request; returning ESPN-first payload');
   }
 
+  const officialGiroEvents = fetchOfficialGiroEvents(startDate, endDate, timeZone);
+  const rawSportsDBEvents = sportsDBEvents.status === 'fulfilled' && sportsDBEvents.value ? sportsDBEvents.value : [];
+  const sdbEvents = officialGiroEvents.length > 0
+    ? rawSportsDBEvents.filter(event => !isSportsDBGiroEvent(event))
+    : rawSportsDBEvents;
+
   // Diagnostic: count UFC events from each source
   const espnUFC = (espnEvents.status === 'fulfilled' ? espnEvents.value : []).filter(e => e.sportId === 'ufc');
-  const sdbEvents = sportsDBEvents.status === 'fulfilled' && sportsDBEvents.value ? sportsDBEvents.value : [];
   const sdbUFC = sdbEvents.filter(e => e.sportId === 'ufc');
   console.log(`[Events API] UFC diagnostics: ESPN=${espnUFC.length} fights, SportsDB=${sdbUFC.length} events`);
 
@@ -1691,9 +1790,8 @@ async function fetchAllEvents(startDate: string, endDate: string, timeZone: stri
   );
   const mergedEvents = [
     ...(espnEvents.status === 'fulfilled' ? espnEvents.value : []),
-    ...(sportsDBEvents.status === 'fulfilled' && sportsDBEvents.value
-      ? sportsDBEvents.value.filter(e => !espnSportDates.has(`${e.sportId}|${e.date}`))
-      : []),
+    ...officialGiroEvents,
+    ...sdbEvents.filter(e => !espnSportDates.has(`${e.sportId}|${e.date}`)),
   ];
   const seen = new Set<string>();
   const deduped = mergedEvents.filter(e => {

@@ -59,13 +59,19 @@ async function copyLocalLogo(localPath, targetBase) {
   await fs.access(src);
   const ext = normalizeExt(path.extname(src));
   const target = `${targetBase}${ext}`;
+  if (path.resolve(src) === path.resolve(target)) {
+    return { target, source: localPath, extension: ext };
+  }
   await fs.copyFile(src, target);
   return { target, source: localPath, extension: ext };
 }
 
 async function downloadRemoteLogo(urlValue, targetBase) {
   const res = await fetch(urlValue, {
-    headers: { 'user-agent': 'score-bar-scheduler-logo-fetcher/1.0' },
+    headers: {
+      'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 score-bar-scheduler-logo-fetcher/1.0',
+      'accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+    },
   });
 
   if (!res.ok) {

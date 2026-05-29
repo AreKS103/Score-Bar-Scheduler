@@ -5,6 +5,7 @@ const LOCAL_LEAGUE_LOGOS: Record<string, string> = {
   'soccer-ucl': '/league-logos/soccer-ucl.webp',
   'soccer-uel': '/league-logos/soccer-uel.webp',
   'soccer-uecl': '/league-logos/soccer-uecl.webp',
+  'soccer-fifa-world-cup-2026': '/league-logos/soccer-fifa-world-cup-2026.webp',
   'soccer-facup': '/league-logos/soccer-facup.webp',
   'soccer-efl': '/league-logos/soccer-efl.webp',
   'soccer-leagueone': '/league-logos/soccer-leagueone.webp',
@@ -16,6 +17,12 @@ const LOCAL_LEAGUE_LOGOS: Record<string, string> = {
   'soccer-spfl': '/league-logos/soccer-spfl.webp',
   'soccer-eredivisie': '/league-logos/soccer-eredivisie.webp',
   'soccer-mls': '/league-logos/soccer-mls.webp',
+  'soccer-ligamx': '/league-logos/soccer-ligamx.webp',
+  'soccer-brasileirao': '/league-logos/soccer-brasileirao.webp',
+  'soccer-arg-primera': '/league-logos/soccer-arg-primera.webp',
+  'soccer-portugal': '/league-logos/soccer-portugal.webp',
+  'soccer-superlig': '/league-logos/soccer-superlig.webp',
+  'soccer-concacaf': '/league-logos/soccer-concacaf.webp',
   'soccer-aleague': '/league-logos/soccer-aleague.webp',
   'soccer-saudipro': '/league-logos/soccer-saudipro.webp',
   'soccer-jleague': '/league-logos/soccer-jleague.webp',
@@ -26,16 +33,20 @@ const LOCAL_LEAGUE_LOGOS: Record<string, string> = {
   'soccer-asian-cup-women': '/league-logos/soccer-asian-cup-women.webp',
   'soccer-copam': '/league-logos/soccer-copam.webp',
   'soccer-cpl': '/league-logos/soccer-cpl.webp',
+  'soccer-hun-sen-cup': '/league-logos/soccer-hun-sen-cup.webp',
   'basketball-nba': '/league-logos/basketball-nba.webp',
   'basketball-wnba': '/league-logos/basketball-wnba.webp',
   'basketball-ncaam': '/league-logos/basketball-ncaam.webp',
+  'basketball-ncaaw': '/league-logos/basketball-ncaaw.svg',
   'football-nfl': '/league-logos/football-nfl.webp',
+  'football-ncaaf': '/league-logos/football-ncaaf.webp',
   'baseball-mlb': '/league-logos/baseball-mlb.webp',
   'hockey-nhl': '/league-logos/hockey-nhl.webp',
   'cricket-ipl': '/league-logos/cricket-ipl.webp',
   'cricket-bbl': '/league-logos/cricket-bbl.webp',
   'f1': '/league-logos/f1.webp',
   'motogp': '/league-logos/motogp.webp',
+  'indycar': '/league-logos/indycar.webp',
   'ufc': '/league-logos/ufc.webp',
   'bellator': '/league-logos/bellator.webp',
   'boxing': '/league-logos/boxing.webp',
@@ -49,13 +60,15 @@ const LOCAL_LEAGUE_LOGOS: Record<string, string> = {
   'nrl': '/league-logos/nrl.webp',
   'afl': '/league-logos/afl.webp',
   'tennis-atp': '/league-logos/tennis-atp.webp',
-  'tennis-australian-open': '/league-logos/tennis-atp.webp',
-  'tennis-roland-garros': '/league-logos/tennis-atp.webp',
-  'tennis-wimbledon': '/league-logos/tennis-atp.webp',
-  'tennis-us-open': '/league-logos/tennis-atp.webp',
+  'tennis-wta': '/league-logos/tennis-wta.webp',
+  'tennis-australian-open': '/league-logos/tennis-australian-open.svg',
+  'tennis-roland-garros': '/league-logos/tennis-roland-garros.svg',
+  'tennis-wimbledon': '/league-logos/tennis-wimbledon.svg',
+  'tennis-us-open': '/league-logos/tennis-us-open.webp',
   'golf-pga': '/league-logos/golf-pga.svg',
   'golf-lpga': '/league-logos/golf-lpga.webp',
   'cycling-uci': '/league-logos/cycling-uci.webp',
+  'cycling-giro': '/league-logos/cycling-giro.svg',
 };
 
 export const SPORTS_CONFIG: SportConfig[] = [
@@ -76,12 +89,12 @@ export const SPORTS_CONFIG: SportConfig[] = [
   { id: 'soccer-spfl',           label: 'SPFL Scottish Prem',                 category: 'Football',    espnSlug: 'soccer/sco.1',              logo: '/spfl.jpg' },
   { id: 'soccer-eredivisie',     label: 'Eredivisie',                         category: 'Football',    espnSlug: 'soccer/ned.1',              logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/11.png' },
   { id: 'soccer-mls',            label: 'MLS',                                category: 'Football',    espnSlug: 'soccer/usa.1',              logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/19.png' },
-  { id: 'soccer-ligamx',         label: 'Liga MX',                            category: 'Football',    espnSlug: 'soccer/mex.1',              logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/29.png' },
-  { id: 'soccer-brasileirao',    label: 'Brasileirão Série A',                category: 'Football',    espnSlug: 'soccer/bra.1',              logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/890.png' },
+  { id: 'soccer-ligamx',         label: 'Liga MX',                            category: 'Football',    espnSlug: 'soccer/mex.1',              logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/22.png' },
+  { id: 'soccer-brasileirao',    label: 'Brasileirão Série A',                category: 'Football',    espnSlug: 'soccer/bra.1',              logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/85.png' },
   { id: 'soccer-arg-primera',    label: 'Argentine Primera',                  category: 'Football',    espnSlug: 'soccer/arg.1',              logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/13.png' },
   { id: 'soccer-portugal',       label: 'Liga Portugal',                      category: 'Football',    espnSlug: 'soccer/por.1',              logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/14.png' },
   { id: 'soccer-superlig',       label: 'Süper Lig',                          category: 'Football',    espnSlug: 'soccer/tur.1',              logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/18.png' },
-  { id: 'soccer-concacaf',       label: 'CONCACAF Champions Cup',             category: 'Football',    espnSlug: 'soccer/concacaf.champions', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/2766.png' },
+  { id: 'soccer-concacaf',       label: 'CONCACAF Champions Cup',             category: 'Football',    espnSlug: 'soccer/concacaf.champions', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/2298.png' },
   { id: 'soccer-aleague',        label: 'A-League',                           category: 'Football',    espnSlug: 'soccer/aus.1',              logo: '/A-League-logo-2.png' },
   { id: 'soccer-saudipro',       label: 'Saudi Pro League',                   category: 'Football',    espnSlug: 'soccer/ksa.1',              logo: '/Roshn_Saudi_League_Logo.svg.png' },
   { id: 'soccer-jleague',        label: 'J-League',                           category: 'Football',    espnSlug: 'soccer/jpn.1',              logo: 'https://r2.thesportsdb.com/images/media/league/badge/3j8bni1675170553.png' },
@@ -97,12 +110,12 @@ export const SPORTS_CONFIG: SportConfig[] = [
   // ── Basketball ─────────────────────────────────────────────────────────────
   { id: 'basketball-nba',        label: 'NBA',                                category: 'Basketball',  espnSlug: 'basketball/nba',            logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/nba.png' },
   { id: 'basketball-wnba',       label: 'WNBA',                               category: 'Basketball',  espnSlug: 'basketball/wnba',           logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/wnba.png' },
-  { id: 'basketball-ncaam',      label: 'NCAA Men\'s Basketball',             category: 'Basketball',  espnSlug: 'basketball/mens-college-basketball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/ncaa.png' },
-  { id: 'basketball-ncaaw',      label: 'NCAA Women\'s Basketball',           category: 'Basketball',  espnSlug: 'basketball/womens-college-basketball', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/ncaa.png' },
+  { id: 'basketball-ncaam',      label: 'NCAA Men\'s Basketball',             category: 'Basketball',  espnSlug: 'basketball/mens-college-basketball', logo: 'https://a.espncdn.com/redesign/assets/img/icons/ESPN-icon-basketball.png' },
+  { id: 'basketball-ncaaw',      label: 'NCAA Women\'s Basketball',           category: 'Basketball',  espnSlug: 'basketball/womens-college-basketball', logo: '/league-logos/basketball-ncaaw.svg' },
 
   // ── American Football ──────────────────────────────────────────────────────
   { id: 'football-nfl',          label: 'NFL',                                category: 'American Football', espnSlug: 'football/nfl',          logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png' },
-  { id: 'football-ncaaf',        label: 'NCAA Football',                      category: 'American Football', espnSlug: 'football/college-football', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/ncaa.png' },
+  { id: 'football-ncaaf',        label: 'NCAA Football',                      category: 'American Football', espnSlug: 'football/college-football', logo: 'https://a.espncdn.com/redesign/assets/img/icons/ESPN-icon-football-college.png' },
 
   // ── Baseball ───────────────────────────────────────────────────────────────
   { id: 'baseball-mlb',          label: 'MLB',                                category: 'Baseball',    espnSlug: 'baseball/mlb',              logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/mlb.png' },
@@ -117,7 +130,7 @@ export const SPORTS_CONFIG: SportConfig[] = [
   // ── Motorsport ─────────────────────────────────────────────────────────────
   { id: 'f1',                    label: 'Formula 1',                           category: 'Motorsport',  espnSlug: 'racing/f1',                 openf1: true, logo: 'https://r2.thesportsdb.com/images/media/league/badge/g8cofl1513623681.png' },
   { id: 'motogp',                label: 'MotoGP',                              category: 'Motorsport',  espnSlug: null,                        sportsdbId: '4407', logo: '/motogp.png' },
-  { id: 'indycar',               label: 'IndyCar',                             category: 'Motorsport',  espnSlug: 'racing/irl',                logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/indycar.png' },
+  { id: 'indycar',               label: 'IndyCar',                             category: 'Motorsport',  espnSlug: 'racing/irl',                logo: 'https://a.espncdn.com/combiner/i?img=/i/espn/teamlogos/500/indycar_series.png' },
 
   // ── Combat Sports ──────────────────────────────────────────────────────────
   { id: 'ufc',                   label: 'UFC / MMA',                           category: 'Combat Sports', espnSlug: 'mma/ufc',                sportsdbId: '4443', logo: '/UFC.png', publishLogo: 'https://a.espncdn.com/i/teamlogos/leagues/500/ufc.png' },
@@ -141,17 +154,19 @@ export const SPORTS_CONFIG: SportConfig[] = [
 
   // ── Tennis ─────────────────────────────────────────────────────────────────
   { id: 'tennis-atp',            label: 'ATP Tour',                           category: 'Tennis',      espnSlug: 'tennis/atp',                logo: 'https://r2.thesportsdb.com/images/media/league/badge/q7aej51769857150.png' },
-  { id: 'tennis-wta',            label: 'WTA Tour',                           category: 'Tennis',      espnSlug: 'tennis/wta',                logo: 'https://www.thesportsdb.com/images/media/league/badge/bddhun1768210678.png' },
-  { id: 'tennis-australian-open', label: 'Australian Open',                    category: 'Tennis',      espnSlug: null,                        logo: 'https://r2.thesportsdb.com/images/media/league/badge/q7aej51769857150.png' },
-  { id: 'tennis-roland-garros',   label: 'Roland Garros',                      category: 'Tennis',      espnSlug: null,                        logo: 'https://r2.thesportsdb.com/images/media/league/badge/q7aej51769857150.png' },
-  { id: 'tennis-wimbledon',       label: 'Wimbledon',                          category: 'Tennis',      espnSlug: null,                        logo: 'https://r2.thesportsdb.com/images/media/league/badge/q7aej51769857150.png' },
-  { id: 'tennis-us-open',         label: 'US Open',                            category: 'Tennis',      espnSlug: null,                        logo: 'https://r2.thesportsdb.com/images/media/league/badge/q7aej51769857150.png' },
+  { id: 'tennis-wta',            label: 'WTA Tour',                           category: 'Tennis',      espnSlug: 'tennis/wta',                logo: 'https://r2.thesportsdb.com/images/media/league/badge/bddhun1768230678.png' },
+  { id: 'tennis-australian-open', label: 'Australian Open',                    category: 'Tennis',      espnSlug: null,                        logo: 'https://upload.wikimedia.org/wikipedia/commons/b/b4/Australian_Open_Logo_2017.svg' },
+  { id: 'tennis-roland-garros',   label: 'Roland Garros',                      category: 'Tennis',      espnSlug: null,                        logo: 'https://images.prismic.io/fft-rg-site%2F95765448-c7fa-428b-b565-8368dba90b17_logo.svg' },
+  { id: 'tennis-wimbledon',       label: 'Wimbledon',                          category: 'Tennis',      espnSlug: null,                        logo: 'https://www.wimbledon.com/v0_73_4/_next/static/media/Logo-Wimbledon.08b~dzd_x4~i1.svg' },
+  { id: 'tennis-us-open',         label: 'US Open',                            category: 'Tennis',      espnSlug: null,                        logo: 'https://www.usopen.org/assets/images/misc/apple-touch-icon-192x192.png' },
 
   // ── Golf ───────────────────────────────────────────────────────────────────
   { id: 'golf-pga',              label: 'PGA Tour',                           category: 'Golf',        espnSlug: 'golf/pga',                  logo: '/PGA_Tour_logo.svg' },
   { id: 'golf-lpga',             label: 'LPGA Tour',                          category: 'Golf',        espnSlug: 'golf/lpga',                 logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/lpga.png' },
   // ── Cycling ────────────────────────────────────────────────────────────────
-  { id: 'cycling-uci',           label: 'UCI World Tour',                     category: 'Cycling',     espnSlug: null,                        sportsdbId: '4465', logo: 'https://r2.thesportsdb.com/images/media/league/badge/igahc11535183469.png' },].map((sport) => ({
+  { id: 'cycling-uci',           label: 'UCI World Tour',                     category: 'Cycling',     espnSlug: null,                        sportsdbId: '4465', logo: 'https://r2.thesportsdb.com/images/media/league/badge/igahc11535183469.png' },
+  { id: 'cycling-giro',          label: "Giro d'Italia",                     category: 'Cycling',     espnSlug: null,                        logo: 'https://upload.wikimedia.org/wikipedia/commons/b/b3/Giro_d%27Italia_-_Logo_2018.svg' },
+].map((sport) => ({
   ...sport,
   logo: LOCAL_LEAGUE_LOGOS[sport.id] ?? sport.logo,
   publishLogo: sport.publishLogo,
@@ -298,6 +313,7 @@ export const LEAGUE_SHORT: Record<string, string> = {
   'PGA Tour': 'PGA',
   'LPGA Tour': 'LPGA',
   'UCI World Tour': 'UCI',
+  "Giro d'Italia": 'GDI',
 };
 
 // ── League popularity scores (higher = more globally watched) ────────────────
@@ -334,7 +350,7 @@ export const LEAGUE_POPULARITY: Record<string, number> = {
   // Golf
   'PGA': 62, 'LPGA': 45,
   // Cycling
-  'UCI': 40,
+  'UCI': 40, 'GDI': 65,
 };
 
 // ── Per-league max picks (hard cap after AI scoring) ─────────────────────────
@@ -365,7 +381,7 @@ export const LEAGUE_MAX_PICKS: Record<string, number> = {
   'AFL': 12,
   'ATP': 12, 'WTA': 8,
   'PGA': 8, 'LPGA': 8,
-  'UCI': 15,
+  'UCI': 15, 'GDI': 21,
 };
 
 /** Get abbreviated league name for AI payloads */
