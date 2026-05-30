@@ -5,6 +5,20 @@ import { createClient } from '@/lib/supabase/server';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
+function getPublicOrigin(req: NextRequest): string {
+  const proto = req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim()
+    || req.nextUrl.protocol.replace(/:$/, '')
+    || 'http';
+  let host = req.headers.get('x-forwarded-host')?.split(',')[0]?.trim()
+    || req.headers.get('host')?.trim()
+    || req.nextUrl.host;
+
+  if (host.startsWith('0.0.0.0')) host = host.replace('0.0.0.0', 'localhost');
+  if (host.startsWith('[::]')) host = host.replace('[::]', 'localhost');
+
+  return `${proto}://${host}`;
+}
+
 /**
  * GET /api/wp-callback
  *
@@ -25,7 +39,7 @@ export async function GET(req: NextRequest) {
   const site = searchParams.get('site');
   const status = searchParams.get('status') ?? 'authorized';
 
-  const origin = req.nextUrl.origin;
+  const origin = getPublicOrigin(req);
 
   if (!token || !site) {
     console.warn('[wp-callback] Missing params — token:', !!token, 'site:', !!site);

@@ -3,7 +3,7 @@
  * Plugin Name: Scheduler
  * Plugin URI:
  * Description: A sports schedule widget for your website.
- * Version: 1.2.25
+ * Version: 1.3.2
  * Text Domain: scorebar-scheduler
  * Requires at least: 6.0
  * Tested up to: 6.7
@@ -13,7 +13,7 @@
 if (!defined('ABSPATH')) exit;
 
 // Plugin version — must match the "Version:" header above.
-define('SCHEDULE_PLUGIN_VERSION', '1.2.25');
+define('SCHEDULE_PLUGIN_VERSION', '1.3.2');
 
 // ── PHP version gate ────────────────────────────────────────────────────────
 if (version_compare(PHP_VERSION, '7.4', '<')) {
@@ -27,7 +27,12 @@ if (!defined('SCHEDULE_PLUGIN_URL')) {
     define('SCHEDULE_PLUGIN_URL', plugin_dir_url(__FILE__));
 }
 
-// The Vercel app URL is hardcoded — the plugin is purpose-built for this endpoint.
+// The app URL. Defaults to production, but can be overridden for local
+// development or staging so the plugin talks to your dev server instead of prod.
+// Backward compatibility: the original local-dev workflow used
+// SCOREBAR_APP_BASE_URL in wp-config.php, so keep honoring that constant too.
+// Preferred local value: define('SCOREBAR_APP_BASE_URL', 'http://localhost:3000');
+// If LocalWP cannot reach the host from PHP, use http://host.docker.internal:3000.
 if (!defined('SCHEDULE_APP_DOMAIN')) {
     define('SCHEDULE_APP_DOMAIN', 'https://scorebar.vercel.app');
 }
@@ -35,7 +40,81 @@ if (!defined('SCHEDULE_APP_DOMAIN')) {
 // Backward-compatible helper used by settings.php, shortcode.php, elementor-widget.php.
 if (!function_exists('schedule_get_app_domain')) {
     function schedule_get_app_domain() {
-        return SCHEDULE_APP_DOMAIN;
+        $domain = defined('SCOREBAR_APP_BASE_URL') ? SCOREBAR_APP_BASE_URL : SCHEDULE_APP_DOMAIN;
+        $domain = apply_filters('schedule_app_domain', $domain);
+        return rtrim((string) $domain, '/');
+    }
+}
+
+if (!function_exists('schedule_get_public_embed_key')) {
+    function schedule_get_public_embed_key() {
+        $embed_token = get_option('schedule_embed_token', '');
+        $api_key     = get_option('schedule_api_key', '');
+        return !empty($embed_token) ? $embed_token : $api_key;
+    }
+}
+
+if (!function_exists('schedule_get_embed_target_choices')) {
+    function schedule_get_embed_target_choices() {
+        $key = schedule_get_public_embed_key();
+        if (empty($key)) return [];
+
+        $cache_key = 'schedule_embed_targets_' . md5(schedule_get_app_domain() . '|' . $key);
+        $cached = get_transient($cache_key);
+        if (is_array($cached)) return $cached;
+
+        $url = add_query_arg(
+            ['apiKey' => $key, '_' => time()],
+            schedule_get_app_domain() . '/api/embed-instances'
+        );
+        $response = wp_remote_get($url, [
+            'timeout' => 8,
+            'headers' => ['Accept' => 'application/json'],
+        ]);
+
+        if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+            set_transient($cache_key, [], 30);
+            return [];
+        }
+
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+        if (!is_array($body)) {
+            set_transient($cache_key, [], 30);
+            return [];
+        }
+
+        $choices = [];
+        $seen = [];
+
+        if (!empty($body['instances']) && is_array($body['instances'])) {
+            foreach ($body['instances'] as $inst) {
+                if (!is_array($inst)) continue;
+                $target = sanitize_text_field($inst['embed_id'] ?? $inst['display_id'] ?? '');
+                $target = trim($target);
+                if ($target === '' || isset($seen[$target])) continue;
+                $seen[$target] = true;
+                $choices[$target] = $target;
+            }
+        }
+
+        if (!empty($body['publishedTargets']) && is_array($body['publishedTargets'])) {
+            foreach ($body['publishedTargets'] as $target) {
+                $target = sanitize_text_field($target);
+                $target = trim($target);
+                if ($target === '' || isset($seen[$target])) continue;
+                $seen[$target] = true;
+                $choices[$target] = $target . ' (published)';
+            }
+        }
+
+        set_transient($cache_key, $choices, 60);
+        return $choices;
+    }
+}
+
+if (!function_exists('schedule_get_embed_instance_options')) {
+    function schedule_get_embed_instance_options($placeholder = 'Select a schedule embed') {
+        return ['' => $placeholder] + schedule_get_embed_target_choices();
     }
 }
 
@@ -105,6 +184,7 @@ $_required = [
     'includes/settings.php',
     'includes/seo.php',
     'includes/shortcode.php',
+    'includes/banner.php',
     'includes/elementor-init.php',
     'includes/overflow-diagnostic.php',
 ];
@@ -364,10 +444,23 @@ if (!function_exists('schedule_rest_connect_handler')) {
         }
 
         // ── 2. Validate callback host ──────────────────────────────────────
-        // Only allow redirects back to the official Scorebar domain to
-        // prevent open-redirect exploitation.
-        $parsed = wp_parse_url($callback_url);
-        if (empty($parsed['host']) || $parsed['host'] !== 'scorebar.vercel.app') {
+        // Only allow redirects back to known-safe hosts to prevent open-redirect
+        // exploitation: production, whatever app domain the plugin is configured
+        // to talk to (SCHEDULE_APP_DOMAIN), plus the usual local-dev hosts.
+        $parsed        = wp_parse_url($callback_url);
+        $callback_host = isset($parsed['host']) ? strtolower($parsed['host']) : '';
+        $app_host      = strtolower((string) wp_parse_url(schedule_get_app_domain(), PHP_URL_HOST));
+
+        $allowed_hosts = array_filter(array_unique([
+            'scorebar.vercel.app',   // production — always allowed
+            $app_host,               // configured dev/staging target
+            'localhost',
+            '127.0.0.1',
+            '0.0.0.0',
+            'host.docker.internal',
+        ]));
+
+        if (empty($callback_host) || !in_array($callback_host, $allowed_hosts, true)) {
             return new WP_Error(
                 'invalid_callback',
                 'Callback URL host is not permitted.',

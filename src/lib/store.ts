@@ -70,7 +70,13 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
       const idx = state.events.findIndex((e) => e.id === id);
       if (idx === -1) return state;
       const updated = [...state.events];
-      updated[idx] = { ...updated[idx], isFeatured: !updated[idx].isFeatured };
+      const nextFeatured = !updated[idx].isFeatured;
+      updated[idx] = {
+        ...updated[idx],
+        isFeatured: nextFeatured,
+        // A highlighted match should remain in the selected schedule and banner.
+        ...(nextFeatured ? { isSelected: true } : {}),
+      };
       return { events: updated };
     }),
 

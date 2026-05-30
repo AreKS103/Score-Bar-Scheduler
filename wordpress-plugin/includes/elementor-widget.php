@@ -26,7 +26,10 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
         
         // ── Display Settings ────────────────────────────────────────────────
         $this->start_controls_section('content_section', ['label' => 'Display Settings', 'tab' => \Elementor\Controls_Manager::TAB_CONTENT]);
-        $this->add_control('embed_id', ['label' => 'Element ID (optional)', 'type' => \Elementor\Controls_Manager::TEXT, 'default' => '', 'placeholder' => 'e.g. sidebar, homepage, footer', 'description' => 'Unique name for this embed instance. Shown in your Scheduler dashboard. Leave blank for auto-numbering.']);
+        $embed_options = function_exists('schedule_get_embed_instance_options')
+            ? schedule_get_embed_instance_options('Choose a schedule embed')
+            : ['' => 'Choose a schedule embed'];
+        $this->add_control('embed_id', ['label' => 'Schedule Embed', 'type' => \Elementor\Controls_Manager::SELECT, 'default' => '', 'options' => $embed_options, 'description' => 'Choose the schedule embed name from your Scheduler dashboard. Publish to the same embed in the app.']);
         $this->add_control('list_style', ['label' => 'Schedule View', 'type' => \Elementor\Controls_Manager::SELECT, 'default' => 'default', 'options' => ['default' => 'Default List', 'card' => 'Card Style', 'calendar' => 'Calendar Grid'], 'description' => 'Calendar Grid shows a full weekly view.']);
         $this->add_control('show_sport_tabs', ['label' => 'Sport Filter Tabs',    'type' => \Elementor\Controls_Manager::SWITCHER, 'label_on' => 'Show', 'label_off' => 'Hide', 'return_value' => '1', 'default' => '1']);
         $this->add_control('show_header',     ['label' => 'Category Headings',    'type' => \Elementor\Controls_Manager::SWITCHER, 'label_on' => 'Show', 'label_off' => 'Hide', 'return_value' => '1', 'default' => '1']);
@@ -255,7 +258,7 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
                 }
             });
             // MutationObserver: fire DELETE when this embed is permanently removed from the DOM.
-            // Polls every 3s for 30s to survive Elementor re-renders (which transiently remove nodes).
+            // Confirms briefly to survive Elementor re-renders without making real deletes feel stale.
             (function(){
                 var wid = document.getElementById('<?php echo esc_js($uid); ?>');
                 if (!wid || !window.MutationObserver) return;
@@ -291,7 +294,7 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
                                         } catch(e) {}
                                     }
                                     if (found) { deleted = false; clearInterval(iv); return; }
-                                    if (checks >= 10) {
+                                    if (checks >= 3) {
                                         clearInterval(iv);
                                         if (!stableId) { deleted = false; return; }
                                         obs.disconnect();
@@ -299,7 +302,7 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
                                         <?php if (!empty($widget_id)): ?>delParams.widgetId = '<?php echo esc_js($widget_id); ?>';<?php elseif (!empty($settings['embed_id'])): ?>delParams.embedId = '<?php echo esc_js($settings['embed_id']); ?>';<?php else: ?>delParams.embedId = '__null__';<?php endif; ?>
                                         if (typeof sbFireDelete === 'function') sbFireDelete(delParams);
                                     }
-                                }, 3000);
+                                }, 1000);
                                 return;
                             }
                         }

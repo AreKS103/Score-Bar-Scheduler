@@ -530,6 +530,12 @@ export function saveSelectionToSupabase(state: SavedSelectionState, embedTarget 
         Object.keys(state.featuredLeagues).length === 0 &&
         state.leagueOrder.length === 0
       ) {
+        const clientId = getClientId();
+        await supabase
+          .from('user_selections')
+          .update({ client_id: clientId })
+          .eq('user_id', user.id)
+          .eq('embed_target', embedTarget);
         await supabase
           .from('user_selections')
           .delete()

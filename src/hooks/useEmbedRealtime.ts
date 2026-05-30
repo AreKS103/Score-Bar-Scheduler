@@ -22,6 +22,7 @@ export function useEmbedRealtime({
   enabled?: boolean;
 }) {
   const onChangeRef = useRef(onChange);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -30,22 +31,47 @@ export function useEmbedRealtime({
   useEffect(() => {
     if (!enabled || !userId) return;
 
+    const queueRefresh = () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = setTimeout(() => onChangeRef.current(), 200);
+    };
+
     const supabase = createClient();
     const channel = supabase
       .channel(`embed-instances-user-${userId}`)
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
           schema: 'public',
           table: 'embed_instances',
           filter: `user_id=eq.${userId}`,
         },
-        () => onChangeRef.current(),
+        queueRefresh,
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'embed_instances',
+          filter: `user_id=eq.${userId}`,
+        },
+        queueRefresh,
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'embed_instances',
+        },
+        queueRefresh,
       )
       .subscribe();
 
     return () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       supabase.removeChannel(channel);
     };
   }, [userId, enabled]);

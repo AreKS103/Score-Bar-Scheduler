@@ -16,6 +16,20 @@ function isRateLimited(userId: string): boolean {
   return timestamps.length > RATE_LIMIT_MAX;
 }
 
+function getPublicOrigin(req: NextRequest): string {
+  const proto = req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim()
+    || req.nextUrl.protocol.replace(/:$/, '')
+    || 'http';
+  let host = req.headers.get('x-forwarded-host')?.split(',')[0]?.trim()
+    || req.headers.get('host')?.trim()
+    || req.nextUrl.host;
+
+  if (host.startsWith('0.0.0.0')) host = host.replace('0.0.0.0', 'localhost');
+  if (host.startsWith('[::]')) host = host.replace('[::]', 'localhost');
+
+  return `${proto}://${host}`;
+}
+
 /**
  * POST /api/wp-connect/initiate
  *
@@ -125,7 +139,7 @@ export async function POST(req: NextRequest) {
     //   {siteUrl}/wp-json/scorebar/v1/connect
     // We pass along a callback URL and the embed token (key hash)
     // so WP can verify and store the connection.
-    const callbackUrl = new URL('/api/wp-callback', req.nextUrl.origin);
+    const callbackUrl = new URL('/api/wp-callback', getPublicOrigin(req));
     callbackUrl.searchParams.set('token', keyHash);
     callbackUrl.searchParams.set('site', siteUrl);
 

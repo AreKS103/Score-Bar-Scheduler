@@ -69,8 +69,10 @@ export function useSelectionsRealtime({
 
           if (!row) return;
 
-          // Echo suppression — ignore the event our own tab triggered.
-          if (!isDelete && row.client_id && row.client_id === myClientId) return;
+          // Echo suppression — ignore events our own tab triggered. Empty-state
+          // saves tag the row with this client id immediately before deleting it,
+          // so DELETE echoes cannot briefly clear freshly-clicked local UI.
+          if (row.client_id && row.client_id === myClientId) return;
 
           cbRef.current({
             embedTarget: row.embed_target ?? '',

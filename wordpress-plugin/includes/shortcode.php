@@ -213,7 +213,7 @@ function schedule_shortcode_render($atts) {
             }
         });
         // MutationObserver: fire DELETE when this embed is permanently removed from the DOM.
-        // Polls every 3s for 30s to survive Elementor re-renders (which transiently remove nodes).
+        // Confirms briefly to survive Elementor re-renders without making real deletes feel stale.
         (function(){
             var wid = document.getElementById('<?php echo esc_js($uid); ?>');
             if (!wid || !window.MutationObserver) return;
@@ -239,14 +239,14 @@ function schedule_shortcode_render($atts) {
                             var iv = setInterval(function() {
                                 checks++;
                                 if (document.getElementById(widId)) { deleted = false; clearInterval(iv); return; }
-                                if (checks >= 10) {
+                                if (checks >= 3) {
                                     clearInterval(iv);
                                     var delParams = {};
                                     <?php if (!empty($atts['embed_id'])): ?>delParams.embedId = '<?php echo esc_js($atts['embed_id']); ?>';<?php else: ?>deleted = false; return;<?php endif; ?>
                                     obs.disconnect();
                                     if (typeof sbFireDelete === 'function') sbFireDelete(delParams);
                                 }
-                            }, 3000);
+                            }, 1000);
                             return;
                         }
                     }

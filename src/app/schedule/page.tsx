@@ -99,9 +99,8 @@ function saveStoredEmbedOrder(instances: EmbedInstanceState[]) {
   } catch { /* ignore */ }
 }
 
-function mergeEmbedInstances(
+function normalizeEmbedInstances(
   registeredInstances: EmbedInstanceState[],
-  publishedTargets: string[],
 ): EmbedInstanceState[] {
   const merged = new Map<string, EmbedInstanceState>();
 
@@ -109,12 +108,6 @@ function mergeEmbedInstances(
     const key = getEmbedInstanceKey(instance);
     if (!key) continue;
     merged.set(key, { ...instance, registered: true });
-  }
-
-  for (const target of publishedTargets) {
-    const key = target.trim();
-    if (!key || merged.has(key)) continue;
-    merged.set(key, { display_id: key, embed_id: key, registered: false });
   }
 
   return Array.from(merged.values());
@@ -371,26 +364,20 @@ export default function SchedulePage() {
   const didAutoSelectEmbed = useRef(false);
 
   const loadEmbedInstances = useCallback(() => {
-    return fetch('/api/embed-instances')
+    return fetch('/api/embed-instances', { cache: 'no-store' })
       .then((r) => r.json())
       .then((d) => {
         const fetched: EmbedInstanceState[] = d.instances ?? [];
-        const publishedTargets = Array.isArray(d.publishedTargets)
-          ? d.publishedTargets.filter((target: unknown): target is string => typeof target === 'string')
-          : [];
-        const instances = applyStoredEmbedOrder(mergeEmbedInstances(fetched, publishedTargets));
+        const instances = applyStoredEmbedOrder(normalizeEmbedInstances(fetched));
         setEmbedInstances(instances);
-        // Prune localStorage selection keys for embeds that no longer exist in
-        // either registered widgets or published schedule targets.
-        // Sequential IDs ("1", "2", …) get recycled on delete+recreate, so stale
-        // keys would silently populate a brand-new embed with the old one's selections.
         const liveIds = new Set(instances.map(getEmbedInstanceKey));
         pruneStaleSelectionKeys(liveIds);
-        // Auto-select first embed on first load (no "All" option).
-        if (!didAutoSelectEmbed.current && instances.length > 0) {
-          didAutoSelectEmbed.current = true;
-          setPublishTarget(instances[0].embed_id ?? instances[0].display_id);
-        }
+        setPublishTarget((current) => {
+          if (current && liveIds.has(current)) return current;
+          const firstTarget = instances[0] ? getEmbedInstanceKey(instances[0]) : '';
+          if (firstTarget && !didAutoSelectEmbed.current) didAutoSelectEmbed.current = true;
+          return firstTarget;
+        });
         // If no embed instances exist, unblock auto-save immediately since
         // the initial embed restore effect will never fire.
         if (instances.length === 0) {
@@ -402,7 +389,9 @@ export default function SchedulePage() {
 
   useEffect(() => {
     loadEmbedInstances();
-    const id = setInterval(loadEmbedInstances, 120_000);
+    // Realtime (useEmbedRealtime) is the primary trigger for instant updates;
+    // this slow poll is only a safety-net fallback for a dropped socket.
+    const id = setInterval(loadEmbedInstances, 60_000);
     return () => clearInterval(id);
   }, [loadEmbedInstances]);
 
@@ -1963,10 +1952,10 @@ export default function SchedulePage() {
 
   // ─── HTML generation — recomputes whenever leagueOrder, events, or sortVersion changes ─
   const html = useMemo(
-    () => (selectedCount > 0 || featuredLeagues.size > 0)
+    () => (selectedCount > 0 || featuredMatches.length > 0 || featuredLeagues.size > 0)
       ? generateHTML(events, leagueOrder, featuredLeagues)
       : '',
-    [events, leagueOrder, selectedCount, featuredLeagues]
+    [events, leagueOrder, selectedCount, featuredMatches.length, featuredLeagues]
   );
 
   // Scroll HTML preview back to top whenever the league order changes so the reorder is visible
@@ -2123,7 +2112,9 @@ export default function SchedulePage() {
     weekLabel: `${formatDisplayDate(dateRange.start)} – ${formatDisplayDate(dateRange.end)}`,
     dateRangeStart: dateRange.start,
     dateRangeEnd: dateRange.end,
-    eventsSnapshot: events.filter((e) => e.isSelected),
+    eventsSnapshot: events
+      .filter((e) => e.isSelected || e.isFeatured)
+      .map((e) => e.isFeatured && !e.isSelected ? { ...e, isSelected: true } : e),
     leagueOrder,
     featuredLeagues: Object.fromEntries(featuredLeagues),
   }), [dateRange, events, leagueOrder, featuredLeagues]);
@@ -2344,12 +2335,12 @@ export default function SchedulePage() {
               </Button>
               <PublishButton
                 getHTML={getHTML}
-                disabled={selectedCount === 0}
+                disabled={selectedCount === 0 && featuredMatches.length === 0 && featuredLeagues.size === 0}
                 onDeleteSchedule={handleDeleteSchedule}
                 canDeleteSchedule={isOwner}
                 getSnapshotData={getSnapshotData}
                 onRestoreSchedule={handleRestoreSchedule}
-                hasCurrentSelections={selectedCount > 0}
+                hasCurrentSelections={selectedCount > 0 || featuredMatches.length > 0 || featuredLeagues.size > 0}
                 embedInstances={embedInstances}
                 publishTarget={publishTarget}
                 onSuccess={(ts) => {
@@ -2370,7 +2361,7 @@ export default function SchedulePage() {
                 variant="outline"
                 size="sm"
                 onClick={() => setPrintModalOpen(true)}
-                disabled={selectedCount === 0}
+                disabled={selectedCount === 0 && featuredMatches.length === 0 && featuredLeagues.size === 0}
                 title="Print / Save as PDF"
                 className="hidden sm:flex"
               >

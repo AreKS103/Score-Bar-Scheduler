@@ -7,6 +7,20 @@ const RELEASE_TAG = 'plugin-latest';
 // Cache for 5 minutes — plugin versions don't change frequently.
 export const revalidate = 300;
 
+function getPublicOrigin(req: NextRequest): string {
+  const proto = req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim()
+    || req.nextUrl.protocol.replace(/:$/, '')
+    || 'http';
+  let host = req.headers.get('x-forwarded-host')?.split(',')[0]?.trim()
+    || req.headers.get('host')?.trim()
+    || req.nextUrl.host;
+
+  if (host.startsWith('0.0.0.0')) host = host.replace('0.0.0.0', 'localhost');
+  if (host.startsWith('[::]')) host = host.replace('[::]', 'localhost');
+
+  return `${proto}://${host}`;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const headers: Record<string, string> = {
@@ -48,7 +62,7 @@ export async function GET(req: NextRequest) {
 
     // Route the download through our own proxy so it works for both public and
     // private GitHub repos (the proxy uses GITHUB_TOKEN server-side).
-    const origin = req.nextUrl.origin;
+    const origin = getPublicOrigin(req);
     const downloadUrl = `${origin}/api/plugin/download`;
 
     return NextResponse.json({

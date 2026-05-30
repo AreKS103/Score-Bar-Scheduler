@@ -62,6 +62,49 @@ function resolveKeyHash(apiKey: string): string {
   return hashKey(apiKey);
 }
 
+function sanitizeWidgetId(widgetId: unknown): string {
+  return typeof widgetId === 'string' ? widgetId.replace(/[^\w-]/g, '').substring(0, 64) : '';
+}
+
+function buildUniqueEmbedId(baseName: string, usedNames: Set<string>): string {
+  const base = (baseName.trim().substring(0, 64) || 'Embed').trim();
+  if (!usedNames.has(base)) return base;
+
+  for (let suffix = 2; suffix < 1000; suffix++) {
+    const suffixText = ` ${suffix}`;
+    const prefix = base.substring(0, 64 - suffixText.length).trimEnd() || 'Embed';
+    const candidate = `${prefix}${suffixText}`;
+    if (!usedNames.has(candidate)) return candidate;
+  }
+
+  const fallbackSuffix = ` ${Date.now().toString(36).slice(-5)}`;
+  return `${base.substring(0, 64 - fallbackSuffix.length).trimEnd() || 'Embed'}${fallbackSuffix}`;
+}
+
+function isGeneratedDuplicateName(name: string, baseName: string): boolean {
+  const base = baseName.trim();
+  if (!base || name === base) return name === base;
+  if (!name.startsWith(`${base} `)) return false;
+  return /^\d+$/.test(name.slice(base.length + 1));
+}
+
+async function getUniqueEmbedId(userId: string, desiredName: string, excludeId?: string): Promise<string> {
+  const { data } = await supabase
+    .from('embed_instances')
+    .select('id, embed_id')
+    .eq('user_id', userId)
+    .not('embed_id', 'is', null);
+
+  const usedNames = new Set(
+    (data ?? [])
+      .filter((row) => row.id !== excludeId)
+      .map((row) => typeof row.embed_id === 'string' ? row.embed_id.trim() : '')
+      .filter(Boolean),
+  );
+
+  return buildUniqueEmbedId(desiredName, usedNames);
+}
+
 /** POST /api/embed-instances — called by beacon in embed HTML to register/refresh an instance */
 export async function POST(req: NextRequest) {
   try {
@@ -79,7 +122,7 @@ export async function POST(req: NextRequest) {
 
     // instanceId = user-assigned embed name, or null if the widget has no name yet
     const instanceId   = (embedId || '').trim() || null;
-    const safeWidgetId = typeof widgetId === 'string' ? widgetId.replace(/[^\w-]/g, '').substring(0, 64) : '';
+    const safeWidgetId = sanitizeWidgetId(widgetId);
     const safeUrl      = (pageUrl  || '').substring(0, 512);
     const now          = new Date().toISOString();
     const uid          = keyData.user_id;
@@ -101,10 +144,27 @@ export async function POST(req: NextRequest) {
 
       if (existing?.id) {
         // ── Row already exists for this widget ──
-        const oldEmbedId = existing.embed_id as string;
+        const oldEmbedId = ((existing.embed_id as string | null) ?? '').trim();
         // If the beacon sends no embedId keep the currently stored label;
         // if it sends a name that's a rename operation.
-        const newEmbedId = instanceId ?? oldEmbedId;
+        const desiredEmbedId = instanceId ?? oldEmbedId;
+        let newEmbedId = desiredEmbedId;
+
+        if (instanceId !== null && desiredEmbedId !== oldEmbedId) {
+          const { data: conflict } = await supabase
+            .from('embed_instances')
+            .select('id')
+            .eq('user_id', uid)
+            .eq('embed_id', desiredEmbedId)
+            .neq('id', existing.id)
+            .maybeSingle();
+
+          if (conflict?.id) {
+            newEmbedId = isGeneratedDuplicateName(oldEmbedId, desiredEmbedId)
+              ? oldEmbedId
+              : await getUniqueEmbedId(uid, desiredEmbedId, existing.id);
+          }
+        }
 
         if (newEmbedId === oldEmbedId && !shouldRefreshLastSeen(existing.last_seen, existing.page_url, safeUrl)) {
           return NextResponse.json({ ok: true, skipped: true }, { headers: corsHeaders });
@@ -136,8 +196,9 @@ export async function POST(req: NextRequest) {
         let newEmbedId: string;
 
         if (instanceId !== null) {
-          // Named widget: adopt an existing row with this label (e.g. widget was
-          // recreated and lost its widget_id) or insert fresh.
+          // Named widget: if another physical widget already uses this label,
+          // this is usually an Elementor duplicate. Keep both widgets by giving
+          // the new row an inherited unique label: "Papi", "Papi 2", etc.
           const { data: byEmbed } = await supabase
             .from('embed_instances')
             .select('id')
@@ -146,16 +207,10 @@ export async function POST(req: NextRequest) {
             .maybeSingle();
 
           if (byEmbed?.id) {
-            // Adopt: stamp the widget_id onto the existing row
-            const { error: adoptErr } = await supabase
-              .from('embed_instances')
-              .update({ widget_id: safeWidgetId, page_url: safeUrl, last_seen: now })
-              .eq('id', byEmbed.id);
-            if (adoptErr) return NextResponse.json({ error: adoptErr.message }, { status: 500, headers: corsHeaders });
-            return NextResponse.json({ ok: true }, { headers: corsHeaders });
+            newEmbedId = await getUniqueEmbedId(uid, instanceId);
+          } else {
+            newEmbedId = instanceId;
           }
-
-          newEmbedId = instanceId;
         } else {
           // Unnamed widget: assign the next sequential integer ("1", "2", …).
           // Fetch all embed_ids for this user to determine the next number.
@@ -350,7 +405,12 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ instances: labeled, publishedTargets }, {
     headers: {
       ...corsHeaders,
-      'Cache-Control': 'private, s-maxage=30, stale-while-revalidate=60',
+      // Session path (dashboard): never cache so renames/registers from
+      // WordPress reflect immediately when the realtime hook refetches.
+      // apiKey path (public, WordPress-consumed): allow a short shared cache.
+      'Cache-Control': apiKey
+        ? 'public, max-age=15, s-maxage=15, stale-while-revalidate=30'
+        : 'no-store',
     },
   });
 }
@@ -388,22 +448,40 @@ export async function DELETE(req: NextRequest) {
   }
 
   const rawWidgetId = req.nextUrl.searchParams.get('widgetId');
-  let rawId = req.nextUrl.searchParams.get('embedId');
+  const safeWidgetId = sanitizeWidgetId(rawWidgetId);
+  const rawId = req.nextUrl.searchParams.get('embedId');
 
-  // If widgetId is provided without embedId, resolve the embed_id from the DB.
   const orgMemberIds = await getOrgMemberIds(userId);
-  if (rawWidgetId && !rawId) {
+  if (safeWidgetId) {
     const { data: inst } = await supabase
       .from('embed_instances')
-      .select('embed_id')
+      .select('id, embed_id')
       .in('user_id', orgMemberIds)
-      .eq('widget_id', rawWidgetId)
+      .eq('widget_id', safeWidgetId)
       .maybeSingle();
     if (!inst) {
       // Nothing registered under this widgetId — treat as success
       return NextResponse.json({ ok: true }, { headers: apiKey ? corsHeaders : sessionCors });
     }
-    rawId = inst.embed_id ?? '__null__';
+
+    await supabase
+      .from('embed_instances')
+      .delete()
+      .in('user_id', orgMemberIds)
+      .eq('id', inst.id);
+
+    const selDeleteQuery = supabase
+      .from('user_selections')
+      .delete()
+      .in('user_id', orgMemberIds);
+
+    if (inst.embed_id === null) {
+      await selDeleteQuery.is('embed_target', null);
+    } else {
+      await selDeleteQuery.eq('embed_target', inst.embed_id);
+    }
+
+    return NextResponse.json({ ok: true }, { headers: apiKey ? corsHeaders : sessionCors });
   }
 
   if (rawId === null) {

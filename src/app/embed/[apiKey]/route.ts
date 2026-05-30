@@ -45,7 +45,7 @@ interface EmbedOpts {
 const EMBED_POLL_INTERVAL_MS = 120_000;
 const EMBED_POLL_JITTER_MS = 30_000;
 const EMPTY_EMBED_RETRY_MS = 300_000;
-const EMBED_BEACON_DEBOUNCE_MS = 60 * 60 * 1000;
+const EMBED_BEACON_DEBOUNCE_MS = 5 * 60 * 1000;
 
 function jsString(value: string): string {
   return value
@@ -367,18 +367,14 @@ export async function GET(
   const widgetId = (sp._wid    ?? '').replace(/[^\w-]/g, '').substring(0, 64);
 
   // Resolve the schedule target:
-  //  • embedId present in URL → use it directly (PHP bakes it in from Elementor settings)
-  //  • widgetId present + DB row found → DB name overrides URL param (handles renames)
+  //  • widgetId present + DB row found → DB name overrides URL param (handles renames/duplicates)
+  //  • embedId present in URL and no DB row yet → use it directly (PHP bakes it in from Elementor settings)
   //  • widgetId present but no DB row AND no embedId → truly unknown, show empty
   //  • No ids at all → empty string → show empty
-  //
-  // Key insight: embedId is ALWAYS present in the iframe URL because PHP bakes it in
-  // from Elementor settings. So scheduleTarget = embedId resolves correctly even when
-  // the embed_instances row is missing — no global fallback needed.
   let scheduleTarget = embedId;
   let widgetNotRegistered = false;
   const orgMemberIdsForWidget = await getOrgMemberIds(keyData.user_id);
-  if (!embedId && widgetId) {
+  if (widgetId) {
     const { data: inst } = await supabase
       .from('embed_instances')
       .select('embed_id')
@@ -387,7 +383,7 @@ export async function GET(
       .maybeSingle();
     if (inst?.embed_id) {
       scheduleTarget = inst.embed_id;
-    } else {
+    } else if (!embedId) {
       // embed_instances row missing.
       // embedId is empty AND no DB row found.
       // Truly unknown — show empty, not global schedule.

@@ -13,12 +13,16 @@
 # ============================================================
 
 param(
-    [string]$SiteName = "Scheduler"
+    [string]$SiteName = "scheduler"
 )
 
 $pluginSource = Resolve-Path "$PSScriptRoot\..\wordpress-plugin"
 $localSitesBase = "$env:USERPROFILE\Local Sites"
 $siteFolder = Join-Path $localSitesBase $SiteName
+if (-not (Test-Path $siteFolder) -and (Test-Path $localSitesBase)) {
+    $match = Get-ChildItem $localSitesBase -Directory | Where-Object { $_.Name -ieq $SiteName } | Select-Object -First 1
+    if ($match) { $siteFolder = $match.FullName }
+}
 $pluginsDir = Join-Path $siteFolder "app\public\wp-content\plugins"
 $linkTarget  = Join-Path $pluginsDir "scorebar-scheduler"
 
@@ -71,7 +75,10 @@ try {
     Write-Host ""
     Write-Host "    define('SCOREBAR_APP_BASE_URL', 'http://localhost:3000');" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "  If that fails (LocalWP uses Docker), try:" -ForegroundColor Yellow
+    Write-Host "  The plugin also accepts the newer SCHEDULE_APP_DOMAIN constant," -ForegroundColor DarkGray
+    Write-Host "  but SCOREBAR_APP_BASE_URL is kept for the original local workflow." -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "  If localhost fails from PHP (LocalWP routing varies), try:" -ForegroundColor Yellow
     Write-Host "    define('SCOREBAR_APP_BASE_URL', 'http://host.docker.internal:3000');" -ForegroundColor Yellow
     Write-Host ""
 } catch {

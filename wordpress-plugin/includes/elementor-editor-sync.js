@@ -135,6 +135,50 @@
     apiDelete(widgetId, embedId);
   }
 
+  var scanTimer = null;
+
+  function extractEmbedIdFromWidgetNode(widgetNode) {
+    try {
+      var frame = widgetNode && widgetNode.querySelector && widgetNode.querySelector('iframe[src]');
+      if (!frame) return null;
+      return new URL(frame.src).searchParams.get('embedId') || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function registerWidgetNode(widgetNode) {
+    var widgetId = widgetNode && widgetNode.dataset && widgetNode.dataset.id;
+    if (!widgetId) return;
+
+    if (deleteTimers[widgetId]) {
+      clearTimeout(deleteTimers[widgetId]);
+      delete deleteTimers[widgetId];
+      console.log('[SB] scan cancelled pending delete:', widgetId);
+    }
+
+    apiRegister(widgetId, extractEmbedIdFromWidgetNode(widgetNode));
+  }
+
+  function scanPreviewWidgets() {
+    try {
+      var previewIframe = document.getElementById('elementor-preview-iframe');
+      if (!previewIframe || !previewIframe.contentDocument || !previewIframe.contentDocument.body) return;
+
+      previewIframe.contentDocument.querySelectorAll('[data-widget_type^="schedule_widget"]').forEach(function (widgetNode) {
+        registerWidgetNode(widgetNode);
+      });
+    } catch (e) {}
+  }
+
+  function schedulePreviewScan(delay) {
+    if (scanTimer) clearTimeout(scanTimer);
+    scanTimer = setTimeout(function () {
+      scanTimer = null;
+      scanPreviewWidgets();
+    }, typeof delay === 'number' ? delay : 250);
+  }
+
   function getPageUrl() {
     // Read the iframe's `src` attribute — cross-origin-safe, no contentWindow access needed.
     // Elementor sets src to the actual page URL with ?elementor-preview=<postId> appended.
@@ -243,12 +287,25 @@
             var el = container && container.model;
             if (isScheduleWidget(el)) {
               apiRegister(getWidgetId(el), getEmbedId(el));
+              schedulePreviewScan(600);
             }
           } catch (e) { console.warn('[SB] create hook error', e); }
+        });
+
+        $e.hooks.registerDataAfter('document/elements/settings', function () {
+          schedulePreviewScan(700);
         });
       } catch (e) {
         console.warn('[SB] $e.hooks registration failed, falling back', e);
       }
+    }
+
+    if (window.elementor && elementor.hooks && typeof elementor.hooks.addAction === 'function') {
+      try {
+        elementor.hooks.addAction('panel/open_editor/widget/schedule_widget', function () {
+          schedulePreviewScan(500);
+        });
+      } catch (e) {}
     }
 
     // ── Fallback: Backbone channel events (Elementor 2.x / older 3.x) ─────
@@ -293,12 +350,7 @@
             widgets.forEach(function (w) {
               var wid = w.dataset && w.dataset.id;
               if (!wid || deletedWidgets[wid]) return;
-              var eid = null;
-              try {
-                var fr = w.querySelector('iframe[src]');
-                if (fr) eid = new URL(fr.src).searchParams.get('embedId') || null;
-              } catch (e) {}
-              apiRegister(wid, eid);
+              registerWidgetNode(w);
             });
           } catch (e) {}
         });
@@ -351,9 +403,9 @@
                 var fr = w.querySelector('iframe[src]');
                 if (fr) embedId = new URL(fr.src).searchParams.get('embedId') || null;
               } catch (e) {}
-              console.log('[SB] confirmed gone after 8s, deleting:', widgetId);
+              console.log('[SB] confirmed gone after 1.5s, deleting:', widgetId);
               apiDeleteOnce(widgetId, embedId);
-            }, 8000); // FIX 1: 8s — long enough to survive Elementor iframe re-renders
+            }, 1500);
           });
         });
 
@@ -379,16 +431,8 @@
               clearTimeout(deleteTimers[wid]);
               delete deleteTimers[wid];
             }
-            var widgetId = wid || null;
-            if (!widgetId) return;
-            // embedId may be null — iframe loads async after the wrapper appears.
-            // The embed beacon in elementor-widget.php will send full data once loaded.
-            var embedId = null;
-            try {
-              var fr = w.querySelector('iframe[src]');
-              if (fr) embedId = new URL(fr.src).searchParams.get('embedId') || null;
-            } catch (e) {}
-            apiRegister(widgetId, embedId);
+            registerWidgetNode(w);
+            schedulePreviewScan(800);
           });
         });
 
@@ -433,6 +477,7 @@
             registeredWidgets.clear();
             attachDocObserver(currentDoc);
             warnHorizontalOverflow(currentDoc);
+            schedulePreviewScan(400);
           }
         } catch (e) {}
       }, 2000);
@@ -443,6 +488,7 @@
           if (newDoc && newDoc.body) {
             attachDocObserver(newDoc);
             warnHorizontalOverflow(newDoc);
+            schedulePreviewScan(500);
           }
           // Re-attach message relay on the new window after reload
           if (iframe.contentWindow) attachMessageRelay(iframe.contentWindow);
@@ -501,18 +547,7 @@
             console.log('[SB] sbHeight cancelled pending delete:', widgetId);
           }
 
-          // Extract embedId first so we can detect renames even for registered widgets
-          var embedId = null;
-          try {
-            var fr = w.querySelector('iframe[src]');
-            if (fr) embedId = new URL(fr.src).searchParams.get('embedId') || null;
-          } catch (e) {}
-
-          // Skip if already registered with the same embedId (sbHeight fires on every resize)
-          if (registeredWidgets.has(widgetId) &&
-              registeredEmbedIds[widgetId] === (embedId || null)) return;
-
-          apiRegister(widgetId, embedId);
+          registerWidgetNode(w);
         });
       } catch (e) {}
     });
