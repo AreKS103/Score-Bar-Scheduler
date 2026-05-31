@@ -119,28 +119,30 @@
       }
     }
 
+    function shouldUseReelForCount(count) {
+      return (animClass === 'sb-anim-slide') && !REDUCED && count > 1;
+    }
+
     function measureReel() {
       if (!reel) return;
       var track = banner.querySelector('.sb-track');
       if (!track) return;
       var kids = reel.children;
-      // Reset any forced sizing so a single row can be measured at its
-      // natural height. Without this the track would stretch to fit every
-      // stacked slide, making rowH the height of the whole reel and causing
-      // the next slide to jump in instead of scrolling up from below.
+      reel.style.transition = 'none';
       track.style.height = '';
       for (var i = 0; i < kids.length; i++) {
         kids[i].style.height = '';
       }
-      rowH = kids.length ? kids[0].offsetHeight : 0;
-      if (rowH <= 0) rowH = track.clientHeight;
-      // Clip the track to exactly one row so the slides stacked underneath
-      // sit below the visible area and scroll up into view on advance.
+      rowH = track.clientHeight;
+      if (rowH <= 0 && kids.length) rowH = kids[0].offsetHeight;
+      // The track is the clipped viewport and the reel is the moving stack.
+      // Locking every slide to the viewport height places the next row exactly
+      // at the bottom edge, so one translateY transition moves both rows
+      // together: current exits upward while next enters from below.
       track.style.height = rowH + 'px';
       for (var j = 0; j < kids.length; j++) {
         kids[j].style.height = rowH + 'px';
       }
-      reel.style.transition = 'none';
       reel.style.transform = 'translateY(' + (-current * rowH) + 'px)';
     }
 
@@ -170,9 +172,14 @@
       if (next === current || !slides[current] || !slides[next]) return;
       var outgoing = slides[current];
       var incoming = slides[next];
+      outgoing.classList.add('sb-leaving');
       outgoing.classList.remove('sb-active');
+      incoming.classList.remove('sb-leaving');
       incoming.classList.add('sb-active');
       current = next;
+      setTimeout(function () {
+        outgoing.classList.remove('sb-leaving');
+      }, 380);
     }
 
     function startRotation() {
@@ -208,7 +215,7 @@
       reel = null;
       rowH = 0;
       slideCount = items.length;
-      useReel = (animClass === 'sb-anim-slide') && !REDUCED && items.length > 1;
+      useReel = shouldUseReelForCount(items.length);
 
       var prefixHtml = cfg.prefix
         ? '<div class="sb-prefix">' + esc(cfg.prefix) + '</div>'
@@ -282,7 +289,8 @@
           var items = data && Array.isArray(data.items) ? data.items : [];
           var serial = data && (data.serial || data.publishedAt) ? String(data.serial || data.publishedAt) : 'fallback';
           var slideCountDom = banner.querySelectorAll('.sb-slide:not([data-i="clone"])').length;
-          if (serial !== lastSerial || !banner.classList.contains('sb-ready') || slideCountDom !== items.length) {
+          var needsReelRender = shouldUseReelForCount(items.length) && !banner.classList.contains('sb-reel-mode');
+          if (serial !== lastSerial || !banner.classList.contains('sb-ready') || slideCountDom !== items.length || needsReelRender) {
             lastSerial = serial;
             render(items, serial, !data);
           } else {
