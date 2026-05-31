@@ -194,14 +194,12 @@ function buildSerial(publishedAt: string, items: BannerItem[], range: BannerRang
   return `${publishedAt || 'none'}:${range}:${hash}`;
 }
 
-function noStoreHeaders(): Record<string, string> {
+function bannerCacheHeaders(): Record<string, string> {
   return {
     ...corsHeaders,
-    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-    'CDN-Cache-Control': 'no-store',
-    'Vercel-CDN-Cache-Control': 'no-store',
-    Pragma: 'no-cache',
-    Expires: '0',
+    'Cache-Control': 'public, max-age=30, stale-while-revalidate=120',
+    'CDN-Cache-Control': 'max-age=60, stale-while-revalidate=300, stale-if-error=600',
+    'Vercel-CDN-Cache-Control': 'max-age=60, stale-while-revalidate=300, stale-if-error=600',
   };
 }
 
@@ -262,7 +260,7 @@ export async function GET(req: NextRequest) {
     }
     if (!embedId) {
       // No target selected → return an empty (but valid) payload so the banner hides cleanly.
-      return NextResponse.json({ items: [], publishedAt: '', serial: 'none' }, { headers: noStoreHeaders() });
+      return NextResponse.json({ items: [], publishedAt: '', serial: 'none' }, { headers: bannerCacheHeaders() });
     }
 
     const hash = resolveKeyHash(apiKey);
@@ -288,7 +286,7 @@ export async function GET(req: NextRequest) {
       .maybeSingle();
 
     if (!schedule) {
-      return NextResponse.json({ items: [], publishedAt: '', serial: 'none' }, { headers: noStoreHeaders() });
+      return NextResponse.json({ items: [], publishedAt: '', serial: 'none' }, { headers: bannerCacheHeaders() });
     }
 
     const snapshotEvents = (Array.isArray(schedule.events_snapshot) ? schedule.events_snapshot : []) as MatchEvent[];
@@ -299,7 +297,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       { items, publishedAt, range, serial: buildSerial(publishedAt, items, range) },
       {
-        headers: noStoreHeaders(),
+        headers: bannerCacheHeaders(),
       },
     );
   } catch (err) {

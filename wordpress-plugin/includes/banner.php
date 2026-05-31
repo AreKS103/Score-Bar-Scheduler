@@ -37,7 +37,7 @@ if (!function_exists('schedule_banner_defaults')) {
             'logo_bg_color'=> '#ffffff',
             'logo_bg_transparent' => 0,
             'interval'     => 5,          // seconds between slides
-            'refresh_interval' => 15,     // seconds between live data checks
+            'refresh_interval' => 60,     // seconds between live data checks
             'range_mode'   => 'week',     // 'today' | 'week'
             'animation'    => 'slide',    // 'slide' | 'fade'
             'position'     => 'static',   // 'static' | 'fixed'
@@ -91,7 +91,7 @@ if (!function_exists('schedule_banner_sanitize')) {
             'logo_bg_color'=> $hex($raw['logo_bg_color'] ?? '', $d['logo_bg_color']),
             'logo_bg_transparent' => !empty($raw['logo_bg_transparent']) ? 1 : 0,
             'interval'     => $clamp($raw['interval'] ?? '', 2, 30, $d['interval']),
-            'refresh_interval' => $clamp($raw['refresh_interval'] ?? '', 5, 300, $d['refresh_interval']),
+            'refresh_interval' => $clamp($raw['refresh_interval'] ?? '', 30, 300, $d['refresh_interval']),
             'range_mode'   => in_array(($raw['range_mode'] ?? ''), ['today', 'week'], true) ? $raw['range_mode'] : $d['range_mode'],
             'animation'    => in_array(($raw['animation'] ?? ''), ['slide', 'fade'], true) ? $raw['animation'] : $d['animation'],
             'position'     => in_array(($raw['position'] ?? ''), ['static', 'fixed'], true) ? $raw['position'] : $d['position'],
@@ -247,26 +247,30 @@ if (!function_exists('schedule_banner_fetch_payload')) {
         $tz = schedule_banner_site_timezone();
         $range = isset($settings['range_mode']) && $settings['range_mode'] === 'week' ? 'week' : 'today';
         $cache_key = 'schedule_banner_last_' . md5($app . '|' . $key . '|' . $settings['embed_id'] . '|' . $tz . '|' . $range);
+        $fresh_key = 'schedule_banner_fresh_' . md5($app . '|' . $key . '|' . $settings['embed_id'] . '|' . $tz . '|' . $range);
+        $fresh = get_transient($fresh_key);
+        if (is_array($fresh)) return $fresh;
+
         $url = add_query_arg([
             'apiKey'  => $key,
             'embedId' => $settings['embed_id'],
             'tz'      => $tz,
             'range'   => $range,
-            '_'       => time(),
         ], $app . '/api/banner');
 
         $response = wp_remote_get($url, [
-            'timeout'   => 3,
+            'timeout'   => 2,
+            'redirection' => 2,
             'sslverify' => !schedule_banner_is_local_app($app),
             'headers'   => [
-                'Accept'        => 'application/json',
-                'Cache-Control' => 'no-cache',
+                'Accept' => 'application/json',
             ],
         ]);
 
         if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
             $body = json_decode(wp_remote_retrieve_body($response), true);
             if (is_array($body)) {
+                set_transient($fresh_key, $body, MINUTE_IN_SECONDS);
                 set_transient($cache_key, $body, 10 * MINUTE_IN_SECONDS);
                 return $body;
             }
@@ -440,7 +444,7 @@ if (!function_exists('schedule_banner_render_instance')) {
         $fallback_interval = max(2, (int) ($settings['interval'] ?? 5));
         $fallback_duration = $fallback_interval * max(1, $item_count);
         $fallback_window = $item_count > 1 ? (100 / $item_count) : 100;
-        $fallback_motion_seconds = $item_count > 1 ? min(0.6, max(0.28, $fallback_interval * 0.3)) : 0;
+        $fallback_motion_seconds = $item_count > 1 ? min(0.42, max(0.22, $fallback_interval * 0.22)) : 0;
         $fallback_motion_pct = $item_count > 1 ? max(1, min($fallback_window / 2, ($fallback_motion_seconds / $fallback_duration) * 100)) : 0;
         $fallback_visible_start = $item_count > 1 ? $fallback_motion_pct : 0;
         $fallback_visible_end = $item_count > 1 ? max($fallback_visible_start, $fallback_window - $fallback_motion_pct) : 100;
@@ -758,7 +762,7 @@ if (!function_exists('schedule_banner_render_admin_page')) {
                     <tr>
                         <th scope="row"><label for="sb_refresh_interval">Live refresh</label></th>
                         <td>
-                            <input type="number" id="sb_refresh_interval" name="schedule_banner[refresh_interval]" value="<?php echo esc_attr($s['refresh_interval']); ?>" min="5" max="300" step="1" style="width:76px;" /> seconds
+                            <input type="number" id="sb_refresh_interval" name="schedule_banner[refresh_interval]" value="<?php echo esc_attr($s['refresh_interval']); ?>" min="30" max="300" step="1" style="width:76px;" /> seconds
                             <p class="description">Checks the selected embed for newly published highlights. The banner also refreshes immediately when a visitor returns to the tab.</p>
                         </td>
                     </tr>

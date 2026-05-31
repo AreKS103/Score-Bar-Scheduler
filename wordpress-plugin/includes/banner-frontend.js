@@ -42,7 +42,7 @@
     if (!banner) return;
 
     var interval = Math.max(2, parseInt(cfg.interval, 10) || 5) * 1000;
-    var refreshInterval = Math.max(5, Math.min(300, parseInt(cfg.refresh, 10) || 15)) * 1000;
+    var refreshInterval = Math.max(30, Math.min(300, parseInt(cfg.refresh, 10) || 60)) * 1000;
     var animClass = cfg.animation === 'fade' ? 'sb-anim-fade' : 'sb-anim-slide';
     var rotationTimer = null;
     var refreshTimer = null;
@@ -55,8 +55,9 @@
     var rowH = 0;
     var slideCount = 0;
     var useReel = false;
-    var REEL_DURATION = 600;
+    var REEL_DURATION = 420;
     var REEL_TRANSITION = 'transform ' + (REEL_DURATION / 1000) + 's cubic-bezier(.4,0,.2,1)';
+    var lastLoadStartedAt = 0;
 
     banner.classList.remove('sb-anim-fade', 'sb-anim-slide');
     banner.classList.add(animClass);
@@ -286,15 +287,17 @@
         return;
       }
       if (pending) return;
+      var now = Date.now();
+      if (!force && lastLoadStartedAt && now - lastLoadStartedAt < 5000) return;
+      lastLoadStartedAt = now;
       pending = true;
 
       var url = cfg.app + '/api/banner?apiKey=' + encodeURIComponent(cfg.token) +
         '&embedId=' + encodeURIComponent(cfg.embedId) +
         '&tz=' + encodeURIComponent(getTz(cfg)) +
-        '&range=' + encodeURIComponent(cfg.range === 'week' ? 'week' : 'today') +
-        '&_=' + Date.now();
+        '&range=' + encodeURIComponent(cfg.range === 'week' ? 'week' : 'today');
 
-      fetch(url, { credentials: 'omit', cache: 'no-store' })
+      fetch(url, { credentials: 'omit', cache: force ? 'no-cache' : 'default' })
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (data) {
           var items = data && Array.isArray(data.items) ? data.items : [];
@@ -328,13 +331,13 @@
       if (document.hidden) {
         stopRotation();
       } else {
-        load(false);
+        load(true);
         startRotation();
       }
     });
-    window.addEventListener('focus', function () { load(false); });
+    window.addEventListener('focus', function () { load(true); });
     window.addEventListener('pageshow', function () { load(false); });
-    window.addEventListener('online', function () { load(false); });
+    window.addEventListener('online', function () { load(true); });
     window.addEventListener('resize', function () { if (useReel) measureReel(); });
 
     if (banner.classList.contains('sb-reel-mode')) {
@@ -345,9 +348,9 @@
     startRotation();
 
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', function () { load(true); });
+      document.addEventListener('DOMContentLoaded', function () { load(false); });
     } else {
-      load(true);
+      load(false);
     }
   }
 
