@@ -424,9 +424,16 @@ if (!function_exists('schedule_banner_render_instance')) {
         $logo_bg = !empty($settings['logo_bg_transparent']) ? 'transparent' : ($settings['logo_bg_color'] ?? '#ffffff');
         $payload   = schedule_banner_fetch_payload($settings);
         $items     = (is_array($payload) && isset($payload['items']) && is_array($payload['items'])) ? $payload['items'] : [];
+        $item_count = count($items);
         $serial    = (is_array($payload) && !empty($payload['serial'])) ? sanitize_text_field($payload['serial']) : '';
         $inner     = schedule_banner_render_inner_html($items, $settings);
         $ready     = $inner !== '';
+        $fallback_animation_name = 'sb-fallback-' . preg_replace('/[^A-Za-z0-9_-]/', '', $target_id);
+        $fallback_interval = max(2, (int) ($settings['interval'] ?? 5));
+        $fallback_duration = $fallback_interval * max(1, $item_count);
+        $fallback_window = $item_count > 1 ? (100 / $item_count) : 100;
+        $fallback_visible_end = $item_count > 1 ? max(4, min(92, $fallback_window - 4)) : 100;
+        $fallback_exit_end = $item_count > 1 ? max($fallback_visible_end + 1, min(98, $fallback_window)) : 100;
         $pos_css   = $fixed
             ? 'position:fixed;top:0;left:0;right:0;z-index:99990;'
             : 'position:relative;';
@@ -449,6 +456,12 @@ if (!function_exists('schedule_banner_render_instance')) {
 #<?php echo esc_attr($target_id); ?>.sb-anim-slide .sb-slide.sb-leaving{transform:translateY(-100%);opacity:0}
 #<?php echo esc_attr($target_id); ?>.sb-anim-fade .sb-slide{transition:opacity .5s ease}
 #<?php echo esc_attr($target_id); ?> a.sb-link{color:inherit;text-decoration:none;display:block}
+<?php if ($item_count > 1): ?>
+@keyframes <?php echo esc_attr($fallback_animation_name); ?>{0%,<?php echo esc_attr(round($fallback_visible_end, 4)); ?>%{opacity:1;transform:translateY(0)}<?php echo esc_attr(round($fallback_exit_end, 4)); ?>%,100%{opacity:0;transform:translateY(-100%)}}
+#<?php echo esc_attr($target_id); ?>:not(.sb-js-ready) .sb-slide{animation:<?php echo esc_attr($fallback_animation_name); ?> <?php echo esc_attr($fallback_duration); ?>s linear infinite;opacity:0;transform:translateY(100%)}
+<?php for ($i = 1; $i <= $item_count; $i++): ?>#<?php echo esc_attr($target_id); ?>:not(.sb-js-ready) .sb-slide:nth-child(<?php echo $i; ?>){animation-delay:<?php echo esc_attr(($i - 1) * $fallback_interval); ?>s}
+<?php endfor; ?>
+<?php endif; ?>
 @media (max-width:600px){#<?php echo esc_attr($target_id); ?>{font-size:<?php echo max(11, $fs - 2); ?>px}#<?php echo esc_attr($target_id); ?> .sb-prefix{padding:0 10px 0 12px}#<?php echo esc_attr($target_id); ?> .sb-slide{gap:7px;padding-right:10px}}
 @media (prefers-reduced-motion:reduce){#<?php echo esc_attr($target_id); ?> .sb-slide{transition:opacity .2s linear!important;transform:none!important}}
 </style>

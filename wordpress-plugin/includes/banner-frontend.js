@@ -54,6 +54,7 @@
 
     banner.classList.remove('sb-anim-fade', 'sb-anim-slide');
     banner.classList.add(animClass);
+    banner.classList.add('sb-js-ready');
 
     function buildSlideHtml(item) {
       item = item || {};
@@ -220,6 +221,8 @@
           if (lastSerial === null) {
             lastSerial = 'fallback';
             render(fallbackItems(), lastSerial, true);
+          } else {
+            startRotation();
           }
         })
         .then(function () {
@@ -239,6 +242,9 @@
     window.addEventListener('focus', function () { load(false); });
     window.addEventListener('pageshow', function () { load(false); });
     window.addEventListener('online', function () { load(false); });
+
+    applyFixedOffset();
+    startRotation();
 
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', function () { load(true); });
