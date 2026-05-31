@@ -284,7 +284,7 @@ if (!function_exists('schedule_banner_item_text')) {
 }
 
 if (!function_exists('schedule_banner_render_slide_html')) {
-    function schedule_banner_render_slide_html($item, $settings, $active = false) {
+    function schedule_banner_render_slide_html($item, $settings, $active = false, $attrs = '') {
         if (!is_array($item)) return '';
         $logo = schedule_banner_item_text($item, 'leagueLogo');
         if ($logo === '') $logo = schedule_banner_item_text($item, 'homeLogo');
@@ -297,7 +297,7 @@ if (!function_exists('schedule_banner_render_slide_html')) {
 
         ob_start();
         ?>
-        <div class="sb-slide<?php echo $active ? ' sb-active' : ''; ?>">
+        <div class="sb-slide<?php echo $active ? ' sb-active' : ''; ?>"<?php echo $attrs !== '' ? ' ' . $attrs : ''; ?>>
             <?php if (!empty($settings['show_logos']) && $logo !== ''): ?>
                 <img class="sb-logo" src="<?php echo esc_url($logo); ?>" alt="" loading="eager" decoding="async" />
             <?php endif; ?>
@@ -320,6 +320,7 @@ if (!function_exists('schedule_banner_render_slide_html')) {
 if (!function_exists('schedule_banner_render_inner_html')) {
     function schedule_banner_render_inner_html($items, $settings) {
         if (empty($items) || !is_array($items)) return '';
+        $use_reel = (($settings['animation'] ?? 'slide') === 'slide') && count($items) > 1;
         ob_start();
         ?>
         <div class="sb-inner">
@@ -327,7 +328,14 @@ if (!function_exists('schedule_banner_render_inner_html')) {
                 <div class="sb-prefix"><?php echo esc_html($settings['prefix']); ?></div>
             <?php endif; ?>
             <div class="sb-track">
-                <?php foreach ($items as $index => $item) echo schedule_banner_render_slide_html($item, $settings, $index === 0); ?>
+                <?php if ($use_reel): ?>
+                    <div class="sb-reel">
+                        <?php foreach ($items as $index => $item) echo schedule_banner_render_slide_html($item, $settings, false, 'data-i="' . (int) $index . '"'); ?>
+                        <?php echo schedule_banner_render_slide_html($items[0], $settings, false, 'data-i="clone" aria-hidden="true"'); ?>
+                    </div>
+                <?php else: ?>
+                    <?php foreach ($items as $index => $item) echo schedule_banner_render_slide_html($item, $settings, $index === 0, 'data-i="' . (int) $index . '"'); ?>
+                <?php endif; ?>
             </div>
         </div>
         <?php
@@ -432,8 +440,13 @@ if (!function_exists('schedule_banner_render_instance')) {
         $fallback_interval = max(2, (int) ($settings['interval'] ?? 5));
         $fallback_duration = $fallback_interval * max(1, $item_count);
         $fallback_window = $item_count > 1 ? (100 / $item_count) : 100;
-        $fallback_visible_end = $item_count > 1 ? max(4, min(92, $fallback_window - 4)) : 100;
-        $fallback_exit_end = $item_count > 1 ? max($fallback_visible_end + 1, min(98, $fallback_window)) : 100;
+        $fallback_motion_seconds = $item_count > 1 ? min(0.6, max(0.28, $fallback_interval * 0.3)) : 0;
+        $fallback_motion_pct = $item_count > 1 ? max(1, min($fallback_window / 2, ($fallback_motion_seconds / $fallback_duration) * 100)) : 0;
+        $fallback_visible_start = $item_count > 1 ? $fallback_motion_pct : 0;
+        $fallback_visible_end = $item_count > 1 ? max($fallback_visible_start, $fallback_window - $fallback_motion_pct) : 100;
+        $fallback_exit_end = $item_count > 1 ? min($fallback_window, $fallback_visible_end + $fallback_motion_pct) : 100;
+        $fallback_hidden_start = $item_count > 1 ? min(99.999, $fallback_exit_end + 0.001) : 100;
+        $server_reel_mode = $ready && (($settings['animation'] ?? 'slide') === 'slide') && $item_count > 1;
         $pos_css   = $fixed
             ? 'position:fixed;top:0;left:0;right:0;z-index:99990;'
             : 'position:relative;';
@@ -456,19 +469,21 @@ if (!function_exists('schedule_banner_render_instance')) {
 #<?php echo esc_attr($target_id); ?>.sb-anim-slide .sb-slide.sb-leaving{transform:translateY(-100%);opacity:1}
 #<?php echo esc_attr($target_id); ?>.sb-anim-fade .sb-slide{transition:opacity .5s ease}
 #<?php echo esc_attr($target_id); ?>.sb-reel-mode .sb-track{overflow:hidden}
-#<?php echo esc_attr($target_id); ?>.sb-reel-mode .sb-reel{position:absolute;top:0;left:0;right:0;display:block;will-change:transform}
-#<?php echo esc_attr($target_id); ?>.sb-reel-mode .sb-slide{position:relative;inset:auto;opacity:1;pointer-events:auto;transform:none;transition:none;width:100%;box-sizing:border-box}
+#<?php echo esc_attr($target_id); ?>.sb-reel-mode .sb-reel{position:absolute;top:0;left:0;right:0;height:100%;display:block;will-change:transform}
+#<?php echo esc_attr($target_id); ?>.sb-reel-mode .sb-slide{position:relative;inset:auto;opacity:1;pointer-events:auto;transform:none;transition:none;width:100%;height:100%;box-sizing:border-box}
 #<?php echo esc_attr($target_id); ?> a.sb-link{color:inherit;text-decoration:none;display:block}
 <?php if ($item_count > 1): ?>
-@keyframes <?php echo esc_attr($fallback_animation_name); ?>{0%,<?php echo esc_attr(round($fallback_visible_end, 4)); ?>%{opacity:1;transform:translateY(0)}<?php echo esc_attr(round($fallback_exit_end, 4)); ?>%{opacity:1;transform:translateY(-100%)}100%{opacity:0;transform:translateY(-100%)}}
-#<?php echo esc_attr($target_id); ?>:not(.sb-js-ready) .sb-slide{animation:<?php echo esc_attr($fallback_animation_name); ?> <?php echo esc_attr($fallback_duration); ?>s linear infinite;opacity:0;transform:translateY(100%)}
-<?php for ($i = 1; $i <= $item_count; $i++): ?>#<?php echo esc_attr($target_id); ?>:not(.sb-js-ready) .sb-slide:nth-child(<?php echo $i; ?>){animation-delay:<?php echo esc_attr(($i - 1) * $fallback_interval); ?>s}
+@keyframes <?php echo esc_attr($fallback_animation_name); ?>-reel{<?php for ($i = 0; $i < $item_count; $i++): $start = $i * $fallback_window; $hold = (($i + 1) * $fallback_window) - $fallback_motion_pct; $end = ($i + 1) * $fallback_window; ?><?php echo esc_attr(round($start, 4)); ?>%,<?php echo esc_attr(round($hold, 4)); ?>%{transform:translateY(-<?php echo esc_attr($i * 100); ?>%)}<?php echo esc_attr(round($end, 4)); ?>%{transform:translateY(-<?php echo esc_attr(($i + 1) * 100); ?>%)}<?php endfor; ?>}
+@keyframes <?php echo esc_attr($fallback_animation_name); ?>{0%{opacity:1;transform:translateY(100%)}<?php echo esc_attr(round($fallback_visible_start, 4)); ?>%,<?php echo esc_attr(round($fallback_visible_end, 4)); ?>%{opacity:1;transform:translateY(0)}<?php echo esc_attr(round($fallback_exit_end, 4)); ?>%{opacity:1;transform:translateY(-100%)}<?php echo esc_attr(round($fallback_hidden_start, 4)); ?>%{opacity:0;transform:translateY(-100%)}100%{opacity:0;transform:translateY(100%)}}
+#<?php echo esc_attr($target_id); ?>.sb-reel-mode:not(.sb-js-ready) .sb-reel{animation:<?php echo esc_attr($fallback_animation_name); ?>-reel <?php echo esc_attr($fallback_duration); ?>s linear infinite}
+#<?php echo esc_attr($target_id); ?>:not(.sb-reel-mode):not(.sb-js-ready) .sb-slide{animation:<?php echo esc_attr($fallback_animation_name); ?> <?php echo esc_attr($fallback_duration); ?>s linear infinite;opacity:0;transform:translateY(100%)}
+<?php for ($i = 1; $i <= $item_count; $i++): ?>#<?php echo esc_attr($target_id); ?>:not(.sb-reel-mode):not(.sb-js-ready) .sb-slide:nth-child(<?php echo $i; ?>){animation-delay:<?php echo esc_attr((($i - 1) * $fallback_interval) - $fallback_motion_seconds); ?>s}
 <?php endfor; ?>
 <?php endif; ?>
 @media (max-width:600px){#<?php echo esc_attr($target_id); ?>{font-size:<?php echo max(11, $fs - 2); ?>px}#<?php echo esc_attr($target_id); ?> .sb-prefix{padding:0 10px 0 12px}#<?php echo esc_attr($target_id); ?> .sb-slide{gap:7px;padding-right:10px}}
 @media (prefers-reduced-motion:reduce){#<?php echo esc_attr($target_id); ?> .sb-slide{transition:opacity .2s linear!important;transform:none!important}}
 </style>
-<div id="<?php echo esc_attr($target_id); ?>" class="<?php echo $ready ? 'sb-ready' : ''; ?>" role="region" aria-label="<?php echo esc_attr($settings['prefix']); ?>" data-fixed="<?php echo $fixed ? '1' : '0'; ?>" data-serial="<?php echo esc_attr($serial); ?>"><?php echo $inner; ?></div>
+<div id="<?php echo esc_attr($target_id); ?>" class="<?php echo trim(($ready ? 'sb-ready' : '') . ($server_reel_mode ? ' sb-reel-mode' : '')); ?>" role="region" aria-label="<?php echo esc_attr($settings['prefix']); ?>" data-fixed="<?php echo $fixed ? '1' : '0'; ?>" data-serial="<?php echo esc_attr($serial); ?>"><?php echo $inner; ?></div>
         <?php
     }
 }
