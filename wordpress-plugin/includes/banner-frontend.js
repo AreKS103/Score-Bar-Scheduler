@@ -51,6 +51,12 @@
     var current = 0;
     var fixedOffsetAttached = false;
     var fixedResizeObserver = null;
+    var reel = null;
+    var rowH = 0;
+    var slideCount = 0;
+    var useReel = false;
+    var REEL_DURATION = 600;
+    var REEL_TRANSITION = 'transform ' + (REEL_DURATION / 1000) + 's cubic-bezier(.4,0,.2,1)';
 
     banner.classList.remove('sb-anim-fade', 'sb-anim-slide');
     banner.classList.add(animClass);
@@ -113,27 +119,56 @@
       }
     }
 
+    function measureReel() {
+      if (!reel) return;
+      var track = banner.querySelector('.sb-track');
+      rowH = track ? track.clientHeight : 0;
+      var kids = reel.children;
+      for (var i = 0; i < kids.length; i++) {
+        kids[i].style.height = rowH + 'px';
+      }
+      reel.style.transition = 'none';
+      reel.style.transform = 'translateY(' + (-current * rowH) + 'px)';
+    }
+
+    function advanceReel() {
+      if (!reel) return;
+      if (rowH <= 0) {
+        measureReel();
+        if (rowH <= 0) return;
+      }
+      current += 1;
+      reel.style.transition = REEL_TRANSITION;
+      reel.style.transform = 'translateY(' + (-current * rowH) + 'px)';
+      if (current >= slideCount) {
+        // Landed on the clone of the first slide; snap back to the real first
+        // slide once the transition completes so the loop is seamless.
+        setTimeout(function () {
+          if (!reel) return;
+          reel.style.transition = 'none';
+          current = 0;
+          reel.style.transform = 'translateY(0px)';
+          void reel.offsetHeight;
+        }, REEL_DURATION + 60);
+      }
+    }
+
     function go(slides, next) {
       if (next === current || !slides[current] || !slides[next]) return;
       var outgoing = slides[current];
       var incoming = slides[next];
-
-      if (animClass === 'sb-anim-fade' || REDUCED) {
-        outgoing.classList.remove('sb-active');
-        incoming.classList.add('sb-active');
-      } else {
-        incoming.classList.add('sb-active');
-        outgoing.classList.add('sb-leaving');
-        outgoing.classList.remove('sb-active');
-        (function (slide) {
-          setTimeout(function () { slide.classList.remove('sb-leaving'); }, 380);
-        })(outgoing);
-      }
+      outgoing.classList.remove('sb-active');
+      incoming.classList.add('sb-active');
       current = next;
     }
 
     function startRotation() {
       if (rotationTimer || document.hidden) return;
+      if (useReel) {
+        if (slideCount < 2) return;
+        rotationTimer = setInterval(advanceReel, interval);
+        return;
+      }
       var slides = banner.querySelectorAll('.sb-slide');
       if (slides.length < 2) return;
       rotationTimer = setInterval(function () {
@@ -157,22 +192,46 @@
 
       stopRotation();
       current = 0;
+      reel = null;
+      rowH = 0;
+      slideCount = items.length;
+      useReel = (animClass === 'sb-anim-slide') && !REDUCED && items.length > 1;
 
       var prefixHtml = cfg.prefix
         ? '<div class="sb-prefix">' + esc(cfg.prefix) + '</div>'
         : '';
 
-      var slidesHtml = '';
-      for (var i = 0; i < items.length; i++) {
-        slidesHtml += '<div class="sb-slide' + (i === 0 ? ' sb-active' : '') + '" data-i="' + i + '">' + buildSlideHtml(items[i]) + '</div>';
+      var trackHtml;
+      if (useReel) {
+        var reelHtml = '';
+        for (var i = 0; i < items.length; i++) {
+          reelHtml += '<div class="sb-slide" data-i="' + i + '">' + buildSlideHtml(items[i]) + '</div>';
+        }
+        // Append a clone of the first slide so the upward scroll can loop
+        // back to the start without a visible jump.
+        reelHtml += '<div class="sb-slide" data-i="clone" aria-hidden="true">' + buildSlideHtml(items[0]) + '</div>';
+        trackHtml = '<div class="sb-track"><div class="sb-reel">' + reelHtml + '</div></div>';
+      } else {
+        var slidesHtml = '';
+        for (var j = 0; j < items.length; j++) {
+          slidesHtml += '<div class="sb-slide' + (j === 0 ? ' sb-active' : '') + '" data-i="' + j + '">' + buildSlideHtml(items[j]) + '</div>';
+        }
+        trackHtml = '<div class="sb-track">' + slidesHtml + '</div>';
       }
 
-      var inner = '<div class="sb-inner">' + prefixHtml + '<div class="sb-track">' + slidesHtml + '</div></div>';
+      var inner = '<div class="sb-inner">' + prefixHtml + trackHtml + '</div>';
       banner.innerHTML = cfg.link
         ? '<a class="sb-link" href="' + esc(cfg.link) + '">' + inner + '</a>'
         : inner;
       banner.setAttribute('data-serial', serial || '');
+      banner.classList.toggle('sb-reel-mode', useReel);
       banner.classList.add('sb-ready');
+
+      if (useReel) {
+        reel = banner.querySelector('.sb-reel');
+        measureReel();
+      }
+
       applyFixedOffset();
       startRotation();
     }
@@ -209,8 +268,8 @@
         .then(function (data) {
           var items = data && Array.isArray(data.items) ? data.items : [];
           var serial = data && (data.serial || data.publishedAt) ? String(data.serial || data.publishedAt) : 'fallback';
-          var slideCount = banner.querySelectorAll('.sb-slide').length;
-          if (serial !== lastSerial || !banner.classList.contains('sb-ready') || slideCount !== items.length) {
+          var slideCountDom = banner.querySelectorAll('.sb-slide:not([data-i="clone"])').length;
+          if (serial !== lastSerial || !banner.classList.contains('sb-ready') || slideCountDom !== items.length) {
             lastSerial = serial;
             render(items, serial, !data);
           } else {
@@ -242,6 +301,7 @@
     window.addEventListener('focus', function () { load(false); });
     window.addEventListener('pageshow', function () { load(false); });
     window.addEventListener('online', function () { load(false); });
+    window.addEventListener('resize', function () { if (useReel) measureReel(); });
 
     applyFixedOffset();
     startRotation();

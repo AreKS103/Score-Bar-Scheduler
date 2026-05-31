@@ -455,6 +455,9 @@ if (!function_exists('schedule_banner_render_instance')) {
 #<?php echo esc_attr($target_id); ?>.sb-anim-slide .sb-slide.sb-active{transform:translateY(0)}
 #<?php echo esc_attr($target_id); ?>.sb-anim-slide .sb-slide.sb-leaving{transform:translateY(-100%);opacity:1}
 #<?php echo esc_attr($target_id); ?>.sb-anim-fade .sb-slide{transition:opacity .5s ease}
+#<?php echo esc_attr($target_id); ?>.sb-reel-mode .sb-track{overflow:hidden}
+#<?php echo esc_attr($target_id); ?>.sb-reel-mode .sb-reel{display:block;will-change:transform}
+#<?php echo esc_attr($target_id); ?>.sb-reel-mode .sb-slide{position:relative;inset:auto;opacity:1;pointer-events:auto;transform:none;transition:none;width:100%;box-sizing:border-box}
 #<?php echo esc_attr($target_id); ?> a.sb-link{color:inherit;text-decoration:none;display:block}
 <?php if ($item_count > 1): ?>
 @keyframes <?php echo esc_attr($fallback_animation_name); ?>{0%,<?php echo esc_attr(round($fallback_visible_end, 4)); ?>%{opacity:1;transform:translateY(0)}<?php echo esc_attr(round($fallback_exit_end, 4)); ?>%{opacity:1;transform:translateY(-100%)}100%{opacity:0;transform:translateY(-100%)}}
