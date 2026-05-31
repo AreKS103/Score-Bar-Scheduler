@@ -5,6 +5,7 @@ import type { MatchEvent } from '@/types';
 import { getOrgMemberIds } from '@/lib/supabase/org';
 import { refreshSnapshotEvents } from '@/lib/refreshSnapshotEvents';
 import { getEventDisplay } from '@/lib/eventDisplay';
+import { SPORTS_CONFIG } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,11 @@ export async function OPTIONS() {
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
+);
+
+const SPORTS_BY_ID = new Map(SPORTS_CONFIG.map((sport) => [sport.id, sport]));
+const SPORTS_BY_LABEL = new Map(
+  SPORTS_CONFIG.map((sport) => [normalizeLookupText(sport.label), sport]),
 );
 
 /**
@@ -109,6 +115,10 @@ function addDays(date: string, amount: number): string {
   return parsed.toISOString().slice(0, 10);
 }
 
+function normalizeLookupText(value: string): string {
+  return value.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
 function bannerDateWindow(range: BannerRange, timeZone: string): { start: string; end: string } {
   const today = formatDateInTimeZone(new Date(), timeZone);
   if (range === 'today') return { start: today, end: today };
@@ -154,6 +164,18 @@ function fallbackLeagueLogo(league: string, sport: string): string {
   if (/^ufc\b/i.test(league) || /^ufc\b/i.test(sport)) {
     return '/league-logos/ufc.webp';
   }
+  return '';
+}
+
+function configuredLeagueLogo(event: SnapshotEvent, league: string): string {
+  const sportId = textField(event, ['sportId']);
+  const configuredById = sportId ? SPORTS_BY_ID.get(sportId) : undefined;
+  if (configuredById) return configuredById.logo || configuredById.publishLogo || '';
+
+  const leagueKey = normalizeLookupText(league);
+  const configuredByLabel = leagueKey ? SPORTS_BY_LABEL.get(leagueKey) : undefined;
+  if (configuredByLabel) return configuredByLabel.logo || configuredByLabel.publishLogo || '';
+
   return '';
 }
 
@@ -206,7 +228,7 @@ function buildItems(events: MatchEvent[], origin: string, timeZone: string, rang
       const { home, away, matchup } = buildMatchup(event);
       const labelCore = league ? `${league}: ${matchup}` : matchup;
       const rawLeagueLogo = normalizeLeagueLogo(
-        textField(event, ['leagueLogo', 'strLeagueBadge', 'strThumb']) || fallbackLeagueLogo(league, sport),
+        configuredLeagueLogo(event, league) || textField(event, ['leagueLogo', 'strLeagueBadge', 'strThumb']) || fallbackLeagueLogo(league, sport),
         league,
         sport,
       );
