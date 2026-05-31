@@ -87,8 +87,8 @@ function safeTimeZone(value: string): string {
   }
 }
 
-function safeRange(value: string): BannerRange {
-  return value === 'week' ? 'week' : 'today';
+function safeRange(value: string | null): BannerRange {
+  return value === 'today' ? 'today' : 'week';
 }
 
 function formatDateInTimeZone(date: Date, timeZone: string): string {
@@ -189,7 +189,7 @@ function buildItems(events: MatchEvent[], origin: string, timeZone: string, rang
 
   return events
     .filter((e) => {
-      if (!e || !e.isFeatured || e.isSelected === false) return false;
+      if (!e || !e.isFeatured) return false;
       const eventDate = eventDateForTimeZone(e as SnapshotEvent, timeZone);
       return eventDate >= window.start && eventDate <= window.end;
     })
@@ -233,7 +233,7 @@ export async function GET(req: NextRequest) {
     const apiKey = (sp.get('apiKey') || '').trim();
     const embedId = (sp.get('embedId') || '').replace(/[^\w#\- ]/g, '').substring(0, 64).trim();
     const timeZone = safeTimeZone(sp.get('tz') || 'UTC');
-    const range = safeRange(sp.get('range') || 'today');
+    const range = safeRange(sp.get('range'));
 
     if (!apiKey) {
       return NextResponse.json({ error: 'Missing apiKey' }, { status: 400, headers: corsHeaders });

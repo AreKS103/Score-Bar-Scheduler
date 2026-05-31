@@ -208,9 +208,12 @@
         .then(function (data) {
           var items = data && Array.isArray(data.items) ? data.items : [];
           var serial = data && (data.serial || data.publishedAt) ? String(data.serial || data.publishedAt) : 'fallback';
-          if (serial !== lastSerial || !banner.classList.contains('sb-ready')) {
+          var slideCount = banner.querySelectorAll('.sb-slide').length;
+          if (serial !== lastSerial || !banner.classList.contains('sb-ready') || slideCount !== items.length) {
             lastSerial = serial;
             render(items, serial, !data);
+          } else {
+            startRotation();
           }
         })
         .catch(function () {

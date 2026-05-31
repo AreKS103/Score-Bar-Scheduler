@@ -38,7 +38,7 @@ if (!function_exists('schedule_banner_defaults')) {
             'logo_bg_transparent' => 0,
             'interval'     => 5,          // seconds between slides
             'refresh_interval' => 15,     // seconds between live data checks
-            'range_mode'   => 'today',    // 'today' | 'week'
+            'range_mode'   => 'week',     // 'today' | 'week'
             'animation'    => 'slide',    // 'slide' | 'fade'
             'position'     => 'static',   // 'static' | 'fixed'
             'uppercase'    => 1,
