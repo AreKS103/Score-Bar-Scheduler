@@ -126,7 +126,7 @@
         outgoing.classList.add('sb-leaving');
         outgoing.classList.remove('sb-active');
         (function (slide) {
-          setTimeout(function () { slide.classList.remove('sb-leaving'); }, 550);
+          setTimeout(function () { slide.classList.remove('sb-leaving'); }, 380);
         })(outgoing);
       }
       current = next;

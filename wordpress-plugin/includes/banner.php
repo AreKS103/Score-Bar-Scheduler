@@ -444,20 +444,20 @@ if (!function_exists('schedule_banner_render_instance')) {
 #<?php echo esc_attr($target_id); ?> .sb-inner{display:flex;align-items:center;min-height:<?php echo max(34, $fs + 22); ?>px;background:<?php echo esc_attr($bg); ?>;padding:4px 0;box-sizing:border-box}
 #<?php echo esc_attr($target_id); ?> .sb-prefix{flex:0 0 auto;display:flex;align-items:center;gap:8px;color:<?php echo esc_attr($accent); ?>;font-weight:<?php echo $accent_weight; ?>;letter-spacing:.04em;text-transform:<?php echo $upper; ?>;text-decoration:<?php echo esc_attr($text_decoration); ?>;padding:0 14px 0 18px;white-space:nowrap}
 #<?php echo esc_attr($target_id); ?> .sb-track{position:relative;flex:1 1 auto;align-self:stretch;min-width:0;overflow:hidden}
-#<?php echo esc_attr($target_id); ?> .sb-slide{position:absolute;inset:0;display:flex;align-items:center;gap:9px;padding:0 16px 0 4px;white-space:nowrap;text-transform:<?php echo $upper; ?>;font-weight:<?php echo $font_weight; ?>;text-decoration:<?php echo esc_attr($text_decoration); ?>;letter-spacing:.02em;opacity:0;pointer-events:none;will-change:transform,opacity}
+#<?php echo esc_attr($target_id); ?> .sb-slide{position:absolute;inset:0;display:flex;align-items:center;gap:9px;padding:0 16px 0 4px;white-space:nowrap;text-transform:<?php echo $upper; ?>;font-weight:<?php echo $font_weight; ?>;text-decoration:<?php echo esc_attr($text_decoration); ?>;letter-spacing:.02em;opacity:0;pointer-events:none;will-change:transform}
 #<?php echo esc_attr($target_id); ?> .sb-slide.sb-active{opacity:1;pointer-events:auto}
 #<?php echo esc_attr($target_id); ?> .sb-time,#<?php echo esc_attr($target_id); ?> .sb-sport{font-weight:<?php echo $accent_weight; ?>;color:<?php echo esc_attr($accent); ?>}
 #<?php echo esc_attr($target_id); ?> .sb-separator{color:<?php echo esc_attr($accent); ?>;opacity:.75}
 #<?php echo esc_attr($target_id); ?> .sb-matchup{color:<?php echo esc_attr($fg); ?>}
 #<?php echo esc_attr($target_id); ?> .sb-round{color:<?php echo esc_attr($fg); ?>;opacity:.75}
 #<?php echo esc_attr($target_id); ?> .sb-logo{height:<?php echo $logo_height; ?>px;width:auto;max-width:<?php echo $logo_max_width; ?>px;object-fit:contain;vertical-align:middle;flex:0 0 auto;background:<?php echo esc_attr($logo_bg); ?>;border-radius:<?php echo esc_attr($logo_radius); ?>;padding:<?php echo $logo_padding; ?>px;box-sizing:border-box}
-#<?php echo esc_attr($target_id); ?>.sb-anim-slide .sb-slide{transform:translateY(100%);transition:transform .5s ease,opacity .5s ease}
+#<?php echo esc_attr($target_id); ?>.sb-anim-slide .sb-slide{transform:translateY(100%);transition:transform .32s cubic-bezier(.2,.85,.2,1)}
 #<?php echo esc_attr($target_id); ?>.sb-anim-slide .sb-slide.sb-active{transform:translateY(0)}
-#<?php echo esc_attr($target_id); ?>.sb-anim-slide .sb-slide.sb-leaving{transform:translateY(-100%);opacity:0}
+#<?php echo esc_attr($target_id); ?>.sb-anim-slide .sb-slide.sb-leaving{transform:translateY(-100%);opacity:1}
 #<?php echo esc_attr($target_id); ?>.sb-anim-fade .sb-slide{transition:opacity .5s ease}
 #<?php echo esc_attr($target_id); ?> a.sb-link{color:inherit;text-decoration:none;display:block}
 <?php if ($item_count > 1): ?>
-@keyframes <?php echo esc_attr($fallback_animation_name); ?>{0%,<?php echo esc_attr(round($fallback_visible_end, 4)); ?>%{opacity:1;transform:translateY(0)}<?php echo esc_attr(round($fallback_exit_end, 4)); ?>%,100%{opacity:0;transform:translateY(-100%)}}
+@keyframes <?php echo esc_attr($fallback_animation_name); ?>{0%,<?php echo esc_attr(round($fallback_visible_end, 4)); ?>%{opacity:1;transform:translateY(0)}<?php echo esc_attr(round($fallback_exit_end, 4)); ?>%{opacity:1;transform:translateY(-100%)}100%{opacity:0;transform:translateY(-100%)}}
 #<?php echo esc_attr($target_id); ?>:not(.sb-js-ready) .sb-slide{animation:<?php echo esc_attr($fallback_animation_name); ?> <?php echo esc_attr($fallback_duration); ?>s linear infinite;opacity:0;transform:translateY(100%)}
 <?php for ($i = 1; $i <= $item_count; $i++): ?>#<?php echo esc_attr($target_id); ?>:not(.sb-js-ready) .sb-slide:nth-child(<?php echo $i; ?>){animation-delay:<?php echo esc_attr(($i - 1) * $fallback_interval); ?>s}
 <?php endfor; ?>
