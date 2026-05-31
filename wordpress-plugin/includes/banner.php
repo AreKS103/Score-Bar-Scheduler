@@ -239,8 +239,17 @@ if (!function_exists('schedule_banner_is_local_app')) {
 }
 
 if (!function_exists('schedule_banner_fetch_payload')) {
-    function schedule_banner_fetch_payload($settings) {
+    function schedule_banner_fetch_payload($settings, $force = false, &$diagnostics = null) {
         $key = schedule_banner_get_public_key();
+        $diagnostics = [
+            'status' => 'not_configured',
+            'cache' => 'none',
+            'http_code' => null,
+            'error' => '',
+            'items' => null,
+            'published_at' => '',
+            'serial' => '',
+        ];
         if (empty($key) || empty($settings['embed_id'])) return null;
 
         $app = rtrim(schedule_get_app_domain(), '/');
@@ -249,7 +258,14 @@ if (!function_exists('schedule_banner_fetch_payload')) {
         $cache_key = 'schedule_banner_last_' . md5($app . '|' . $key . '|' . $settings['embed_id'] . '|' . $tz . '|' . $range);
         $fresh_key = 'schedule_banner_fresh_' . md5($app . '|' . $key . '|' . $settings['embed_id'] . '|' . $tz . '|' . $range);
         $fresh = get_transient($fresh_key);
-        if (is_array($fresh)) return $fresh;
+        if (!$force && is_array($fresh)) {
+            $diagnostics['status'] = 'ok';
+            $diagnostics['cache'] = 'fresh';
+            $diagnostics['items'] = isset($fresh['items']) && is_array($fresh['items']) ? count($fresh['items']) : 0;
+            $diagnostics['published_at'] = isset($fresh['publishedAt']) ? (string) $fresh['publishedAt'] : '';
+            $diagnostics['serial'] = isset($fresh['serial']) ? (string) $fresh['serial'] : '';
+            return $fresh;
+        }
 
         $url = add_query_arg([
             'apiKey'  => $key,
@@ -272,12 +288,104 @@ if (!function_exists('schedule_banner_fetch_payload')) {
             if (is_array($body)) {
                 set_transient($fresh_key, $body, MINUTE_IN_SECONDS);
                 set_transient($cache_key, $body, 10 * MINUTE_IN_SECONDS);
+                $diagnostics['status'] = 'ok';
+                $diagnostics['cache'] = 'live';
+                $diagnostics['http_code'] = 200;
+                $diagnostics['items'] = isset($body['items']) && is_array($body['items']) ? count($body['items']) : 0;
+                $diagnostics['published_at'] = isset($body['publishedAt']) ? (string) $body['publishedAt'] : '';
+                $diagnostics['serial'] = isset($body['serial']) ? (string) $body['serial'] : '';
                 return $body;
             }
         }
 
+        if (is_wp_error($response)) {
+            $diagnostics['status'] = 'request_error';
+            $diagnostics['error'] = $response->get_error_message();
+        } else {
+            $diagnostics['status'] = 'http_error';
+            $diagnostics['http_code'] = (int) wp_remote_retrieve_response_code($response);
+            $diagnostics['error'] = trim(wp_remote_retrieve_response_message($response));
+        }
+
         $fallback = get_transient($cache_key);
-        return is_array($fallback) ? $fallback : null;
+        if (is_array($fallback)) {
+            $diagnostics['cache'] = 'stale';
+            $diagnostics['items'] = isset($fallback['items']) && is_array($fallback['items']) ? count($fallback['items']) : 0;
+            $diagnostics['published_at'] = isset($fallback['publishedAt']) ? (string) $fallback['publishedAt'] : '';
+            $diagnostics['serial'] = isset($fallback['serial']) ? (string) $fallback['serial'] : '';
+            return $fallback;
+        }
+        return null;
+    }
+}
+
+if (!function_exists('schedule_banner_clear_payload_cache')) {
+    function schedule_banner_clear_payload_cache() {
+        global $wpdb;
+        if (!isset($wpdb) || empty($wpdb->options)) return;
+        foreach (['schedule_banner_last_', 'schedule_banner_fresh_'] as $prefix) {
+            $like = $wpdb->esc_like('_transient_' . $prefix) . '%';
+            $timeout_like = $wpdb->esc_like('_transient_timeout_' . $prefix) . '%';
+            $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s", $like, $timeout_like));
+        }
+    }
+}
+
+if (!function_exists('schedule_banner_fallback_items')) {
+    function schedule_banner_fallback_items($settings) {
+        $text = isset($settings['fallback_text']) ? trim((string) $settings['fallback_text']) : '';
+        if ($text === '') return [];
+        return [[
+            'label' => $text,
+            'sport' => '',
+            'league' => '',
+            'matchup' => $text,
+            'home' => '',
+            'away' => '',
+            'time' => '',
+            'date' => '',
+            'round' => '',
+            'leagueLogo' => '',
+            'homeLogo' => '',
+            'awayLogo' => '',
+        ]];
+    }
+}
+
+if (!function_exists('schedule_banner_admin_diagnostics')) {
+    function schedule_banner_admin_diagnostics($settings) {
+        $fetch = null;
+        $payload = schedule_banner_fetch_payload($settings, false, $fetch);
+        $items = (is_array($payload) && isset($payload['items']) && is_array($payload['items'])) ? $payload['items'] : [];
+        $has_token = !empty(schedule_banner_get_public_key());
+        $has_embed = !empty($settings['embed_id']);
+        $has_fallback = trim((string) ($settings['fallback_text'] ?? '')) !== '';
+        $enabled = !empty($settings['enabled']);
+
+        if (!$enabled) {
+            $verdict = 'Will not render: Enable banner is off.';
+        } elseif ((!$has_token || !$has_embed) && !$has_fallback) {
+            $verdict = 'Will not render: no token/embed is selected and fallback text is empty.';
+        } elseif (count($items) > 0) {
+            $verdict = 'Will render ' . count($items) . ' highlighted item(s).';
+        } elseif ($has_fallback) {
+            $verdict = 'Will render fallback text because the selected embed has no highlighted items in the current window.';
+        } else {
+            $verdict = 'Will hide: the API returned no highlighted items and fallback text is empty.';
+        }
+
+        return [
+            'enabled' => $enabled,
+            'has_token' => $has_token,
+            'has_embed' => $has_embed,
+            'has_fallback' => $has_fallback,
+            'embed_id' => $has_embed ? (string) $settings['embed_id'] : '',
+            'range' => isset($settings['range_mode']) && $settings['range_mode'] === 'week' ? 'week' : 'today',
+            'app' => rtrim(schedule_get_app_domain(), '/'),
+            'fetch' => is_array($fetch) ? $fetch : [],
+            'items' => count($items),
+            'verdict' => $verdict,
+        ];
     }
 }
 
@@ -436,8 +544,11 @@ if (!function_exists('schedule_banner_render_instance')) {
         $logo_bg = !empty($settings['logo_bg_transparent']) ? 'transparent' : ($settings['logo_bg_color'] ?? '#ffffff');
         $payload   = schedule_banner_fetch_payload($settings);
         $items     = (is_array($payload) && isset($payload['items']) && is_array($payload['items'])) ? $payload['items'] : [];
+        if (empty($items)) {
+            $items = schedule_banner_fallback_items($settings);
+        }
         $item_count = count($items);
-        $serial    = (is_array($payload) && !empty($payload['serial'])) ? sanitize_text_field($payload['serial']) : '';
+        $serial    = (is_array($payload) && !empty($payload['serial'])) ? sanitize_text_field($payload['serial']) : 'fallback';
         $inner     = schedule_banner_render_inner_html($items, $settings);
         $ready     = $inner !== '';
         $fallback_animation_name = 'sb-fallback-' . preg_replace('/[^A-Za-z0-9_-]/', '', $target_id);
@@ -538,6 +649,7 @@ if (!function_exists('schedule_banner_render_admin_page')) {
                     ? wp_unslash($_POST['schedule_banner'])
                     : [];
                 update_option('schedule_banner_settings', schedule_banner_sanitize($raw));
+                schedule_banner_clear_payload_cache();
                 $saved_ok = true;
             } else {
                 $saved_ok = false;
@@ -562,6 +674,7 @@ if (!function_exists('schedule_banner_render_admin_page')) {
         if (!empty($s['embed_id']) && !isset($embed_options[$s['embed_id']])) {
             $embed_options[$s['embed_id']] = $s['embed_id'] . ' (current)';
         }
+        $diagnostics = schedule_banner_admin_diagnostics($s);
         ?>
         <div class="wrap sb-banner-admin" style="max-width: 920px;">
             <h1 style="margin-bottom: 16px;">Banner</h1>
@@ -575,6 +688,17 @@ if (!function_exists('schedule_banner_render_admin_page')) {
             <?php if (!$has_token): ?>
                 <div class="notice notice-warning inline"><p>Connect your account on the <a href="<?php echo esc_url(admin_url('admin.php?page=scheduler-settings')); ?>">Scheduler settings page</a> first — the banner needs the embed token to load highlights.</p></div>
             <?php endif; ?>
+
+            <div class="notice notice-info inline sb-banner-diagnostics">
+                <p><strong>Banner diagnosis:</strong> <?php echo esc_html($diagnostics['verdict']); ?></p>
+                <ul>
+                    <li>Plugin version: <?php echo esc_html(SCHEDULE_PLUGIN_VERSION); ?></li>
+                    <li>Enabled: <?php echo $diagnostics['enabled'] ? 'Yes' : 'No'; ?>; token connected: <?php echo $diagnostics['has_token'] ? 'Yes' : 'No'; ?>; selected embed: <?php echo $diagnostics['has_embed'] ? esc_html($diagnostics['embed_id']) : 'None'; ?>; fallback text: <?php echo $diagnostics['has_fallback'] ? 'Yes' : 'No'; ?></li>
+                    <li>App endpoint: <?php echo esc_html($diagnostics['app']); ?>; match window: <?php echo esc_html($diagnostics['range']); ?></li>
+                    <li>API status: <?php echo esc_html($diagnostics['fetch']['status'] ?? 'not_checked'); ?><?php echo !empty($diagnostics['fetch']['http_code']) ? ' (' . esc_html((string) $diagnostics['fetch']['http_code']) . ')' : ''; ?>; cache: <?php echo esc_html($diagnostics['fetch']['cache'] ?? 'none'); ?>; returned items: <?php echo esc_html((string) ($diagnostics['fetch']['items'] ?? $diagnostics['items'])); ?></li>
+                    <?php if (!empty($diagnostics['fetch']['error'])): ?><li>Last API error: <?php echo esc_html($diagnostics['fetch']['error']); ?></li><?php endif; ?>
+                </ul>
+            </div>
 
             <p class="sb-banner-intro">Shows a slim promo bar above your site header that rotates through the <strong>starred (highlighted)</strong> matches of the schedule embed you choose below. Star matches in your Scheduler dashboard, publish to this embed, and the banner refreshes automatically.</p>
 

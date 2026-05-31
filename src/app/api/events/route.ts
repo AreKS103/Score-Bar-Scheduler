@@ -184,7 +184,7 @@ const LEAGUE_METADATA: Record<string, { label: string; category: string; logo: s
   'boxing': { label: 'Boxing', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/6enin21740228549.png' },
   'rugby-superrugby': { label: 'Super Rugby Pacific', category: 'Rugby', logo: 'https://r2.thesportsdb.com/images/media/league/badge/gz76v11717091774.png' },
   'rugby-sixnations': { label: 'Six Nations', category: 'Rugby', logo: 'https://r2.thesportsdb.com/images/media/league/badge/7h1wr91738670253.png' },
-  'rugby-premship': { label: 'Premiership Rugby', category: 'Rugby', logo: 'https://r2.thesportsdb.com/images/media/league/badge/r59qxy1755025703.png' },
+  'rugby-premship': { label: 'Premiership Rugby', category: 'Rugby', logo: 'https://media-cdn.cortextech.io/0708621a-5825-46bf-98c2-33b9e4f7c4fb.png' },
   'rugby-top14': { label: 'Top 14', category: 'Rugby', logo: 'https://r2.thesportsdb.com/images/media/league/badge/xrsqtw1452903237.png' },
   'rugby-urc': { label: 'United Rugby Championship', category: 'Rugby', logo: 'https://r2.thesportsdb.com/images/media/league/badge/o6dhfo1716481482.png' },
   'rugby-champscup': { label: 'Champions Cup', category: 'Rugby', logo: 'https://r2.thesportsdb.com/images/media/league/badge/kohne11716546580.png' },

@@ -307,7 +307,7 @@
           var needsReelHydration = shouldUseReelForCount(items.length) && banner.classList.contains('sb-reel-mode') && !reel;
           if (serial !== lastSerial || !banner.classList.contains('sb-ready') || slideCountDom !== items.length || needsReelRender) {
             lastSerial = serial;
-            render(items, serial, !data);
+            render(items, serial, true);
           } else {
             if (needsReelHydration) hydrateExistingReel(items.length);
             startRotation();
