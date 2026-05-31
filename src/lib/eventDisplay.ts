@@ -137,6 +137,9 @@ export function getEventDisplay(event: DisplayEvent, options: { stripLeaguePrefi
 
   primary = cleanStageTitle(primary);
   if (options.stripLeaguePrefix !== false && league) primary = stripLeaguePrefix(primary, league);
+  // Collapse duplicate start–finish routes carried inside the title itself
+  // (e.g. a cycling stage stored as "Roma – Roma" in the home field).
+  primary = compactDuplicateRoute(primary);
 
   const detail = duplicateLocation || (away ? compactDuplicateRoute(away) : '');
   const shouldAppendDetail = !!detail && comparable(detail) !== comparable(primary) && !titleContainsDetail(primary, detail);

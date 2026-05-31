@@ -122,10 +122,23 @@
     function measureReel() {
       if (!reel) return;
       var track = banner.querySelector('.sb-track');
-      rowH = track ? track.clientHeight : 0;
+      if (!track) return;
       var kids = reel.children;
+      // Reset any forced sizing so a single row can be measured at its
+      // natural height. Without this the track would stretch to fit every
+      // stacked slide, making rowH the height of the whole reel and causing
+      // the next slide to jump in instead of scrolling up from below.
+      track.style.height = '';
       for (var i = 0; i < kids.length; i++) {
-        kids[i].style.height = rowH + 'px';
+        kids[i].style.height = '';
+      }
+      rowH = kids.length ? kids[0].offsetHeight : 0;
+      if (rowH <= 0) rowH = track.clientHeight;
+      // Clip the track to exactly one row so the slides stacked underneath
+      // sit below the visible area and scroll up into view on advance.
+      track.style.height = rowH + 'px';
+      for (var j = 0; j < kids.length; j++) {
+        kids[j].style.height = rowH + 'px';
       }
       reel.style.transition = 'none';
       reel.style.transform = 'translateY(' + (-current * rowH) + 'px)';
