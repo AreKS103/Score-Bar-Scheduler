@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { CATEGORY_ORDER } from '@/lib/config';
 import { formatDisplayDate } from '@/lib/timezone';
 import { formatTimezoneDisplay, useTimezoneStore } from '@/lib/timezoneStore';
+import { getEventDisplay } from '@/lib/eventDisplay';
 import type { MatchEvent } from '@/types';
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
@@ -84,7 +85,7 @@ function getDateRange(events: MatchEvent[]): string {
 }
 
 function getMatchLabel(event: MatchEvent): string {
-  return event.away ? `${event.home} vs ${event.away}` : event.home;
+  return getEventDisplay(event, { stripLeaguePrefix: true }).title;
 }
 
 function getNotesLabel(event: MatchEvent): string {
@@ -287,23 +288,28 @@ export default function PrintScheduleModal({
                         
                         <div>
                           {dateGroup.items.map((ev) => (
-                            <div key={ev.id} style={S.matchRow} data-event-id={ev.id}>
-                              <div style={S.time}>{ev.time}</div>
-                              <div style={S.matchInfo}>
-                                <span style={S.home}>{ev.home}</span>
-                                {ev.away && (
-                                  <>
-                                    <span style={S.vs}>vs</span>
-                                    <span style={S.away}>{ev.away}</span>
-                                  </>
-                                )}
-                                {(ev.round || getNotesLabel(ev)) && (
-                                  <span style={S.notes}>
-                                    – {[ev.round, getNotesLabel(ev)].filter(Boolean).join(' - ')}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
+                            (() => {
+                              const display = getEventDisplay(ev, { stripLeaguePrefix: true });
+                              return (
+                                <div key={ev.id} style={S.matchRow} data-event-id={ev.id}>
+                                  <div style={S.time}>{ev.time}</div>
+                                  <div style={S.matchInfo}>
+                                    <span style={S.home}>{display.isHeadToHead ? display.primary : display.title}</span>
+                                    {display.isHeadToHead && (
+                                      <>
+                                        <span style={S.vs}>vs</span>
+                                        <span style={S.away}>{display.secondary}</span>
+                                      </>
+                                    )}
+                                    {(ev.round || getNotesLabel(ev)) && (
+                                      <span style={S.notes}>
+                                        – {[ev.round, getNotesLabel(ev)].filter(Boolean).join(' - ')}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })()
                           ))}
                         </div>
                       </div>

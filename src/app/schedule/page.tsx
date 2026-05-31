@@ -32,6 +32,7 @@ import { getCachedEvents, setCachedEvents, appendCachedEvent, removeCachedEvent,
 import { generateHTML } from '@/lib/generateHTML';
 import { SPORTS_CONFIG, getCategories } from '@/lib/config';
 import { formatDisplayDate } from '@/lib/timezone';
+import { getEventDisplayTitle } from '@/lib/eventDisplay';
 import type { MatchEvent } from '@/types';
 import { PRESET_TAGS } from '@/types';
 import SportFilter from '@/components/SportFilter';
@@ -2764,7 +2765,7 @@ export default function SchedulePage() {
                           <div className="flex items-start gap-1.5 px-1.5 py-1 flex-1 min-w-0">
                             <div className="min-w-0 flex-1">
                               <div className="font-medium truncate text-foreground">
-                                {m.home}{m.away ? ' vs ' : ''}{m.away}
+                                {getEventDisplayTitle(m, { stripLeaguePrefix: true })}
                               </div>
                               <div className="text-muted-foreground mt-0.5">
                                 {formatDisplayDate(m.date)} · {m.time}
@@ -2910,7 +2911,7 @@ export default function SchedulePage() {
                               </div>
                               <div className="min-w-0 flex-1">
                                 <div className="font-medium truncate text-foreground">
-                                  {m.home}{m.away ? ' vs ' : ''}{m.away}
+                                  {getEventDisplayTitle(m, { stripLeaguePrefix: true })}
                                 </div>
                                 <div className="text-muted-foreground mt-0.5">
                                   {formatDisplayDate(m.date)} · {m.time}

@@ -10,6 +10,7 @@ import type { MatchEvent } from '@/types';
 import { SPORTS_CONFIG } from '@/lib/config';
 import { LOGO_PLACEHOLDER_REMOTE, resolvePublishLogoUrl } from '@/lib/logo';
 import { parseISO, format, startOfWeek, addDays, isBefore, isAfter } from 'date-fns';
+import { eventHasHeadToHead, getEventDisplay } from '@/lib/eventDisplay';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -70,18 +71,19 @@ function renderCard(e: MatchEvent, opts: CalendarRenderOpts): string {
   const rawLogo = config?.logo || e.leagueLogo || '';
   const leagueLogo = resolvePublishLogoUrl(rawLogo, config?.publishLogo);
   const leagueLabel = e.leagueLabel || config?.label || '';
+  const display = getEventDisplay(e, { stripLeaguePrefix: true });
 
   const homeTeam = e.homeLogo
-    ? `<span class="cal-team"><img class="cal-team-logo" src="${esc(e.homeLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" /><span class="cal-team-name">${esc(e.home)}</span></span>`
-    : `<span class="cal-team"><span class="cal-team-name">${esc(e.home)}</span></span>`;
-  const awayTeam = e.away
+    ? `<span class="cal-team"><img class="cal-team-logo" src="${esc(e.homeLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" /><span class="cal-team-name">${esc(display.primary)}</span></span>`
+    : `<span class="cal-team"><span class="cal-team-name">${esc(display.primary)}</span></span>`;
+  const awayTeam = display.isHeadToHead
     ? (e.awayLogo
-      ? `<span class="cal-team"><img class="cal-team-logo" src="${esc(e.awayLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" /><span class="cal-team-name">${esc(e.away)}</span></span>`
-      : `<span class="cal-team"><span class="cal-team-name">${esc(e.away)}</span></span>`)
+      ? `<span class="cal-team"><img class="cal-team-logo" src="${esc(e.awayLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" /><span class="cal-team-name">${esc(display.secondary)}</span></span>`
+      : `<span class="cal-team"><span class="cal-team-name">${esc(display.secondary)}</span></span>`)
     : null;
   const matchHtml = awayTeam
     ? `${homeTeam}<span class="cal-vs">vs</span>${awayTeam}`
-    : homeTeam;
+    : `<span class="cal-team"><span class="cal-team-name">${esc(display.title)}</span></span>`;
 
   const isBigScreen = Array.isArray(e.tags) && e.tags.includes('Live Big Screen');
   const cardClasses = `cal-card${e.isFeatured ? ' cal-featured' : ''}${isBigScreen ? ' cal-bigscreen' : ''}`;
@@ -160,19 +162,22 @@ export function renderCalendarContent(
       hlParts.push('<div class="hl-date-group">');
       hlParts.push(`<div class="hl-date-header">${esc(displayDate)}</div>`);
       for (const event of dayEvents) {
+        const display = getEventDisplay(event, { stripLeaguePrefix: true });
         const isCombat = ['boxing', 'ufc', 'bellator'].includes(event.sportId);
         const homeFlag = isCombat && event.homeCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(event.homeCountry)}</span>` : '';
         const awayFlag = isCombat && event.awayCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(event.awayCountry)}</span>` : '';
         const homeImg = event.homeLogo ? `<img class="hl-team-logo" src="${esc(event.homeLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
-        const awayImg = event.awayLogo && event.away ? `<img class="hl-team-logo" src="${esc(event.awayLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
-        const leagueFallback = !event.away && !homeImg ? (() => {
+        const awayImg = event.awayLogo && display.isHeadToHead ? `<img class="hl-team-logo" src="${esc(event.awayLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
+        const leagueFallback = !display.isHeadToHead && !homeImg ? (() => {
           const cfg = SPORTS_CONFIG.find(s => s.id === event.sportId);
           return cfg ? resolvePublishLogoUrl(cfg.logo || event.leagueLogo || '', cfg.publishLogo) : '';
         })() : '';
         const leagueFallbackImg = leagueFallback ? `<img class="hl-team-logo" src="${esc(leagueFallback)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
-        const teamsHtml = event.away
-          ? `<span class="hl-team">${homeImg}${homeFlag}${esc(event.home)}</span><span class="hl-vs">vs</span><span class="hl-team">${awayImg}${awayFlag}${esc(event.away)}</span>`
-          : `<span class="hl-team">${leagueFallbackImg}${homeImg}${esc(event.home)}</span>`;
+        const homeBadge = isCombat ? (homeImg || homeFlag) : homeImg;
+        const awayBadge = isCombat ? (awayImg || awayFlag) : awayImg;
+        const teamsHtml = display.isHeadToHead
+          ? `<span class="hl-team">${homeBadge}${esc(display.primary)}</span><span class="hl-vs">vs</span><span class="hl-team">${awayBadge}${esc(display.secondary)}</span>`
+          : `<span class="hl-team">${leagueFallbackImg}${homeImg}${esc(display.title)}</span>`;
         const roundStr = event.round ? `<div class="hl-round">${esc(event.round)}</div>` : '';
         hlParts.push(`<div class="hl-event"><div class="hl-event-meta">${event.time ? `<span class="hl-time">${esc(event.time)}</span>` : ''}<span class="hl-league-name">${esc(event.leagueLabel || '')}</span></div><div class="hl-teams">${teamsHtml}</div>${roundStr}</div>`);
       }
@@ -183,12 +188,13 @@ export function renderCalendarContent(
       const config = SPORTS_CONFIG.find(s => s.id === sportId);
       const leagueLabel = config?.label || sportId;
       const teamEvent =
-        events.find(event => event.sportId === sportId && !!event.away && event.isFeatured) ||
-        events.find(event => event.sportId === sportId && !!event.away);
+        events.find(event => event.sportId === sportId && eventHasHeadToHead(event) && event.isFeatured) ||
+        events.find(event => event.sportId === sportId && eventHasHeadToHead(event));
       if (teamEvent) {
+        const display = getEventDisplay(teamEvent, { stripLeaguePrefix: true });
         const homeImg = teamEvent.homeLogo ? `<img class="hl-team-logo" src="${esc(teamEvent.homeLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
         const awayImg = teamEvent.awayLogo ? `<img class="hl-team-logo" src="${esc(teamEvent.awayLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
-        const teamsHtml = `<span class="hl-team">${homeImg}${esc(teamEvent.home)}</span><span class="hl-vs">vs</span><span class="hl-team">${awayImg}${esc(teamEvent.away!)}</span>`;
+        const teamsHtml = `<span class="hl-team">${homeImg}${esc(display.primary)}</span><span class="hl-vs">vs</span><span class="hl-team">${awayImg}${esc(display.secondary)}</span>`;
         hlParts.push(`<div class="hl-event"><div class="hl-event-meta">${teamEvent.time ? `<span class="hl-time">${esc(teamEvent.time)}</span>` : ''}<span class="hl-league-name">${esc(leagueLabel)}</span></div><div class="hl-teams">${teamsHtml}</div></div>`);
       } else {
         const logoSrc = config ? resolvePublishLogoUrl(config.logo || '', config.publishLogo) : '';

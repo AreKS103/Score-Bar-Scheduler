@@ -25,8 +25,20 @@ if (!function_exists('schedule_banner_defaults')) {
             'accent_color' => '#111111',
             'font_size'    => 15,
             'font_family'  => "ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace",
+            'font_weight'  => 700,
+            'accent_weight'=> 900,
+            'italic'       => 0,
+            'underline'    => 0,
+            'strikethrough'=> 0,
+            'logo_height'  => 29,
+            'logo_max_width' => 116,
+            'logo_padding' => 4,
+            'logo_shape'   => 'rounded', // 'square' | 'rounded' | 'pill'
+            'logo_bg_color'=> '#ffffff',
+            'logo_bg_transparent' => 0,
             'interval'     => 5,          // seconds between slides
             'refresh_interval' => 15,     // seconds between live data checks
+            'range_mode'   => 'today',    // 'today' | 'week'
             'animation'    => 'slide',    // 'slide' | 'fade'
             'position'     => 'static',   // 'static' | 'fixed'
             'uppercase'    => 1,
@@ -67,8 +79,20 @@ if (!function_exists('schedule_banner_sanitize')) {
             'accent_color' => $hex($raw['accent_color'] ?? '', $d['accent_color']),
             'font_size'    => $clamp($raw['font_size'] ?? '', 10, 40, $d['font_size']),
             'font_family'  => schedule_banner_sanitize_font_stack($raw['font_family'] ?? $d['font_family'], $d['font_family']),
+            'font_weight'  => $clamp($raw['font_weight'] ?? '', 100, 900, $d['font_weight']),
+            'accent_weight'=> $clamp($raw['accent_weight'] ?? '', 100, 900, $d['accent_weight']),
+            'italic'       => !empty($raw['italic']) ? 1 : 0,
+            'underline'    => !empty($raw['underline']) ? 1 : 0,
+            'strikethrough'=> !empty($raw['strikethrough']) ? 1 : 0,
+            'logo_height'  => $clamp($raw['logo_height'] ?? '', 16, 80, $d['logo_height']),
+            'logo_max_width' => $clamp($raw['logo_max_width'] ?? '', 32, 260, $d['logo_max_width']),
+            'logo_padding' => $clamp($raw['logo_padding'] ?? '', 0, 20, $d['logo_padding']),
+            'logo_shape'   => in_array(($raw['logo_shape'] ?? ''), ['square', 'rounded', 'pill'], true) ? $raw['logo_shape'] : $d['logo_shape'],
+            'logo_bg_color'=> $hex($raw['logo_bg_color'] ?? '', $d['logo_bg_color']),
+            'logo_bg_transparent' => !empty($raw['logo_bg_transparent']) ? 1 : 0,
             'interval'     => $clamp($raw['interval'] ?? '', 2, 30, $d['interval']),
             'refresh_interval' => $clamp($raw['refresh_interval'] ?? '', 5, 300, $d['refresh_interval']),
+            'range_mode'   => in_array(($raw['range_mode'] ?? ''), ['today', 'week'], true) ? $raw['range_mode'] : $d['range_mode'],
             'animation'    => in_array(($raw['animation'] ?? ''), ['slide', 'fade'], true) ? $raw['animation'] : $d['animation'],
             'position'     => in_array(($raw['position'] ?? ''), ['static', 'fixed'], true) ? $raw['position'] : $d['position'],
             'uppercase'    => !empty($raw['uppercase']) ? 1 : 0,
@@ -76,6 +100,23 @@ if (!function_exists('schedule_banner_sanitize')) {
             'show_logos'   => 1,
             'link_url'     => esc_url_raw($raw['link_url'] ?? ''),
         ];
+    }
+}
+
+if (!function_exists('schedule_banner_text_decoration_css')) {
+    function schedule_banner_text_decoration_css($settings) {
+        $decorations = [];
+        if (!empty($settings['underline'])) $decorations[] = 'underline';
+        if (!empty($settings['strikethrough'])) $decorations[] = 'line-through';
+        return empty($decorations) ? 'none' : implode(' ', $decorations);
+    }
+}
+
+if (!function_exists('schedule_banner_logo_radius_css')) {
+    function schedule_banner_logo_radius_css($shape) {
+        if ($shape === 'square') return '0';
+        if ($shape === 'pill') return '999px';
+        return '6px';
     }
 }
 
@@ -204,11 +245,13 @@ if (!function_exists('schedule_banner_fetch_payload')) {
 
         $app = rtrim(schedule_get_app_domain(), '/');
         $tz = schedule_banner_site_timezone();
-        $cache_key = 'schedule_banner_last_' . md5($app . '|' . $key . '|' . $settings['embed_id'] . '|' . $tz);
+        $range = isset($settings['range_mode']) && $settings['range_mode'] === 'week' ? 'week' : 'today';
+        $cache_key = 'schedule_banner_last_' . md5($app . '|' . $key . '|' . $settings['embed_id'] . '|' . $tz . '|' . $range);
         $url = add_query_arg([
             'apiKey'  => $key,
             'embedId' => $settings['embed_id'],
             'tz'      => $tz,
+            'range'   => $range,
             '_'       => time(),
         ], $app . '/api/banner');
 
@@ -342,6 +385,7 @@ if (!function_exists('schedule_banner_enqueue_instance')) {
             'interval'  => (int) $settings['interval'],
             'refresh'   => (int) $settings['refresh_interval'],
             'animation' => $settings['animation'],
+            'range'     => isset($settings['range_mode']) && $settings['range_mode'] === 'week' ? 'week' : 'today',
             'timeZone'  => schedule_banner_site_timezone(),
             'showTime'  => (int) $settings['show_time'],
             'showLogos' => 1,
@@ -369,6 +413,15 @@ if (!function_exists('schedule_banner_render_instance')) {
         $accent    = $settings['accent_color'];
         $font      = schedule_banner_sanitize_font_stack($settings['font_family'] ?? schedule_banner_defaults()['font_family'], schedule_banner_defaults()['font_family']);
         $upper     = !empty($settings['uppercase']) ? 'uppercase' : 'none';
+        $font_weight = (int) ($settings['font_weight'] ?? 700);
+        $accent_weight = (int) ($settings['accent_weight'] ?? 900);
+        $font_style = !empty($settings['italic']) ? 'italic' : 'normal';
+        $text_decoration = schedule_banner_text_decoration_css($settings);
+        $logo_height = (int) ($settings['logo_height'] ?? max(26, $fs + 14));
+        $logo_max_width = (int) ($settings['logo_max_width'] ?? max(74, ($fs + 14) * 4));
+        $logo_padding = (int) ($settings['logo_padding'] ?? 4);
+        $logo_radius = schedule_banner_logo_radius_css($settings['logo_shape'] ?? 'rounded');
+        $logo_bg = !empty($settings['logo_bg_transparent']) ? 'transparent' : ($settings['logo_bg_color'] ?? '#ffffff');
         $payload   = schedule_banner_fetch_payload($settings);
         $items     = (is_array($payload) && isset($payload['items']) && is_array($payload['items'])) ? $payload['items'] : [];
         $serial    = (is_array($payload) && !empty($payload['serial'])) ? sanitize_text_field($payload['serial']) : '';
@@ -379,18 +432,18 @@ if (!function_exists('schedule_banner_render_instance')) {
             : 'position:relative;';
         ?>
 <style id="<?php echo esc_attr($target_id); ?>-style">
-    #<?php echo esc_attr($target_id); ?>{<?php echo $pos_css; ?>width:100%;background:<?php echo esc_attr($bg); ?>;color:<?php echo esc_attr($fg); ?>;font-family:<?php echo $font; ?>;font-size:<?php echo $fs; ?>px;line-height:1.2;overflow:hidden;display:none}
+    #<?php echo esc_attr($target_id); ?>{<?php echo $pos_css; ?>width:100%;background:<?php echo esc_attr($bg); ?>;color:<?php echo esc_attr($fg); ?>;font-family:<?php echo $font; ?>;font-size:<?php echo $fs; ?>px;font-style:<?php echo esc_attr($font_style); ?>;line-height:1.2;overflow:hidden;display:none}
 #<?php echo esc_attr($target_id); ?>.sb-ready{display:block}
-#<?php echo esc_attr($target_id); ?> .sb-inner{display:flex;align-items:center;min-height:<?php echo max(34, $fs + 22); ?>px;background:<?php echo esc_attr($bg); ?>}
-#<?php echo esc_attr($target_id); ?> .sb-prefix{flex:0 0 auto;display:flex;align-items:center;gap:8px;color:<?php echo esc_attr($accent); ?>;font-weight:900;letter-spacing:.04em;text-transform:<?php echo $upper; ?>;padding:0 14px 0 18px;white-space:nowrap}
+#<?php echo esc_attr($target_id); ?> .sb-inner{display:flex;align-items:center;min-height:<?php echo max(34, $fs + 22); ?>px;background:<?php echo esc_attr($bg); ?>;padding:4px 0;box-sizing:border-box}
+#<?php echo esc_attr($target_id); ?> .sb-prefix{flex:0 0 auto;display:flex;align-items:center;gap:8px;color:<?php echo esc_attr($accent); ?>;font-weight:<?php echo $accent_weight; ?>;letter-spacing:.04em;text-transform:<?php echo $upper; ?>;text-decoration:<?php echo esc_attr($text_decoration); ?>;padding:0 14px 0 18px;white-space:nowrap}
 #<?php echo esc_attr($target_id); ?> .sb-track{position:relative;flex:1 1 auto;align-self:stretch;min-width:0;overflow:hidden}
-#<?php echo esc_attr($target_id); ?> .sb-slide{position:absolute;inset:0;display:flex;align-items:center;gap:9px;padding:0 16px 0 4px;white-space:nowrap;text-transform:<?php echo $upper; ?>;font-weight:700;letter-spacing:.02em;opacity:0;pointer-events:none;will-change:transform,opacity}
+#<?php echo esc_attr($target_id); ?> .sb-slide{position:absolute;inset:0;display:flex;align-items:center;gap:9px;padding:0 16px 0 4px;white-space:nowrap;text-transform:<?php echo $upper; ?>;font-weight:<?php echo $font_weight; ?>;text-decoration:<?php echo esc_attr($text_decoration); ?>;letter-spacing:.02em;opacity:0;pointer-events:none;will-change:transform,opacity}
 #<?php echo esc_attr($target_id); ?> .sb-slide.sb-active{opacity:1;pointer-events:auto}
-#<?php echo esc_attr($target_id); ?> .sb-time,#<?php echo esc_attr($target_id); ?> .sb-sport{font-weight:900;color:<?php echo esc_attr($accent); ?>}
+#<?php echo esc_attr($target_id); ?> .sb-time,#<?php echo esc_attr($target_id); ?> .sb-sport{font-weight:<?php echo $accent_weight; ?>;color:<?php echo esc_attr($accent); ?>}
 #<?php echo esc_attr($target_id); ?> .sb-separator{color:<?php echo esc_attr($accent); ?>;opacity:.75}
 #<?php echo esc_attr($target_id); ?> .sb-matchup{color:<?php echo esc_attr($fg); ?>}
 #<?php echo esc_attr($target_id); ?> .sb-round{color:<?php echo esc_attr($fg); ?>;opacity:.75}
-#<?php echo esc_attr($target_id); ?> .sb-logo{height:<?php echo max(26, $fs + 14); ?>px;width:auto;max-width:<?php echo max(74, ($fs + 14) * 4); ?>px;object-fit:contain;vertical-align:middle;flex:0 0 auto;background:rgba(255,255,255,.92);border-radius:4px;padding:2px 5px;box-sizing:border-box}
+#<?php echo esc_attr($target_id); ?> .sb-logo{height:<?php echo $logo_height; ?>px;width:auto;max-width:<?php echo $logo_max_width; ?>px;object-fit:contain;vertical-align:middle;flex:0 0 auto;background:<?php echo esc_attr($logo_bg); ?>;border-radius:<?php echo esc_attr($logo_radius); ?>;padding:<?php echo $logo_padding; ?>px;box-sizing:border-box}
 #<?php echo esc_attr($target_id); ?>.sb-anim-slide .sb-slide{transform:translateY(100%);transition:transform .5s ease,opacity .5s ease}
 #<?php echo esc_attr($target_id); ?>.sb-anim-slide .sb-slide.sb-active{transform:translateY(0)}
 #<?php echo esc_attr($target_id); ?>.sb-anim-slide .sb-slide.sb-leaving{transform:translateY(-100%);opacity:0}
@@ -460,6 +513,10 @@ if (!function_exists('schedule_banner_render_admin_page')) {
         $api_key    = get_option('schedule_api_key', '');
         $has_token  = !empty(get_option('schedule_embed_token', '')) || !empty($api_key);
         $palette    = ['#0a0a0a', '#111827', '#1f2937', '#ffffff', '#f8fafc', '#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6'];
+        $font_weight_options = [100, 200, 300, 400, 500, 600, 700, 800, 900];
+        $preview_decoration = schedule_banner_text_decoration_css($s);
+        $preview_logo_radius = schedule_banner_logo_radius_css($s['logo_shape']);
+        $preview_logo_bg = !empty($s['logo_bg_transparent']) ? 'transparent' : $s['logo_bg_color'];
         $font_options = schedule_banner_get_font_options();
         if (!isset($font_options[$s['font_family']])) {
             $font_options[$s['font_family']] = 'Current custom font';
@@ -489,11 +546,12 @@ if (!function_exists('schedule_banner_render_admin_page')) {
             <style>
             .sb-banner-admin .sb-banner-intro{color:#50575e;margin:0 0 18px;max-width:760px}
             .sb-banner-form{background:#fff;border:1px solid #c3c4c7;border-radius:8px;padding:22px 26px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
-            .sb-banner-preview{display:flex;align-items:center;gap:12px;overflow:hidden;border-radius:6px;margin:0 0 18px;background:<?php echo esc_attr($s['bg_color']); ?>;color:<?php echo esc_attr($s['text_color']); ?>;font-family:<?php echo schedule_banner_sanitize_font_stack($s['font_family'], schedule_banner_defaults()['font_family']); ?>;font-size:<?php echo (int) $s['font_size']; ?>px;line-height:1.2;min-height:44px;padding:0 16px;text-transform:<?php echo !empty($s['uppercase']) ? 'uppercase' : 'none'; ?>}
-            .sb-banner-preview-prefix{display:flex;align-items:center;color:<?php echo esc_attr($s['accent_color']); ?>;font-weight:900;white-space:nowrap}
-            .sb-banner-preview-logo{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:999px;background:<?php echo esc_attr($s['accent_color']); ?>;color:<?php echo esc_attr($s['bg_color']); ?>;font-size:10px;font-weight:900;line-height:1;flex:0 0 auto}
-            .sb-banner-preview-text{display:flex;align-items:center;gap:8px;font-weight:700;white-space:nowrap;min-width:0}
-            .sb-banner-preview-accent{color:<?php echo esc_attr($s['accent_color']); ?>;font-weight:900}
+            .sb-banner-preview{display:flex;align-items:center;gap:12px;overflow:hidden;border-radius:6px;margin:0 0 18px;background:<?php echo esc_attr($s['bg_color']); ?>;color:<?php echo esc_attr($s['text_color']); ?>;font-family:<?php echo schedule_banner_sanitize_font_stack($s['font_family'], schedule_banner_defaults()['font_family']); ?>;font-size:<?php echo (int) $s['font_size']; ?>px;font-style:<?php echo !empty($s['italic']) ? 'italic' : 'normal'; ?>;line-height:1.2;min-height:44px;padding:4px 16px;text-transform:<?php echo !empty($s['uppercase']) ? 'uppercase' : 'none'; ?>;text-decoration:<?php echo esc_attr($preview_decoration); ?>}
+            .sb-banner-preview-prefix{display:flex;align-items:center;color:<?php echo esc_attr($s['accent_color']); ?>;font-weight:<?php echo (int) $s['accent_weight']; ?>;white-space:nowrap}
+            .sb-banner-preview-logo{display:inline-flex;align-items:center;justify-content:center;min-width:<?php echo (int) $s['logo_height']; ?>px;height:<?php echo (int) $s['logo_height']; ?>px;max-width:<?php echo (int) $s['logo_max_width']; ?>px;border-radius:<?php echo esc_attr($preview_logo_radius); ?>;background:<?php echo esc_attr($preview_logo_bg); ?>;color:<?php echo esc_attr($s['accent_color']); ?>;font-size:10px;font-style:normal;font-weight:<?php echo (int) $s['accent_weight']; ?>;text-decoration:none;line-height:1;flex:0 0 auto;padding:<?php echo (int) $s['logo_padding']; ?>px;box-sizing:border-box;border:1px solid rgba(0,0,0,.08)}
+            .sb-banner-preview-logo img{display:block;width:auto;height:100%;max-width:100%;object-fit:contain}
+            .sb-banner-preview-text{display:flex;align-items:center;gap:8px;font-weight:<?php echo (int) $s['font_weight']; ?>;white-space:nowrap;min-width:0}
+            .sb-banner-preview-accent{color:<?php echo esc_attr($s['accent_color']); ?>;font-weight:<?php echo (int) $s['accent_weight']; ?>}
             .sb-color-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;max-width:760px}
             .sb-color-card{border:1px solid #dcdcde;border-radius:8px;padding:12px;background:#f6f7f7}
             .sb-color-title{display:block;font-weight:600;margin-bottom:8px;color:#1d2327}
@@ -503,6 +561,8 @@ if (!function_exists('schedule_banner_render_admin_page')) {
             .sb-swatch:focus{outline:2px solid #2271b1;outline-offset:2px}
             .sb-inline-control{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
             .sb-inline-control input[type=range]{width:180px}
+            .sb-compact-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 18px;max-width:760px}
+            .sb-compact-grid label{display:block;font-weight:600;margin-bottom:4px;color:#1d2327}
             @media (max-width:782px){.sb-color-row{grid-template-columns:1fr}.sb-banner-preview{display:block}.sb-banner-preview-prefix,.sb-banner-preview-text{min-height:38px}}
             </style>
 
@@ -511,7 +571,7 @@ if (!function_exists('schedule_banner_render_admin_page')) {
                 <div class="sb-banner-preview" id="sb-banner-preview" aria-hidden="true">
                     <div class="sb-banner-preview-prefix" id="sb-banner-preview-prefix"><?php echo esc_html($s['prefix']); ?></div>
                     <span class="sb-banner-preview-logo" id="sb-banner-preview-logo">MLB</span>
-                    <div class="sb-banner-preview-text"><span class="sb-banner-preview-accent" id="sb-banner-preview-time">8:00 PM</span><span class="sb-banner-preview-accent">MLB:</span><span>Jays vs Baltimore</span></div>
+                    <div class="sb-banner-preview-text" id="sb-banner-preview-text"><span class="sb-banner-preview-accent" id="sb-banner-preview-time">8:00 PM</span><span class="sb-banner-preview-accent" id="sb-banner-preview-separator">&middot;</span><span class="sb-banner-preview-accent" id="sb-banner-preview-league">MLB:</span><span id="sb-banner-preview-matchup">Jays vs Baltimore</span></div>
                 </div>
                 <table class="form-table" role="presentation">
                     <tr>
@@ -536,6 +596,16 @@ if (!function_exists('schedule_banner_render_admin_page')) {
                         <td>
                             <input type="text" id="sb_prefix" name="schedule_banner[prefix]" value="<?php echo esc_attr($s['prefix']); ?>" class="regular-text" />
                             <p class="description">Static label shown before the matches, e.g. <em>What&rsquo;s on tonight?</em></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="sb_range_mode">Match window</label></th>
+                        <td>
+                            <select id="sb_range_mode" name="schedule_banner[range_mode]">
+                                <option value="today" <?php selected($s['range_mode'], 'today'); ?>>Today only</option>
+                                <option value="week" <?php selected($s['range_mode'], 'week'); ?>>This week (Monday to Sunday)</option>
+                            </select>
+                            <p class="description">Choose whether the banner rotates highlighted matches for today or for the current Monday-Sunday week.</p>
                         </td>
                     </tr>
                     <tr>
@@ -577,13 +647,81 @@ if (!function_exists('schedule_banner_render_admin_page')) {
                         </td>
                     </tr>
                     <tr>
+                        <th scope="row">Typography</th>
+                        <td>
+                            <div class="sb-compact-grid">
+                                <div>
+                                    <label for="sb_font_weight">Match text weight</label>
+                                    <select id="sb_font_weight" name="schedule_banner[font_weight]">
+                                        <?php foreach ($font_weight_options as $weight): ?>
+                                            <option value="<?php echo esc_attr($weight); ?>" <?php selected((int) $s['font_weight'], $weight); ?>><?php echo esc_html($weight); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="sb_accent_weight">Prefix/time/league weight</label>
+                                    <select id="sb_accent_weight" name="schedule_banner[accent_weight]">
+                                        <?php foreach ($font_weight_options as $weight): ?>
+                                            <option value="<?php echo esc_attr($weight); ?>" <?php selected((int) $s['accent_weight'], $weight); ?>><?php echo esc_html($weight); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                            </div>
+                            <label style="display:block;margin-top:10px;"><input type="checkbox" id="sb_italic" name="schedule_banner[italic]" value="1" <?php checked($s['italic'], 1); ?> /> Italic</label>
+                            <label style="display:block;margin-top:6px;"><input type="checkbox" id="sb_underline" name="schedule_banner[underline]" value="1" <?php checked($s['underline'], 1); ?> /> Underline</label>
+                            <label style="display:block;margin-top:6px;"><input type="checkbox" id="sb_strikethrough" name="schedule_banner[strikethrough]" value="1" <?php checked($s['strikethrough'], 1); ?> /> Strikethrough</label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">League logo</th>
+                        <td>
+                            <div class="sb-compact-grid">
+                                <div>
+                                    <label for="sb_logo_shape">Shape</label>
+                                    <select id="sb_logo_shape" name="schedule_banner[logo_shape]">
+                                        <option value="square" <?php selected($s['logo_shape'], 'square'); ?>>Square</option>
+                                        <option value="rounded" <?php selected($s['logo_shape'], 'rounded'); ?>>Rounded</option>
+                                        <option value="pill" <?php selected($s['logo_shape'], 'pill'); ?>>Round / pill</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="sb_logo_bg_color">Logo background</label>
+                                    <input type="color" id="sb_logo_bg_color" name="schedule_banner[logo_bg_color]" value="<?php echo esc_attr($s['logo_bg_color']); ?>" data-sb-color="logo_bg_color" />
+                                    <label style="display:block;margin-top:6px;font-weight:400;"><input type="checkbox" id="sb_logo_bg_transparent" name="schedule_banner[logo_bg_transparent]" value="1" <?php checked($s['logo_bg_transparent'], 1); ?> /> Transparent background</label>
+                                </div>
+                                <div>
+                                    <label for="sb_logo_height">Height (px)</label>
+                                    <div class="sb-inline-control">
+                                        <input type="range" id="sb_logo_height_range" value="<?php echo esc_attr($s['logo_height']); ?>" min="16" max="80" step="1" data-sync-number="sb_logo_height" />
+                                        <input type="number" id="sb_logo_height" name="schedule_banner[logo_height]" value="<?php echo esc_attr($s['logo_height']); ?>" min="16" max="80" step="1" style="width:76px;" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="sb_logo_max_width">Max width (px)</label>
+                                    <div class="sb-inline-control">
+                                        <input type="range" id="sb_logo_max_width_range" value="<?php echo esc_attr($s['logo_max_width']); ?>" min="32" max="260" step="1" data-sync-number="sb_logo_max_width" />
+                                        <input type="number" id="sb_logo_max_width" name="schedule_banner[logo_max_width]" value="<?php echo esc_attr($s['logo_max_width']); ?>" min="32" max="260" step="1" style="width:76px;" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="sb_logo_padding">Padding (px)</label>
+                                    <div class="sb-inline-control">
+                                        <input type="range" id="sb_logo_padding_range" value="<?php echo esc_attr($s['logo_padding']); ?>" min="0" max="20" step="1" data-sync-number="sb_logo_padding" />
+                                        <input type="number" id="sb_logo_padding" name="schedule_banner[logo_padding]" value="<?php echo esc_attr($s['logo_padding']); ?>" min="0" max="20" step="1" style="width:76px;" />
+                                    </div>
+                                </div>
+                            </div>
+                            <p class="description">Controls the highlighted league logo chip in the live banner and in this preview.</p>
+                        </td>
+                    </tr>
+                    <tr>
                         <th scope="row"><label for="sb_animation">Animation</label></th>
                         <td>
                             <select id="sb_animation" name="schedule_banner[animation]">
                                 <option value="slide" <?php selected($s['animation'], 'slide'); ?>>Slide</option>
                                 <option value="fade" <?php selected($s['animation'], 'fade'); ?>>Fade</option>
                             </select>
-                            <label style="margin-left:18px;">Speed <input type="number" name="schedule_banner[interval]" value="<?php echo esc_attr($s['interval']); ?>" min="2" max="30" step="1" style="width:64px;" /> sec between matches</label>
+                            <label style="margin-left:18px;">Speed <input type="number" id="sb_interval" name="schedule_banner[interval]" value="<?php echo esc_attr($s['interval']); ?>" min="2" max="30" step="1" style="width:64px;" /> sec between matches</label>
                         </td>
                     </tr>
                     <tr>
@@ -605,8 +743,8 @@ if (!function_exists('schedule_banner_render_admin_page')) {
                     <tr>
                         <th scope="row">Display</th>
                         <td>
-                            <label style="display:block;margin-bottom:6px;"><input type="checkbox" name="schedule_banner[uppercase]" value="1" <?php checked($s['uppercase'], 1); ?> /> Uppercase text</label>
-                            <label style="display:block;margin-bottom:6px;"><input type="checkbox" name="schedule_banner[show_time]" value="1" <?php checked($s['show_time'], 1); ?> /> Show kick-off time</label>
+                            <label style="display:block;margin-bottom:6px;"><input type="checkbox" id="sb_uppercase" name="schedule_banner[uppercase]" value="1" <?php checked($s['uppercase'], 1); ?> /> Uppercase text</label>
+                            <label style="display:block;margin-bottom:6px;"><input type="checkbox" id="sb_show_time" name="schedule_banner[show_time]" value="1" <?php checked($s['show_time'], 1); ?> /> Show kick-off time</label>
                             <p class="description" style="margin-top:6px;">League logos are always shown for highlighted matches.</p>
                         </td>
                     </tr>
@@ -626,14 +764,162 @@ if (!function_exists('schedule_banner_render_admin_page')) {
             var preview = document.getElementById('sb-banner-preview');
             var prefix = document.getElementById('sb-banner-preview-prefix');
             var logo = document.getElementById('sb-banner-preview-logo');
+            var text = document.getElementById('sb-banner-preview-text');
+            var time = document.getElementById('sb-banner-preview-time');
+            var separator = document.getElementById('sb-banner-preview-separator');
+            var league = document.getElementById('sb-banner-preview-league');
+            var matchup = document.getElementById('sb-banner-preview-matchup');
+            var embedSelect = document.getElementById('sb_embed_id');
+            var rangeMode = document.getElementById('sb_range_mode');
+            var intervalInput = document.getElementById('sb_interval');
             var prefixInput = document.getElementById('sb_prefix');
             var fontNumber = document.getElementById('sb_font_size');
             var fontRange = document.getElementById('sb_font_size_range');
             var fontFamily = document.getElementById('sb_font_family');
+            var fontWeight = document.getElementById('sb_font_weight');
+            var accentWeight = document.getElementById('sb_accent_weight');
+            var uppercase = document.getElementById('sb_uppercase');
+            var showTime = document.getElementById('sb_show_time');
+            var italic = document.getElementById('sb_italic');
+            var underline = document.getElementById('sb_underline');
+            var strikethrough = document.getElementById('sb_strikethrough');
+            var logoShape = document.getElementById('sb_logo_shape');
+            var logoTransparent = document.getElementById('sb_logo_bg_transparent');
+            var logoHeight = document.getElementById('sb_logo_height');
+            var logoHeightRange = document.getElementById('sb_logo_height_range');
+            var logoMaxWidth = document.getElementById('sb_logo_max_width');
+            var logoMaxWidthRange = document.getElementById('sb_logo_max_width_range');
+            var logoPadding = document.getElementById('sb_logo_padding');
+            var logoPaddingRange = document.getElementById('sb_logo_padding_range');
+            var previewConfig = <?php echo wp_json_encode([
+                'app' => rtrim(schedule_get_app_domain(), '/'),
+                'token' => schedule_banner_get_public_key(),
+                'timeZone' => schedule_banner_site_timezone(),
+            ], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT); ?>;
+            var previewItems = [];
+            var previewIndex = 0;
+            var previewTimer = null;
+            var previewRequestId = 0;
 
             function getColor(name) {
                 var input = document.querySelector('[data-sb-color="' + name + '"]');
                 return input ? input.value : '';
+            }
+
+            function logoRadius(shape) {
+                if (shape === 'square') return '0';
+                if (shape === 'pill') return '999px';
+                return '6px';
+            }
+
+            function syncNumberPair(range, number) {
+                if (!range || !number) return;
+                range.addEventListener('input', function() {
+                    number.value = range.value;
+                    syncPreview();
+                });
+                number.addEventListener('input', function() {
+                    range.value = number.value;
+                    syncPreview();
+                });
+            }
+
+            function textDecorationValue() {
+                var decorations = [];
+                if (underline && underline.checked) decorations.push('underline');
+                if (strikethrough && strikethrough.checked) decorations.push('line-through');
+                return decorations.length ? decorations.join(' ') : 'none';
+            }
+
+            function placeholderItem() {
+                return { league: 'MLB', sport: 'MLB', matchup: 'Jays vs Baltimore', time: '8:00 PM', leagueLogo: '', homeLogo: '', awayLogo: '', isPlaceholder: true };
+            }
+
+            function logoText(item) {
+                var label = (item && (item.league || item.sport)) || 'MLB';
+                return label.replace(/[^A-Za-z0-9 ]/g, '').trim().split(/\s+/).map(function(part) { return part.charAt(0); }).join('').substring(0, 4) || 'MLB';
+            }
+
+            function renderPreviewItem(item) {
+                item = item || placeholderItem();
+                var logoUrl = item.leagueLogo || item.homeLogo || item.awayLogo || '';
+                var leagueText = item.league || item.sport || '';
+                var matchupText = item.matchup || item.label || 'Featured match';
+                var timeText = item.time || '';
+
+                if (preview) preview.setAttribute('data-has-time', timeText ? '1' : '0');
+
+                if (logo) {
+                    if (logoUrl) {
+                        logo.textContent = '';
+                        var img = document.createElement('img');
+                        img.src = logoUrl;
+                        img.alt = '';
+                        img.loading = 'eager';
+                        img.decoding = 'async';
+                        img.onerror = function() { logo.textContent = logoText(item); };
+                        logo.appendChild(img);
+                    } else {
+                        logo.textContent = logoText(item);
+                    }
+                }
+                if (time) time.textContent = timeText;
+                if (league) {
+                    league.textContent = leagueText ? leagueText + ':' : 'MLB:';
+                    league.style.display = leagueText || !logoUrl ? '' : 'none';
+                }
+                if (matchup) matchup.textContent = matchupText || 'Jays vs Baltimore';
+                syncPreview();
+            }
+
+            function stopPreviewRotation() {
+                if (previewTimer) {
+                    clearInterval(previewTimer);
+                    previewTimer = null;
+                }
+            }
+
+            function startPreviewRotation() {
+                stopPreviewRotation();
+                if (!previewItems || previewItems.length < 2) return;
+                var seconds = Math.max(2, Math.min(30, parseInt(intervalInput && intervalInput.value, 10) || 5));
+                previewTimer = setInterval(function() {
+                    previewIndex = (previewIndex + 1) % previewItems.length;
+                    renderPreviewItem(previewItems[previewIndex]);
+                }, seconds * 1000);
+            }
+
+            function setPreviewItems(items) {
+                previewItems = items && items.length ? items : [placeholderItem()];
+                previewIndex = 0;
+                renderPreviewItem(previewItems[previewIndex]);
+                startPreviewRotation();
+            }
+
+            function loadPublishedPreview() {
+                var embedId = embedSelect && embedSelect.value ? embedSelect.value.trim() : '';
+                if (!previewConfig || !previewConfig.app || !previewConfig.token || !embedId) {
+                    setPreviewItems([]);
+                    return;
+                }
+
+                var requestId = ++previewRequestId;
+                var url = previewConfig.app + '/api/banner?apiKey=' + encodeURIComponent(previewConfig.token) +
+                    '&embedId=' + encodeURIComponent(embedId) +
+                    '&tz=' + encodeURIComponent(previewConfig.timeZone || '') +
+                    '&range=' + encodeURIComponent(rangeMode && rangeMode.value === 'week' ? 'week' : 'today') +
+                    '&_=' + Date.now();
+
+                fetch(url, { credentials: 'omit', cache: 'no-store' })
+                    .then(function(response) { return response.ok ? response.json() : null; })
+                    .then(function(data) {
+                        if (requestId !== previewRequestId) return;
+                        var items = data && Array.isArray(data.items) ? data.items : [];
+                        setPreviewItems(items);
+                    })
+                    .catch(function() {
+                        if (requestId === previewRequestId) setPreviewItems([]);
+                    });
             }
 
             function syncPreview() {
@@ -641,19 +927,38 @@ if (!function_exists('schedule_banner_render_admin_page')) {
                 var bg = getColor('bg_color');
                 var fg = getColor('text_color');
                 var accent = getColor('accent_color');
+                var logoBg = getColor('logo_bg_color');
                 if (bg) preview.style.backgroundColor = bg;
                 if (fg) preview.style.color = fg;
                 if (accent && prefix) prefix.style.color = accent;
                 if (accent) {
                     preview.querySelectorAll('.sb-banner-preview-accent').forEach(function(el) { el.style.color = accent; });
                 }
-                if (logo) {
-                    if (accent) logo.style.backgroundColor = accent;
-                    if (bg) logo.style.color = bg;
-                }
                 if (prefix && prefixInput) prefix.textContent = prefixInput.value || 'Banner';
                 if (fontNumber) preview.style.fontSize = fontNumber.value + 'px';
                 if (fontFamily) preview.style.fontFamily = fontFamily.value || 'inherit';
+                preview.style.textTransform = uppercase && uppercase.checked ? 'uppercase' : 'none';
+                preview.style.fontStyle = italic && italic.checked ? 'italic' : 'normal';
+                preview.style.textDecoration = textDecorationValue();
+                if (text && fontWeight) text.style.fontWeight = fontWeight.value || '700';
+                if (prefix && accentWeight) prefix.style.fontWeight = accentWeight.value || '900';
+                if (accentWeight) {
+                    preview.querySelectorAll('.sb-banner-preview-accent').forEach(function(el) { el.style.fontWeight = accentWeight.value || '900'; });
+                }
+                var hasTime = !preview || preview.getAttribute('data-has-time') !== '0';
+                var showTimeValue = !(showTime && !showTime.checked) && hasTime;
+                if (time) time.style.display = showTimeValue ? '' : 'none';
+                if (separator) separator.style.display = showTimeValue ? '' : 'none';
+                if (logo) {
+                    var h = logoHeight ? logoHeight.value : '29';
+                    logo.style.height = h + 'px';
+                    logo.style.minWidth = h + 'px';
+                    logo.style.maxWidth = (logoMaxWidth ? logoMaxWidth.value : '116') + 'px';
+                    logo.style.padding = (logoPadding ? logoPadding.value : '4') + 'px';
+                    logo.style.borderRadius = logoRadius(logoShape ? logoShape.value : 'rounded');
+                    logo.style.backgroundColor = logoTransparent && logoTransparent.checked ? 'transparent' : (logoBg || '#ffffff');
+                    if (accent) logo.style.color = accent;
+                }
             }
 
             document.querySelectorAll('.sb-swatch').forEach(function(button) {
@@ -671,17 +976,23 @@ if (!function_exists('schedule_banner_render_admin_page')) {
             });
             if (prefixInput) prefixInput.addEventListener('input', syncPreview);
             if (fontFamily) fontFamily.addEventListener('change', syncPreview);
-            if (fontRange && fontNumber) {
-                fontRange.addEventListener('input', function() {
-                    fontNumber.value = fontRange.value;
-                    syncPreview();
-                });
-                fontNumber.addEventListener('input', function() {
-                    fontRange.value = fontNumber.value;
-                    syncPreview();
-                });
+            if (embedSelect) embedSelect.addEventListener('change', loadPublishedPreview);
+            if (rangeMode) rangeMode.addEventListener('change', loadPublishedPreview);
+            if (intervalInput) {
+                intervalInput.addEventListener('input', startPreviewRotation);
+                intervalInput.addEventListener('change', startPreviewRotation);
             }
+            [fontWeight, accentWeight, uppercase, showTime, italic, underline, strikethrough, logoShape, logoTransparent].forEach(function(input) {
+                if (!input) return;
+                input.addEventListener('change', syncPreview);
+                input.addEventListener('input', syncPreview);
+            });
+            syncNumberPair(fontRange, fontNumber);
+            syncNumberPair(logoHeightRange, logoHeight);
+            syncNumberPair(logoMaxWidthRange, logoMaxWidth);
+            syncNumberPair(logoPaddingRange, logoPadding);
             syncPreview();
+            loadPublishedPreview();
         })();
         </script>
         <?php

@@ -384,6 +384,11 @@ export async function GET(req: NextRequest) {
     widget_id: inst.widget_id ?? null,
     display_id: inst.embed_id ?? `#${idx + 1}`,
   }));
+  const activeTargets = new Set(
+    labeled
+      .map((inst) => typeof inst.display_id === 'string' ? inst.display_id.trim() : '')
+      .filter(Boolean),
+  );
 
   const { data: publishedRows } = await supabase
     .from('published_schedules')
@@ -398,6 +403,7 @@ export async function GET(req: NextRequest) {
   for (const row of publishedRows ?? []) {
     const target = typeof row.embed_target === 'string' ? row.embed_target.trim() : '';
     if (!target || seenPublishedTargets.has(target)) continue;
+    if (!activeTargets.has(target)) continue;
     seenPublishedTargets.add(target);
     publishedTargets.push(target);
   }

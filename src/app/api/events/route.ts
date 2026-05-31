@@ -5,6 +5,7 @@ import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { normalizeTournamentGame, MARCH_MADNESS_LOGO, MARCH_MADNESS_WOMEN_LOGO } from '@/lib/marchMadness';
 import { fetchWorldCupFixtures, formatWorldCupStage, WORLD_CUP_LABEL, WORLD_CUP_LOGO, WORLD_CUP_SPORT_ID, WORLD_CUP_ESPN_SLUG } from '@/lib/worldCup';
 import { fetchAllGiroEvents } from '@/lib/api/giro';
+import { SPORTS_CONFIG } from '@/lib/config';
 
 // ── Supabase service-role client for SportsDB endpoint cache ────────────────
 // Created lazily so we don't throw at module load if env vars are absent.
@@ -202,6 +203,16 @@ const LEAGUE_METADATA: Record<string, { label: string; category: string; logo: s
   'cycling-giro-women': { label: "Giro d'Italia Women", category: 'Cycling', logo: '/league-logos/cycling-giro.svg' },
 };
 
+type LeagueMetadata = { label: string; category: string; logo: string };
+
+const CONFIG_LEAGUE_METADATA: Record<string, LeagueMetadata> = Object.fromEntries(
+  SPORTS_CONFIG.map((sport) => [sport.id, { label: sport.label, category: sport.category, logo: sport.logo }]),
+);
+
+function getLeagueMetadata(sportId: string): LeagueMetadata | undefined {
+  return CONFIG_LEAGUE_METADATA[sportId] ?? LEAGUE_METADATA[sportId];
+}
+
 const TENNIS_GRAND_SLAMS = [
   { id: 'tennis-australian-open', patterns: [/australian open/i] },
   { id: 'tennis-roland-garros', patterns: [/roland garros/i, /french open/i] },
@@ -217,17 +228,17 @@ function resolveTennisCompetition(
 ): { sportId: string; meta: { label: string; category: string; logo: string }; leagueLabel: string } {
   const grandSlam = TENNIS_GRAND_SLAMS.find(t => t.patterns.some(pattern => pattern.test(tournamentName)));
   if (grandSlam) {
-    const meta = LEAGUE_METADATA[grandSlam.id] ?? fallbackMeta;
+    const meta = getLeagueMetadata(grandSlam.id) ?? fallbackMeta;
     return { sportId: grandSlam.id, meta, leagueLabel: meta.label };
   }
 
   if (drawSlug.startsWith('mens-')) {
-    const meta = LEAGUE_METADATA['tennis-atp'] ?? fallbackMeta;
+    const meta = getLeagueMetadata('tennis-atp') ?? fallbackMeta;
     return { sportId: 'tennis-atp', meta, leagueLabel: `${meta.label}: ${tournamentName}` };
   }
 
   if (drawSlug.startsWith('womens-')) {
-    const meta = LEAGUE_METADATA['tennis-wta'] ?? fallbackMeta;
+    const meta = getLeagueMetadata('tennis-wta') ?? fallbackMeta;
     return { sportId: 'tennis-wta', meta, leagueLabel: `${meta.label}: ${tournamentName}` };
   }
 
@@ -417,6 +428,7 @@ interface ESPNEvent {
   shortName?: string;
   date: string;
   season?: { slug?: string };
+  status?: { type?: { state?: string; description?: string } };
   notes?: Array<{ headline?: string }>;
   competitions?: ESPNCompetitionRaw[];
   groupings?: {
@@ -433,6 +445,15 @@ interface ESPNScoreboardResponse {
 // ── Helper: extract competitor name from ESPN competitor object ───────────────
 function getCompName(c: ESPNCompetitorRaw | undefined): string {
   return c?.team?.displayName || c?.athlete?.displayName || c?.athlete?.fullName || '';
+}
+
+function formatUnresolvedOpponent(name: string, logo?: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return '';
+  if (/^tbd\b/i.test(trimmed)) return trimmed;
+  if (!logo && trimmed.includes('/')) return `TBD ${trimmed}`;
+  if (/\b(winner|loser|qualifier)\b/i.test(trimmed)) return 'TBD';
+  return trimmed;
 }
 
 // ── Country name → ISO-3166-1 alpha-2 (for fighter flag images) ──────────────
@@ -778,9 +799,11 @@ function mapTeamSportEvents(
     const home = competitors.find(c => c.homeAway === 'home') ?? competitors[0];
     const away = competitors.find(c => c.homeAway === 'away') ?? competitors[1];
     const { date, time } = utcToLocal(event.date, timeZone);
+    const homeLogo = home?.team?.logo || '';
+    const awayLogo = away?.team?.logo || '';
 
-    let homeName = home ? getCompName(home) : '';
-    let awayName = away ? getCompName(away) : '';
+    let homeName = home ? formatUnresolvedOpponent(getCompName(home), homeLogo) : '';
+    let awayName = away ? formatUnresolvedOpponent(getCompName(away), awayLogo) : '';
 
     if (isGolf) {
       homeName = event.name || event.shortName || 'TBD';
@@ -824,15 +847,16 @@ function mapTeamSportEvents(
       time,
       home: homeName || 'TBD',
       away: awayName,
-      homeLogo: home?.team?.logo || '',
-      awayLogo: away?.team?.logo || '',
+      homeLogo,
+      awayLogo,
       round,
       tags: [],
       isFeatured: false,
       isSelected: false,
+      sourceEventId: event.id,
+      isoDate: event.date,
+      status: event.status?.type?.description || comp?.status?.type?.description || '',
       ...(isWorldCup ? {
-        sourceEventId: event.id,
-        isoDate: event.date,
         stageSlug: event.season?.slug || 'group-stage',
       } : {}),
     };
@@ -846,7 +870,7 @@ async function fetchESPNLeague(
   endDate: string,
   timeZone: string
 ): Promise<MatchEvent[]> {
-  const meta = LEAGUE_METADATA[league.id];
+  const meta = getLeagueMetadata(league.id);
   if (!meta) return [];
 
   if (league.id === WORLD_CUP_SPORT_ID) {
@@ -1036,7 +1060,10 @@ const SPORTSDB_ONLY_LEAGUES = [
   { id: 'boxing', sportsdbId: '4445', label: 'Boxing', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/6enin21740228549.png' },
   { id: 'cycling-uci', sportsdbId: '4465', label: 'UCI World Tour', category: 'Cycling', logo: 'https://r2.thesportsdb.com/images/media/league/badge/igahc11535183469.png' },
   { id: 'soccer-hun-sen-cup', sportsdbId: '5859', label: 'Cambodian Hun Sen Cup', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/4motr51774278480.png' },
-];
+].map((league) => {
+  const meta = getLeagueMetadata(league.id);
+  return meta ? { ...league, label: meta.label, category: meta.category, logo: meta.logo } : league;
+});
 
 interface SportsDBEvent {
   idEvent: string;
@@ -1142,8 +1169,17 @@ function sportsDBToLocal(dateStr: string, timeStr: string, timeZone: string): { 
   }
 }
 
+function formatSportsDBCyclingTitle(eventName: string): string {
+  const clean = eventName.trim();
+  const stageMatch = clean.match(/^(.+?)\s+Stage\s+(\d+)(\b.*)?$/i);
+  if (!stageMatch) return clean;
+  const suffix = (stageMatch[3] || '').trim();
+  return `${stageMatch[1].trim()} – Stage ${stageMatch[2].trim()}${suffix ? ` ${suffix}` : ''}`;
+}
+
 function mapSDBEvent(event: SportsDBEvent, league: typeof SPORTSDB_ONLY_LEAGUES[0], timeZone: string): MatchEvent {
   const { date, time } = sportsDBToLocal(event.dateEvent, event.strTime || '00:00:00', timeZone);
+  const isCycling = league.category === 'Cycling';
   return {
     id: `sportsdb-${event.idEvent}`,
     source: 'sportsdb',
@@ -1153,10 +1189,10 @@ function mapSDBEvent(event: SportsDBEvent, league: typeof SPORTSDB_ONLY_LEAGUES[
     leagueLogo: league.logo,
     date,
     time,
-    home: event.strHomeTeam || event.strEvent || 'TBD',
-    away: event.strAwayTeam || '',
-    homeLogo: event.strHomeTeamBadge || undefined,
-    awayLogo: event.strAwayTeamBadge || undefined,
+    home: isCycling && event.strEvent ? formatSportsDBCyclingTitle(event.strEvent) : (event.strHomeTeam || event.strEvent || 'TBD'),
+    away: isCycling ? '' : (event.strAwayTeam || ''),
+    homeLogo: isCycling ? undefined : (event.strHomeTeamBadge || undefined),
+    awayLogo: isCycling ? undefined : (event.strAwayTeamBadge || undefined),
     round: event.strRound || '',
     tags: [],
     isFeatured: false,

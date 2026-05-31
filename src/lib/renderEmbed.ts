@@ -16,6 +16,7 @@ import {
 } from '@/lib/config';
 import { LOGO_PLACEHOLDER_REMOTE, resolvePublishLogoUrl } from '@/lib/logo';
 import { formatDisplayDate } from '@/lib/timezone';
+import { eventHasHeadToHead, getEventDisplay } from '@/lib/eventDisplay';
 
 // ─── Public interface ─────────────────────────────────────────────────────────
 
@@ -74,18 +75,10 @@ function cleanCombatLabel(e: MatchEvent): string {
 
 function buildMatchLine(event: MatchEvent, showTime: boolean, sharedRound: string): string {
   const e = sharedRound ? { ...event, round: '' } : event;
-  const isCombat = ['boxing', 'ufc', 'bellator'].includes(e.sportId);
-  const homeFlag = isCombat && e.homeCountry ? `<span style="font-size:1em;margin-right:2px" title="${esc(e.homeCountry)}">${countryFlag(e.homeCountry)}</span>` : '';
-  const awayFlag = isCombat && e.awayCountry ? `<span style="font-size:1em;margin-right:2px" title="${esc(e.awayCountry)}">${countryFlag(e.awayCountry)}</span>` : '';
-  // For combat-sport card-level entries (no away fighter), the home field may contain
-  // the full advertised name like "UFC Fight Night: Adesanya vs. Pyfer". Strip the
-  // ": Fighter vs. Fighter" suffix so individual fight rows below aren't duplicated.
-  const homeDisplay = isCombat && !e.away && e.home.includes(':')
-    ? e.home.substring(0, e.home.indexOf(':')).trim()
-    : e.home;
-  const matchContent = e.away
-    ? `<span class="mc-team">${homeFlag}${esc(e.home)}</span><span class="vs-sep">vs</span><span class="mc-team">${awayFlag}${esc(e.away)}</span>`
-    : `<span class="mc-team">${esc(homeDisplay)}</span>`;
+  const display = getEventDisplay(e, { stripLeaguePrefix: true });
+  const matchContent = display.isHeadToHead
+    ? `<span class="mc-team">${esc(display.primary)}</span><span class="vs-sep">vs</span><span class="mc-team">${esc(display.secondary)}</span>`
+    : `<span class="mc-team">${esc(display.title)}</span>`;
   const roundStr = e.round ? `<span class="mc-round"> \u2013 ${esc(e.round)}</span>` : '';
   const tagsStr = e.tags?.length ? ` \u2013 <em>(${e.tags.join(', ')})</em>` : '';
   return showTime
@@ -131,13 +124,14 @@ function renderHighlights(
     parts.push(`<div class="hl-date-group">`);
     parts.push(`<div class="hl-date-header">${esc(displayDate)}</div>`);
     for (const e of events) {
+      const display = getEventDisplay(e, { stripLeaguePrefix: true });
       const isCombat = ['boxing', 'ufc', 'bellator'].includes(e.sportId);
       const homeFlag = isCombat && e.homeCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(e.homeCountry)}</span>` : '';
       const awayFlag = isCombat && e.awayCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(e.awayCountry)}</span>` : '';
       const homeImg = (!opts.hideLogos && e.homeLogo) ? `<img class="hl-team-logo" src="${esc(e.homeLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
-      const awayImg = (!opts.hideLogos && e.awayLogo && e.away) ? `<img class="hl-team-logo" src="${esc(e.awayLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
+      const awayImg = (!opts.hideLogos && e.awayLogo && display.isHeadToHead) ? `<img class="hl-team-logo" src="${esc(e.awayLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
       // For singular events with no team logo, show league logo
-      const leagueFallback = !opts.hideLogos && !e.away && !homeImg ? (() => {
+      const leagueFallback = !opts.hideLogos && !display.isHeadToHead && !homeImg ? (() => {
         const cfg = SPORTS_CONFIG.find(s => s.id === e.sportId);
         return cfg ? resolvePublishLogoUrl(cfg.logo || e.leagueLogo || '', cfg.publishLogo) : '';
       })() : '';
@@ -147,9 +141,9 @@ function renderHighlights(
       // For non-combat sports: homeImg is the team logo; emoji flags don't apply.
       const homeBadge = isCombat ? (homeImg || homeFlag) : homeImg;
       const awayBadge = isCombat ? (awayImg || awayFlag) : awayImg;
-      const teamsHtml = e.away
-        ? `<span class="hl-team">${homeBadge}${esc(e.home)}</span><span class="hl-vs">vs</span><span class="hl-team">${awayBadge}${esc(e.away)}</span>`
-        : `<span class="hl-team">${leagueFallbackImg}${homeImg}${esc(e.home)}</span>`;
+      const teamsHtml = display.isHeadToHead
+        ? `<span class="hl-team">${homeBadge}${esc(display.primary)}</span><span class="hl-vs">vs</span><span class="hl-team">${awayBadge}${esc(display.secondary)}</span>`
+        : `<span class="hl-team">${leagueFallbackImg}${homeImg}${esc(display.title)}</span>`;
       const roundStr = e.round ? `<div class="hl-round">${esc(e.round)}</div>` : '';
       parts.push(`<div class="hl-event"><div class="hl-event-meta">${e.time ? `<span class="hl-time">${esc(e.time)}</span>` : ''}<span class="hl-league-name">${esc(cleanCombatLabel(e))}</span></div><div class="hl-teams">${teamsHtml}</div>${roundStr}</div>`);
     }
@@ -162,12 +156,13 @@ function renderHighlights(
     const leagueLabel = config?.label || sportId;
     // Prefer a starred event first, then any team-vs-team event for this league
     const teamEvent =
-      allEvents.find(e => e.sportId === sportId && !!e.away && e.isFeatured) ||
-      allEvents.find(e => e.sportId === sportId && !!e.away);
+      allEvents.find(e => e.sportId === sportId && eventHasHeadToHead(e) && e.isFeatured) ||
+      allEvents.find(e => e.sportId === sportId && eventHasHeadToHead(e));
     if (teamEvent) {
+      const display = getEventDisplay(teamEvent, { stripLeaguePrefix: true });
       const homeImg = (!opts.hideLogos && teamEvent.homeLogo) ? `<img class="hl-team-logo" src="${esc(teamEvent.homeLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
       const awayImg = (!opts.hideLogos && teamEvent.awayLogo) ? `<img class="hl-team-logo" src="${esc(teamEvent.awayLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
-      const teamsHtml = `<span class="hl-team">${homeImg}${esc(teamEvent.home)}</span><span class="hl-vs">vs</span><span class="hl-team">${awayImg}${esc(teamEvent.away!)}</span>`;
+      const teamsHtml = `<span class="hl-team">${homeImg}${esc(display.primary)}</span><span class="hl-vs">vs</span><span class="hl-team">${awayImg}${esc(display.secondary)}</span>`;
       parts.push(`<div class="hl-event"><div class="hl-event-meta">${teamEvent.time ? `<span class="hl-time">${esc(teamEvent.time)}</span>` : ''}<span class="hl-league-name">${esc(leagueLabel)}</span></div><div class="hl-teams">${teamsHtml}</div></div>`);
     } else {
       const logoUrl = (!opts.hideLogos && config) ? resolvePublishLogoUrl(config.logo || '', config.publishLogo) : '';

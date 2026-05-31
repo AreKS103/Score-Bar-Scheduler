@@ -6,7 +6,7 @@ import { renderEmbedContent } from '@/lib/renderEmbed';
 import { renderCalendarContent, getCalendarCSS, getCalendarNavJS } from '@/lib/renderCalendar';
 import { buildScheduleSeoPayload } from '@/lib/seoSchedule';
 import { getOrgMemberIds } from '@/lib/supabase/org';
-import { refreshWorldCupSnapshotEvents, WORLD_CUP_SPORT_ID } from '@/lib/worldCup';
+import { hasRefreshableSnapshotEvents, isRefreshableSnapshotEvent, refreshSnapshotEvents } from '@/lib/refreshSnapshotEvents';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,10 +77,10 @@ function buildEmptyEmbedRefreshScript(): string {
 }
 
 function buildPublishedScheduleSerial(publishedAt: string, events: MatchEvent[]): string {
-  const worldCupRows = events.filter((event) => event.sportId === WORLD_CUP_SPORT_ID);
-  if (worldCupRows.length === 0) return publishedAt;
+  const refreshableRows = events.filter(isRefreshableSnapshotEvent);
+  if (refreshableRows.length === 0) return publishedAt;
 
-  const fingerprint = worldCupRows
+  const fingerprint = refreshableRows
     .map((event) => [
       event.id,
       event.sourceEventId ?? '',
@@ -95,7 +95,7 @@ function buildPublishedScheduleSerial(publishedAt: string, events: MatchEvent[])
     ].join('|'))
     .join('~');
   const hash = crypto.createHash('sha1').update(fingerprint).digest('hex').slice(0, 12);
-  return `${publishedAt || 'published'}:wc:${hash}`;
+  return `${publishedAt || 'published'}:src:${hash}`;
 }
 
 function buildResizeScript(): string {
@@ -484,15 +484,15 @@ export async function GET(
   opts.appUrl = `${request.nextUrl.protocol}//${request.nextUrl.host}`;
 
   const snapshotEvents = (schedule.events_snapshot ?? []) as MatchEvent[];
-  const hasWorldCupSnapshotEvents = snapshotEvents.some((event) => event.sportId === WORLD_CUP_SPORT_ID && event.source !== 'manual');
-  if (isPoll && !hasWorldCupSnapshotEvents && clientSerial === scheduleAt) {
+  const hasRefreshableEvents = hasRefreshableSnapshotEvents(snapshotEvents);
+  if (isPoll && !hasRefreshableEvents && clientSerial === scheduleAt) {
     return Response.json(
       { serial: scheduleAt, unchanged: true, empty: false },
       { headers: { 'Cache-Control': 'no-store' } },
     );
   }
 
-  const events = await refreshWorldCupSnapshotEvents(snapshotEvents, sp.timeZone);
+  const events = await refreshSnapshotEvents(snapshotEvents, sp.timeZone);
   const scheduleSerial = buildPublishedScheduleSerial(scheduleAt, events);
   const leagueOrder = (schedule.league_order ?? []) as string[];
   const featuredLeaguesObj = (schedule.featured_leagues ?? {}) as Record<string, string>;

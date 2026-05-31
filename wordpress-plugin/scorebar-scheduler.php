@@ -3,7 +3,7 @@
  * Plugin Name: Scheduler
  * Plugin URI:
  * Description: A sports schedule widget for your website.
- * Version: 1.3.2
+ * Version: 1.3.4
  * Text Domain: scorebar-scheduler
  * Requires at least: 6.0
  * Tested up to: 6.7
@@ -13,7 +13,7 @@
 if (!defined('ABSPATH')) exit;
 
 // Plugin version — must match the "Version:" header above.
-define('SCHEDULE_PLUGIN_VERSION', '1.3.2');
+define('SCHEDULE_PLUGIN_VERSION', '1.3.4');
 
 // ── PHP version gate ────────────────────────────────────────────────────────
 if (version_compare(PHP_VERSION, '7.4', '<')) {
@@ -59,7 +59,7 @@ if (!function_exists('schedule_get_embed_target_choices')) {
         $key = schedule_get_public_embed_key();
         if (empty($key)) return [];
 
-        $cache_key = 'schedule_embed_targets_' . md5(schedule_get_app_domain() . '|' . $key);
+        $cache_key = 'schedule_embed_targets_live_' . md5(schedule_get_app_domain() . '|' . $key);
         $cached = get_transient($cache_key);
         if (is_array($cached)) return $cached;
 
@@ -94,16 +94,6 @@ if (!function_exists('schedule_get_embed_target_choices')) {
                 if ($target === '' || isset($seen[$target])) continue;
                 $seen[$target] = true;
                 $choices[$target] = $target;
-            }
-        }
-
-        if (!empty($body['publishedTargets']) && is_array($body['publishedTargets'])) {
-            foreach ($body['publishedTargets'] as $target) {
-                $target = sanitize_text_field($target);
-                $target = trim($target);
-                if ($target === '' || isset($seen[$target])) continue;
-                $seen[$target] = true;
-                $choices[$target] = $target . ' (published)';
             }
         }
 

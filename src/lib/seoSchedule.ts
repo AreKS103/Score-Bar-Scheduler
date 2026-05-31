@@ -1,5 +1,6 @@
 import type { MatchEvent } from '@/types';
 import { formatDisplayDate } from '@/lib/timezone';
+import { getEventDisplayTitle } from '@/lib/eventDisplay';
 
 interface SeoOptions {
   pageUrl?: string;
@@ -37,7 +38,7 @@ function slugPart(value: string): string {
 }
 
 function eventName(event: MatchEvent): string {
-  return event.away ? `${event.home} vs ${event.away}` : event.home;
+  return getEventDisplayTitle(event, { stripLeaguePrefix: true });
 }
 
 function toLocalStartDate(match: FlatSeoMatch): string {

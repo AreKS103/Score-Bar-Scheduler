@@ -131,8 +131,8 @@ function mapSportsDBEvent(
     if (parsed.cardName) leagueLabel = parsed.cardName;
   }
 
-  // For cycling, format stage races with a dash separator: "Volta a Catalunya Stage 6" → "Volta a Catalunya – Stage 6"
-  if (sportConfig.category === 'Cycling' && !event.strHomeTeam && event.strEvent) {
+  // For cycling, TheSportsDB may fill home/away with route locations. Those are not teams.
+  if (sportConfig.category === 'Cycling' && event.strEvent) {
     const stageMatch = event.strEvent.match(/^(.+?)\s+Stage\s+(\d+)$/i);
     if (stageMatch) {
       home = `${stageMatch[1]} \u2013 Stage ${stageMatch[2]}`;

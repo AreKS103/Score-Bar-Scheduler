@@ -6,6 +6,7 @@ import {
 } from '@/lib/config';
 import { LOGO_PLACEHOLDER_REMOTE, resolvePublishLogoUrl } from '@/lib/logo';
 import { formatDisplayDate } from '@/lib/timezone';
+import { getEventDisplay } from '@/lib/eventDisplay';
 
 /**
  * Encode HTML entities for safe insertion
@@ -117,13 +118,13 @@ function generateHighlights(
     parts.push(`<div>`);
     parts.push(`<div style="${s.dateHeader}">${escapeHTML(displayDate)}</div>`);
     for (const e of events) {
+      const display = getEventDisplay(e, { stripLeaguePrefix: true });
       const isCombat = ['boxing', 'ufc', 'bellator'].includes(e.sportId);
-      const vs = 'font-style:italic;font-size:0.82em;opacity:0.4;margin:0 3px';
       const homeFlag = isCombat && e.homeCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(e.homeCountry)}</span>` : '';
       const awayFlag = isCombat && e.awayCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(e.awayCountry)}</span>` : '';
       const homeImg = e.homeLogo ? `<img src="${escapeHTML(e.homeLogo)}" alt="" loading="lazy" style="${s.teamLogo}" />` : '';
-      const awayImg = e.awayLogo && e.away ? `<img src="${escapeHTML(e.awayLogo)}" alt="" loading="lazy" style="${s.teamLogo}" />` : '';
-      const leagueFallback = !e.away && !homeImg ? (() => {
+      const awayImg = e.awayLogo && display.isHeadToHead ? `<img src="${escapeHTML(e.awayLogo)}" alt="" loading="lazy" style="${s.teamLogo}" />` : '';
+      const leagueFallback = !display.isHeadToHead && !homeImg ? (() => {
         const cfg = SPORTS_CONFIG.find(sc => sc.id === e.sportId);
         return cfg ? resolvePublishLogoUrl(cfg.logo || e.leagueLogo || '', cfg.publishLogo) : '';
       })() : '';
@@ -132,9 +133,9 @@ function generateHighlights(
       // For non-combat sports: homeImg is the team logo; emoji flags don't apply.
       const homeBadge = isCombat ? (homeImg || homeFlag) : homeImg;
       const awayBadge = isCombat ? (awayImg || awayFlag) : awayImg;
-      const teamsHtml = e.away
-        ? `${homeBadge}<span>${escapeHTML(e.home)}</span><span style="${s.vs}">vs</span>${awayBadge}<span>${escapeHTML(e.away)}</span>`
-        : `${leagueFallbackImg}${homeImg}<span>${escapeHTML(e.home)}</span>`;
+      const teamsHtml = display.isHeadToHead
+        ? `${homeBadge}<span>${escapeHTML(display.primary)}</span><span style="${s.vs}">vs</span>${awayBadge}<span>${escapeHTML(display.secondary)}</span>`
+        : `${leagueFallbackImg}${homeImg}<span>${escapeHTML(display.title)}</span>`;
       const roundStr = e.round ? `<div style="${s.round}">${escapeHTML(e.round)}</div>` : '';
       parts.push(`<div style="${s.event}"><div style="${s.meta}">${e.time ? `<span style="${s.time}">${escapeHTML(e.time)}</span>` : ''}<span style="${s.league}">${escapeHTML(cleanCombatLabel(e))}</span></div><div style="${s.teams}">${teamsHtml}</div>${roundStr}</div>`);
     }
@@ -174,16 +175,11 @@ function cleanCombatLabel(e: MatchEvent): string {
 }
 
 function generateMatchLine(event: MatchEvent): string {
-  const isCombat = ['boxing', 'ufc', 'bellator'].includes(event.sportId);
-  // For combat-sport card-level entries (no away fighter), strip the ":Fighter vs. Fighter"
-  // suffix so only the card name (e.g. "UFC Fight Night") shows in this row.
-  const homeDisplay = isCombat && !event.away && event.home.includes(':')
-    ? event.home.substring(0, event.home.indexOf(':')).trim()
-    : event.home;
+  const display = getEventDisplay(event, { stripLeaguePrefix: true });
   // Country flags are shown only in the highlights section (as images), not in the schedule list rows.
-  const matchContent = event.away
-    ? `<span class="mc-team">${escapeHTML(event.home)}</span><span class="vs-sep">vs</span><span class="mc-team">${escapeHTML(event.away)}</span>`
-    : `<span class="mc-team">${escapeHTML(homeDisplay)}</span>`;
+  const matchContent = display.isHeadToHead
+    ? `<span class="mc-team">${escapeHTML(display.primary)}</span><span class="vs-sep">vs</span><span class="mc-team">${escapeHTML(display.secondary)}</span>`
+    : `<span class="mc-team">${escapeHTML(display.title)}</span>`;
   const roundStr = event.round ? `<span class="mc-round"> \u2013 ${escapeHTML(event.round)}</span>` : '';
   const tags = formatTags(event.tags);
   return `<span class="ml-time">${escapeHTML(event.time)}</span><span class="ml-match">${matchContent}${roundStr}${tags}</span>`;

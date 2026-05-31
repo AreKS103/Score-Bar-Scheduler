@@ -6,6 +6,7 @@ import type { MatchEvent } from '@/types';
 import { cn } from '@/lib/utils';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
+import { getEventDisplay } from '@/lib/eventDisplay';
 
 /** Convert ISO-3166-1 alpha-2 country code to Unicode flag emoji */
 function isoToFlag(code: string): string {
@@ -32,6 +33,7 @@ const MatchCard = memo(function MatchCard({
   onToggleTag: _onToggleTag,
 }: MatchCardProps) {
   const isCombat = ['ufc', 'bellator', 'boxing'].includes(event.sportId);
+  const display = getEventDisplay(event, { stripLeaguePrefix: true });
   return (
     <div
       onClick={() => onToggleSelected(event.id)}
@@ -89,8 +91,8 @@ const MatchCard = memo(function MatchCard({
               {isoToFlag(event.homeCountry)}
             </span>
           ) : null}
-          <span>{event.home}</span>
-          {event.away && (
+          <span>{display.isHeadToHead ? display.primary : display.title}</span>
+          {display.isHeadToHead && (
             <>
               <span className="text-muted-foreground mx-0.5">vs</span>
               {event.awayLogo ? (
@@ -105,7 +107,7 @@ const MatchCard = memo(function MatchCard({
                   {isoToFlag(event.awayCountry)}
                 </span>
               ) : null}
-              <span>{event.away}</span>
+              <span>{display.secondary}</span>
             </>
           )}
         </div>

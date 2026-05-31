@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import type { MatchEvent } from '@/types';
 import { getOrgMemberIds } from '@/lib/supabase/org';
+import { refreshSnapshotEvents } from '@/lib/refreshSnapshotEvents';
+import { getEventDisplay } from '@/lib/eventDisplay';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,6 +53,8 @@ interface BannerItem {
   awayLogo: string;
 }
 
+type BannerRange = 'today' | 'week';
+
 function publicOrigin(origin: string): string {
   return origin.replace('://0.0.0.0', '://localhost').replace('://[::]', '://localhost');
 }
@@ -83,6 +87,10 @@ function safeTimeZone(value: string): string {
   }
 }
 
+function safeRange(value: string): BannerRange {
+  return value === 'week' ? 'week' : 'today';
+}
+
 function formatDateInTimeZone(date: Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone,
@@ -92,6 +100,23 @@ function formatDateInTimeZone(date: Date, timeZone: string): string {
   }).formatToParts(date);
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return `${values.year}-${values.month}-${values.day}`;
+}
+
+function addDays(date: string, amount: number): string {
+  const parsed = new Date(`${date}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return date;
+  parsed.setUTCDate(parsed.getUTCDate() + amount);
+  return parsed.toISOString().slice(0, 10);
+}
+
+function bannerDateWindow(range: BannerRange, timeZone: string): { start: string; end: string } {
+  const today = formatDateInTimeZone(new Date(), timeZone);
+  if (range === 'today') return { start: today, end: today };
+
+  const weekday = new Date(`${today}T00:00:00Z`).getUTCDay();
+  const mondayOffset = weekday === 0 ? -6 : 1 - weekday;
+  const start = addDays(today, mondayOffset);
+  return { start, end: addDays(start, 6) };
 }
 
 function eventDateForTimeZone(event: SnapshotEvent, timeZone: string): string {
@@ -109,13 +134,8 @@ function eventDateForTimeZone(event: SnapshotEvent, timeZone: string): string {
 }
 
 function buildMatchup(event: SnapshotEvent): { home: string; away: string; matchup: string } {
-  const home = textField(event, ['home', 'homeTeam', 'strHomeTeam']);
-  const away = textField(event, ['away', 'awayTeam', 'strAwayTeam']);
-  const explicit = textField(event, ['matchup', 'strEvent', 'eventName', 'name', 'label']);
-
-  if (home && away) return { home, away, matchup: `${home} vs ${away}` };
-  const matchup = explicit && !/^vs\.?$/i.test(explicit) ? explicit : (home || away || 'Featured match');
-  return { home: home || matchup, away, matchup };
+  const display = getEventDisplay(event, { stripLeaguePrefix: true });
+  return { home: display.primary || display.title, away: display.isHeadToHead ? display.secondary : '', matchup: display.title || 'Featured match' };
 }
 
 function normalizeLeagueName(rawLeague: string, event: SnapshotEvent): string {
@@ -144,12 +164,12 @@ function normalizeLeagueLogo(rawLogo: string, league: string, sport: string): st
   return rawLogo;
 }
 
-function buildSerial(publishedAt: string, items: BannerItem[]): string {
+function buildSerial(publishedAt: string, items: BannerItem[], range: BannerRange): string {
   const fingerprint = items
     .map((item) => [item.date, item.time, item.league, item.matchup].join('|'))
     .join('~');
-  const hash = crypto.createHash('sha1').update(`${publishedAt}|${fingerprint}`).digest('hex').slice(0, 12);
-  return `${publishedAt || 'none'}:${hash}`;
+  const hash = crypto.createHash('sha1').update(`${publishedAt}|${range}|${fingerprint}`).digest('hex').slice(0, 12);
+  return `${publishedAt || 'none'}:${range}:${hash}`;
 }
 
 function noStoreHeaders(): Record<string, string> {
@@ -164,18 +184,19 @@ function noStoreHeaders(): Record<string, string> {
 }
 
 /** Build the banner items from a published schedule's featured (starred) events. */
-function buildItems(events: MatchEvent[], origin: string, timeZone: string): BannerItem[] {
-  const today = formatDateInTimeZone(new Date(), timeZone);
+function buildItems(events: MatchEvent[], origin: string, timeZone: string, range: BannerRange): BannerItem[] {
+  const window = bannerDateWindow(range, timeZone);
 
   return events
     .filter((e) => {
       if (!e || !e.isFeatured || e.isSelected === false) return false;
-      return eventDateForTimeZone(e as SnapshotEvent, timeZone) === today;
+      const eventDate = eventDateForTimeZone(e as SnapshotEvent, timeZone);
+      return eventDate >= window.start && eventDate <= window.end;
     })
     .sort((a, b) => {
       const eventA = a as SnapshotEvent;
       const eventB = b as SnapshotEvent;
-      return textField(eventA, ['date', 'dateEvent']).localeCompare(textField(eventB, ['date', 'dateEvent']))
+      return eventDateForTimeZone(eventA, timeZone).localeCompare(eventDateForTimeZone(eventB, timeZone))
         || textField(eventA, ['time', 'strTime']).localeCompare(textField(eventB, ['time', 'strTime']));
     })
     .map((e) => {
@@ -197,7 +218,7 @@ function buildItems(events: MatchEvent[], origin: string, timeZone: string): Ban
         home,
         away,
         time: textField(event, ['time', 'strTime']),
-        date: textField(event, ['date', 'dateEvent']),
+        date: eventDateForTimeZone(event, timeZone),
         round: '',
         leagueLogo: toAbsoluteAssetUrl(rawLeagueLogo, origin),
         homeLogo: toAbsoluteAssetUrl(textField(event, ['homeLogo', 'homeTeamLogo', 'strHomeTeamBadge']), origin),
@@ -212,6 +233,7 @@ export async function GET(req: NextRequest) {
     const apiKey = (sp.get('apiKey') || '').trim();
     const embedId = (sp.get('embedId') || '').replace(/[^\w#\- ]/g, '').substring(0, 64).trim();
     const timeZone = safeTimeZone(sp.get('tz') || 'UTC');
+    const range = safeRange(sp.get('range') || 'today');
 
     if (!apiKey) {
       return NextResponse.json({ error: 'Missing apiKey' }, { status: 400, headers: corsHeaders });
@@ -247,12 +269,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ items: [], publishedAt: '', serial: 'none' }, { headers: noStoreHeaders() });
     }
 
-    const events = (Array.isArray(schedule.events_snapshot) ? schedule.events_snapshot : []) as MatchEvent[];
-    const items = buildItems(events, req.nextUrl.origin, timeZone);
+    const snapshotEvents = (Array.isArray(schedule.events_snapshot) ? schedule.events_snapshot : []) as MatchEvent[];
+    const events = await refreshSnapshotEvents(snapshotEvents, timeZone);
+    const items = buildItems(events, req.nextUrl.origin, timeZone, range);
     const publishedAt = schedule.published_at ?? '';
 
     return NextResponse.json(
-      { items, publishedAt, serial: buildSerial(publishedAt, items) },
+      { items, publishedAt, range, serial: buildSerial(publishedAt, items, range) },
       {
         headers: noStoreHeaders(),
       },

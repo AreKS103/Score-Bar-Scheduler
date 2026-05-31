@@ -200,6 +200,7 @@
       var url = cfg.app + '/api/banner?apiKey=' + encodeURIComponent(cfg.token) +
         '&embedId=' + encodeURIComponent(cfg.embedId) +
         '&tz=' + encodeURIComponent(getTz(cfg)) +
+        '&range=' + encodeURIComponent(cfg.range === 'week' ? 'week' : 'today') +
         '&_=' + Date.now();
 
       fetch(url, { credentials: 'omit', cache: 'no-store' })
