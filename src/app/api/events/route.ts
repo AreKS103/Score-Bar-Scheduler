@@ -1158,7 +1158,10 @@ async function sdbFetch(endpoint: string, responseKey: 'events' | 'results' = 'e
         'Referer':         'https://www.thesportsdb.com/',
       },
     });
-    if (!res.ok) return []; // 429 / 5xx — do NOT cache failures
+    if (!res.ok) {
+      if (res.status === 429) console.warn(`[SportsDB] 429 for ${endpoint}`);
+      return []; // 429 / 5xx — do NOT cache failures
+    }
     const json = await res.json();
     const data = (json[responseKey] as SportsDBEvent[]) ?? [];
 
@@ -1226,12 +1229,7 @@ function mapSDBEvent(event: SportsDBEvent, league: typeof SPORTSDB_ONLY_LEAGUES[
   };
 }
 
-interface TeamPageEventCandidate {
-  idEvent: string;
-  dateEvent: string;
-}
-
-const SDB_TEAM_PAGE_CACHE = new Map<string, { data: TeamPageEventCandidate[]; ts: number }>();
+const SDB_TEAM_PAGE_CACHE = new Map<string, { data: SportsDBEvent[]; ts: number }>();
 const SDB_TEAM_PAGE_TTL = 60 * 60 * 1000;
 const MONTH_TO_NUMBER: Record<string, string> = {
   jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
@@ -1252,10 +1250,38 @@ function parseTeamPageDate(day: string, month: string, yearSuffix: string): stri
   return `${year}-${monthNumber}-${day.padStart(2, '0')}`;
 }
 
-function extractTeamPageEventCandidates(html: string): TeamPageEventCandidate[] {
+function decodeTeamPageText(value: string): string {
+  return value
+    .replace(/&amp;/g, '&')
+    .replace(/&#039;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function stripTeamPageHtml(value: string): string {
+  return decodeTeamPageText(value.replace(/<[^>]*>/g, ' '));
+}
+
+function parseTeamPageTime(value: string): string {
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
+  if (!match) return '00:00:00';
+  let hour = Number.parseInt(match[1], 10);
+  const minute = match[2];
+  const meridiem = match[3].toLowerCase();
+  if (meridiem === 'pm' && hour !== 12) hour += 12;
+  if (meridiem === 'am' && hour === 12) hour = 0;
+  return `${String(hour).padStart(2, '0')}:${minute}:00`;
+}
+
+function normalizeTeamBadgeUrl(value: string | undefined): string | undefined {
+  return value?.replace(/\/(tiny|small|medium)$/i, '');
+}
+
+function extractTeamPageEvents(html: string): SportsDBEvent[] {
   const rows = html.match(/<tr\b[\s\S]*?<\/tr>/gi) ?? [];
   const seen = new Set<string>();
-  const candidates: TeamPageEventCandidate[] = [];
+  const events: SportsDBEvent[] = [];
 
   for (const row of rows) {
     const dateMatch = row.match(/(\d{1,2})\s+([A-Za-z]{3})\s+<span\s+class=['"]team-table-year['"]>(\d{2})<\/span>/i);
@@ -1266,14 +1292,34 @@ function extractTeamPageEventCandidates(html: string): TeamPageEventCandidate[] 
     const idEvent = idMatch[1];
     if (!dateEvent || seen.has(idEvent)) continue;
 
+    const names = [...row.matchAll(/team-fixture-name-full['"]>([^<]+)/gi)]
+      .map(match => decodeTeamPageText(match[1]))
+      .filter(Boolean);
+    if (names.length < 2) continue;
+
+    const badges = [...row.matchAll(/src=['"](https:\/\/r2\.thesportsdb\.com\/images\/media\/team\/badge\/[^'"]+?\.png(?:\/(?:tiny|small|medium))?)['"]/gi)]
+      .map(match => normalizeTeamBadgeUrl(match[1]))
+      .filter((logo): logo is string => Boolean(logo));
+    const cells = [...row.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map(match => stripTeamPageHtml(match[1]));
+    const strTime = parseTeamPageTime(cells[2] ?? '');
+
     seen.add(idEvent);
-    candidates.push({ idEvent, dateEvent });
+    events.push({
+      idEvent,
+      strEvent: `${names[0]} vs ${names[1]}`,
+      dateEvent,
+      strTime,
+      strHomeTeam: names[0],
+      strAwayTeam: names[1],
+      strHomeTeamBadge: badges[0],
+      strAwayTeamBadge: badges[1],
+    });
   }
 
-  return candidates;
+  return events;
 }
 
-async function fetchSportsDBTeamPageEventCandidates(team: typeof SPORTSDB_TEAM_FEEDS[0]): Promise<TeamPageEventCandidate[]> {
+async function fetchSportsDBTeamPageEvents(team: typeof SPORTSDB_TEAM_FEEDS[0]): Promise<SportsDBEvent[]> {
   const cacheKey = `${team.sportsdbTeamId}-${team.pageSlug}`;
   const hit = SDB_TEAM_PAGE_CACHE.get(cacheKey);
   if (hit && Date.now() - hit.ts < SDB_TEAM_PAGE_TTL) return hit.data;
@@ -1289,30 +1335,12 @@ async function fetchSportsDBTeamPageEventCandidates(team: typeof SPORTSDB_TEAM_F
     });
     if (!res.ok) return [];
 
-    const data = extractTeamPageEventCandidates(await res.text());
+    const data = extractTeamPageEvents(await res.text());
     SDB_TEAM_PAGE_CACHE.set(cacheKey, { data, ts: Date.now() });
     return data;
   } catch {
     return [];
   }
-}
-
-async function fetchSportsDBTeamPageEvents(
-  team: typeof SPORTSDB_TEAM_FEEDS[0],
-  startDate: string,
-  endDate: string,
-): Promise<SportsDBEvent[]> {
-  const minDate = offsetIsoDate(startDate, -1);
-  const maxDate = offsetIsoDate(endDate, 1);
-  const candidates = (await fetchSportsDBTeamPageEventCandidates(team))
-    .filter(candidate => candidate.dateEvent >= minDate && candidate.dateEvent <= maxDate)
-    .slice(0, 10);
-
-  if (candidates.length === 0) return [];
-  const eventLists = await Promise.all(
-    candidates.map(candidate => sdbFetch(`lookupevent.php?id=${candidate.idEvent}`))
-  );
-  return eventLists.flat();
 }
 
 function normalizeSportsDBTeamName(value: string | undefined): string {
@@ -1368,12 +1396,18 @@ async function fetchSportsDBTeamFeed(
   endDate: string,
   timeZone: string
 ): Promise<MatchEvent[]> {
-  const allCalls: Promise<SportsDBEvent[]>[] = [
-    sdbFetch(`eventsnext.php?id=${team.sportsdbTeamId}`),
-    sdbFetch(`eventslast.php?id=${team.sportsdbTeamId}`, 'results'),
-    fetchSportsDBTeamPageEvents(team, startDate, endDate),
-  ];
-  const allRaw = (await Promise.all(allCalls)).flat();
+  const minDate = offsetIsoDate(startDate, -1);
+  const maxDate = offsetIsoDate(endDate, 1);
+  let allRaw = (await fetchSportsDBTeamPageEvents(team))
+    .filter(event => event.dateEvent >= minDate && event.dateEvent <= maxDate);
+
+  if (allRaw.length === 0) {
+    allRaw = (await Promise.all([
+      sdbFetch(`eventsnext.php?id=${team.sportsdbTeamId}`),
+      sdbFetch(`eventslast.php?id=${team.sportsdbTeamId}`, 'results'),
+    ])).flat();
+  }
+
   const teamName = normalizeSportsDBTeamName(team.teamName);
   const seen = new Set<string>();
   const deduped = allRaw.filter(event => {
@@ -1875,7 +1909,19 @@ async function fetchMotoGPOfficial(
 async function fetchAllSportsDB(startDate: string, endDate: string, timeZone: string): Promise<MatchEvent[]> {
   const results: MatchEvent[] = [];
 
-  // Phase 1: Cambodian leagues and team feeds use targeted fan-out strategies — run them first
+  // Phase 1: Cambodian team feeds use cached team-page rows first. This avoids
+  // SportsDB API rate limits and catches friendlies omitted by eventsnext.php.
+  for (const team of SPORTSDB_TEAM_FEEDS) {
+    try {
+      const events = await fetchSportsDBTeamFeed(team, startDate, endDate, timeZone);
+      results.push(...events);
+    } catch (err) {
+      console.warn(`[SportsDB-Team] ${team.label} fetch failed:`, err);
+    }
+    await sleep(100);
+  }
+
+  // Phase 2: Cambodian leagues use heavier fan-out strategies.
   const cambodianLeagues = SPORTSDB_ONLY_LEAGUES.filter(l => l.id === 'soccer-cpl' || l.id === 'soccer-hun-sen-cup');
   for (const league of cambodianLeagues) {
     try {
@@ -1887,17 +1933,7 @@ async function fetchAllSportsDB(startDate: string, endDate: string, timeZone: st
     await sleep(150);
   }
 
-  for (const team of SPORTSDB_TEAM_FEEDS) {
-    try {
-      const events = await fetchSportsDBTeamFeed(team, startDate, endDate, timeZone);
-      results.push(...events);
-    } catch (err) {
-      console.warn(`[SportsDB-Team] ${team.label} fetch failed:`, err);
-    }
-    await sleep(100);
-  }
-
-  // Phase 2: Remaining leagues in batches (each uses ≤2-4 API calls)
+  // Phase 3: Remaining leagues in batches (each uses ≤2-4 API calls)
   // This avoids overwhelming TheSportsDB's rate limiter.
   const otherLeagues = SPORTSDB_ONLY_LEAGUES.filter(l => l.id !== 'soccer-cpl' && l.id !== 'soccer-hun-sen-cup');
   const BATCH_SIZE = 5;

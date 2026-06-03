@@ -11,3 +11,8 @@
 - **The Error:** The first mobile calendar fix did not appear on the live iPhone embed, and the calendar tab still had dead space after switching from the taller list view.
 - **The Mistake:** Fixed the iframe renderer but did not remove the WordPress wrapper's stale layout prefetch and hard-coded `480px` tab-switch height; also measured iframe height from `documentElement.scrollHeight`, which can preserve the old viewport height instead of shrinking to the new content.
 - **The Rule:** For iframe UI fixes, update both the embedded document and the parent wrapper. Measure the actual content root for auto-height, remove stale prefetch/reset scripts, and verify the plugin build/release path when PHP wrappers change.
+
+### 2026-06-03
+- **The Error:** Cambodia National Team fixtures were added from SportsDB source probes but did not appear in the actual `/api/events` response for June 3-6.
+- **The Mistake:** Verified direct SportsDB endpoints and a standalone script, but did not test the integrated route; the route called team JSON endpoints after heavy SportsDB fan-outs, hit 429 rate limits, and `sdbFetch` silently returned empty arrays.
+- **The Rule:** For SportsDB additions, always verify the real `/api/events` response for the requested date window. Avoid adding extra JSON API calls behind heavy fan-outs; prefer cached page-derived data or existing cached endpoints, and log 429s instead of silently swallowing them.
