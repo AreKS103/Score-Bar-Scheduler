@@ -107,6 +107,8 @@ export const SPORTS_CONFIG: SportConfig[] = [
   { id: 'soccer-copam',          label: 'Copa Libertadores',                  category: 'Football',    espnSlug: 'soccer/conmebol.libertadores', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/26.png' },
   { id: 'soccer-cpl',            label: 'Cambodian Premier League',           category: 'Football',    espnSlug: null,                        sportsdbId: '4793', logo: '/CPL.png', publishLogo: 'https://r2.thesportsdb.com/images/media/league/badge/fdhux61655121747.png' },
   { id: 'soccer-hun-sen-cup',    label: 'Cambodian Hun Sen Cup',              category: 'Football',    espnSlug: null,                        sportsdbId: '5859', logo: 'https://r2.thesportsdb.com/images/media/league/badge/4motr51774278480.png' },
+  { id: 'soccer-cambodia-national-team', label: 'Cambodia National Team',      category: 'Football',    espnSlug: null,                        sportsdbTeamId: '140140', logo: 'https://r2.thesportsdb.com/images/media/team/badge/xie69i1742101652.png' },
+  { id: 'soccer-national-defense', label: 'National Defense',                  category: 'Football',    espnSlug: null,                        sportsdbTeamId: '139405', logo: 'https://r2.thesportsdb.com/images/media/team/badge/qg6cbf1583341501.png' },
 
   // ── Basketball ─────────────────────────────────────────────────────────────
   { id: 'basketball-nba',        label: 'NBA',                                category: 'Basketball',  espnSlug: 'basketball/nba',            logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/nba.png' },
@@ -141,7 +143,7 @@ export const SPORTS_CONFIG: SportConfig[] = [
   // ── Rugby Union ────────────────────────────────────────────────────────────
   { id: 'rugby-superrugby',      label: 'Super Rugby Pacific',                category: 'Rugby',       espnSlug: 'rugby/242041', sportsdbId: '4401', logo: '/Super_Rugby_Pacific_logo.png' },
   { id: 'rugby-sixnations',      label: 'Six Nations',                        category: 'Rugby',       espnSlug: 'rugby/180659',              logo: 'https://r2.thesportsdb.com/images/media/league/badge/7h1wr91738670253.png' },
-  { id: 'rugby-premship',        label: 'Premiership Rugby',                  category: 'Rugby',       espnSlug: 'rugby/267979',              logo: 'https://media-cdn.cortextech.io/0708621a-5825-46bf-98c2-33b9e4f7c4fb.png' },
+  { id: 'rugby-premship',        label: 'Premiership Rugby',                  category: 'Rugby',       espnSlug: 'rugby/267979',              logo: '/league-logos/rugby-premship.webp' },
   { id: 'rugby-top14',           label: 'Top 14',                             category: 'Rugby',       espnSlug: 'rugby/270559',              logo: 'https://r2.thesportsdb.com/images/media/league/badge/xrsqtw1452903237.png' },
   { id: 'rugby-urc',             label: 'United Rugby Championship',          category: 'Rugby',       espnSlug: 'rugby/270557',              logo: 'https://r2.thesportsdb.com/images/media/league/badge/o6dhfo1716481482.png' },
   { id: 'rugby-champscup',       label: 'Champions Cup',                      category: 'Rugby',       espnSlug: 'rugby/271937',              logo: 'https://r2.thesportsdb.com/images/media/league/badge/kohne11716546580.png' },
@@ -225,6 +227,8 @@ export const FOOTBALL_LEAGUE_ORDER = [
   'soccer-asian-cup-women',
   'soccer-copam',
   'soccer-hun-sen-cup',
+  'soccer-cambodia-national-team',
+  'soccer-national-defense',
 ];
 
 /** Category logo URLs — used in sidebar instead of emojis */
@@ -281,6 +285,8 @@ export const LEAGUE_SHORT: Record<string, string> = {
   'Copa Libertadores': 'COP',
   'Cambodian Premier League': 'CPL',
   'Cambodian Hun Sen Cup': 'HSC',
+  'Cambodia National Team': 'CAM',
+  'National Defense': 'NDF',
   'NBA': 'NBA',
   'WNBA': 'WNBA',
   "NCAA Men's Basketball": 'NCAAM',
@@ -328,7 +334,7 @@ export const LEAGUE_POPULARITY: Record<string, number> = {
   'L1F': 90, 'UEL': 88, 'COP': 85, 'UECL': 82, 'FAC': 80,
   'EFL': 70, 'CC': 68, 'MLS': 65, 'SPFL': 60, 'ERE': 58,
   'SPL': 55, 'ALE': 50, 'JLG': 48, 'AFCE': 45, 'AFC2': 40,
-  'AFCL': 38, 'AAC': 42, 'AACW': 35, 'CPL': 30, 'HSC': 28, 'L1E': 55,
+  'AFCL': 38, 'AAC': 42, 'AACW': 35, 'CPL': 30, 'HSC': 28, 'CAM': 32, 'NDF': 24, 'L1E': 55,
   // Basketball
   'NBA': 90, 'NCAAM': 65, 'WNBA': 55, 'NCAAW': 50,
   // American Football
@@ -367,7 +373,7 @@ export const LEAGUE_MAX_PICKS: Record<string, number> = {
   // ── Tier 2: Good leagues — moderate cap ─────────────────────────────────
   'EFL': 10, 'CC': 10, 'MLS': 15, 'SPFL': 8, 'ERE': 10,
   'SPL': 8, 'ALE': 8, 'JLG': 8, 'AFCE': 8, 'AFC2': 6,
-  'AFCL': 6, 'AAC': 6, 'AACW': 6, 'CPL': 6, 'HSC': 6, 'L1E': 5,
+  'AFCL': 6, 'AAC': 6, 'AACW': 6, 'CPL': 6, 'HSC': 6, 'CAM': 6, 'NDF': 4, 'L1E': 5,
   // ── Tier 3: High-volume US sports — tight cap ──────────────────────────
   'NBA': 8, 'NCAAM': 6, 'WNBA': 6, 'NCAAW': 4,
   'NFL': 12, 'NCAAF': 8,

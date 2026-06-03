@@ -238,84 +238,229 @@ if (!function_exists('schedule_banner_is_local_app')) {
     }
 }
 
+if (!function_exists('schedule_banner_public_key_from_api_key')) {
+    function schedule_banner_public_key_from_api_key($api_key) {
+        if (function_exists('schedule_public_embed_key_from_api_key')) {
+            return schedule_public_embed_key_from_api_key($api_key);
+        }
+        $api_key = trim((string) $api_key);
+        if ($api_key === '') return '';
+        return preg_match('/^[0-9a-f]{64}$/', $api_key) ? $api_key : hash('sha256', $api_key);
+    }
+}
+
+if (!function_exists('schedule_banner_public_key_candidates')) {
+    function schedule_banner_public_key_candidates() {
+        if (function_exists('schedule_get_public_embed_key_candidates')) {
+            return schedule_get_public_embed_key_candidates();
+        }
+
+        $embed_token = trim((string) get_option('schedule_embed_token', ''));
+        $api_key     = trim((string) get_option('schedule_api_key', ''));
+        $candidates  = [];
+        $seen        = [];
+
+        $add = function ($label, $key) use (&$candidates, &$seen) {
+            $key = trim((string) $key);
+            if ($key === '' || isset($seen[$key])) return;
+            $seen[$key] = true;
+            $candidates[] = ['label' => $label, 'key' => $key];
+        };
+
+        $add('embed_token', $embed_token);
+        $add('api_key_public_hash', schedule_banner_public_key_from_api_key($api_key));
+        return $candidates;
+    }
+}
+
+if (!function_exists('schedule_banner_payload_count')) {
+    function schedule_banner_payload_count($payload) {
+        return (is_array($payload) && isset($payload['items']) && is_array($payload['items'])) ? count($payload['items']) : 0;
+    }
+}
+
+if (!function_exists('schedule_banner_payload_score')) {
+    function schedule_banner_payload_score($payload) {
+        if (!is_array($payload)) return -1;
+        $items = schedule_banner_payload_count($payload);
+        if ($items > 0) return 1000 + $items;
+        $diag = isset($payload['diagnostics']) && is_array($payload['diagnostics']) ? $payload['diagnostics'] : [];
+        if (!empty($diag['scheduleFound'])) return 500;
+        if (!empty($diag['visibleTargets']) && is_array($diag['visibleTargets'])) return 200;
+        return 100;
+    }
+}
+
+if (!function_exists('schedule_banner_apply_payload_diagnostics')) {
+    function schedule_banner_apply_payload_diagnostics(&$diagnostics, $payload, $cache, $http_code, $label) {
+        $diagnostics['status'] = 'ok';
+        $diagnostics['cache'] = $cache;
+        $diagnostics['http_code'] = $http_code;
+        $diagnostics['items'] = schedule_banner_payload_count($payload);
+        $diagnostics['source'] = isset($payload['source']) ? (string) $payload['source'] : '';
+        $diagnostics['reason'] = isset($payload['reason']) ? (string) $payload['reason'] : '';
+        $diagnostics['total_featured'] = isset($payload['totalFeatured']) ? (int) $payload['totalFeatured'] : null;
+        $diagnostics['windowed_featured'] = isset($payload['windowedFeatured']) ? (int) $payload['windowedFeatured'] : null;
+        $diagnostics['published_at'] = isset($payload['publishedAt']) ? (string) $payload['publishedAt'] : '';
+        $diagnostics['serial'] = isset($payload['serial']) ? (string) $payload['serial'] : '';
+        $diagnostics['key_label'] = $label;
+
+        $api_diag = isset($payload['diagnostics']) && is_array($payload['diagnostics']) ? $payload['diagnostics'] : [];
+        $diagnostics['api'] = $api_diag;
+        $diagnostics['schedule_found'] = !empty($api_diag['scheduleFound']);
+        $diagnostics['schedule_events'] = isset($api_diag['scheduleEventCount']) ? (int) $api_diag['scheduleEventCount'] : null;
+        $diagnostics['selected_count'] = isset($api_diag['selectedCount']) ? (int) $api_diag['selectedCount'] : null;
+        $diagnostics['hint'] = isset($api_diag['hint']) ? (string) $api_diag['hint'] : '';
+        $diagnostics['visible_targets'] = isset($api_diag['visibleTargets']) && is_array($api_diag['visibleTargets']) ? $api_diag['visibleTargets'] : [];
+    }
+}
+
 if (!function_exists('schedule_banner_fetch_payload')) {
     function schedule_banner_fetch_payload($settings, $force = false, &$diagnostics = null) {
-        $key = schedule_banner_get_public_key();
+        $candidates = schedule_banner_public_key_candidates();
         $diagnostics = [
             'status' => 'not_configured',
             'cache' => 'none',
             'http_code' => null,
             'error' => '',
             'items' => null,
+            'source' => '',
+            'reason' => '',
+            'total_featured' => null,
+            'windowed_featured' => null,
             'published_at' => '',
             'serial' => '',
+            'key_label' => '',
+            'attempts' => [],
+            'api' => [],
+            'schedule_found' => null,
+            'schedule_events' => null,
+            'selected_count' => null,
+            'hint' => '',
+            'visible_targets' => [],
         ];
-        if (empty($key) || empty($settings['embed_id'])) return null;
+        if (empty($candidates) || empty($settings['embed_id'])) return null;
 
         $app = rtrim(schedule_get_app_domain(), '/');
         $tz = schedule_banner_site_timezone();
         $range = isset($settings['range_mode']) && $settings['range_mode'] === 'week' ? 'week' : 'today';
-        $cache_key = 'schedule_banner_last_' . md5($app . '|' . $key . '|' . $settings['embed_id'] . '|' . $tz . '|' . $range);
-        $fresh_key = 'schedule_banner_fresh_' . md5($app . '|' . $key . '|' . $settings['embed_id'] . '|' . $tz . '|' . $range);
-        $fresh = get_transient($fresh_key);
-        if (!$force && is_array($fresh)) {
-            $diagnostics['status'] = 'ok';
-            $diagnostics['cache'] = 'fresh';
-            $diagnostics['items'] = isset($fresh['items']) && is_array($fresh['items']) ? count($fresh['items']) : 0;
-            $diagnostics['published_at'] = isset($fresh['publishedAt']) ? (string) $fresh['publishedAt'] : '';
-            $diagnostics['serial'] = isset($fresh['serial']) ? (string) $fresh['serial'] : '';
-            return $fresh;
+
+        $best_payload = null;
+        $best_diagnostics = null;
+        $best_score = -1;
+
+        foreach ($candidates as $candidate) {
+            $key = $candidate['key'] ?? '';
+            $label = $candidate['label'] ?? 'token';
+            if ($key === '') continue;
+
+            $cache_key = 'schedule_banner_last_' . md5($app . '|' . $key . '|' . $settings['embed_id'] . '|' . $tz . '|' . $range);
+            $fresh_key = 'schedule_banner_fresh_' . md5($app . '|' . $key . '|' . $settings['embed_id'] . '|' . $tz . '|' . $range);
+            $attempt = ['key_label' => $label, 'status' => 'not_checked', 'cache' => 'none', 'items' => null, 'reason' => ''];
+
+            $body = null;
+            if (!$force) {
+                $fresh = get_transient($fresh_key);
+                if (is_array($fresh)) {
+                    $body = $fresh;
+                    $attempt['status'] = 'ok';
+                    $attempt['cache'] = 'fresh';
+                }
+            }
+
+            if (!is_array($body)) {
+                $query = [
+                    'apiKey'  => $key,
+                    'embedId' => $settings['embed_id'],
+                    'tz'      => $tz,
+                    'range'   => $range,
+                ];
+                if ($force) $query['_'] = time();
+
+                $url = add_query_arg($query, $app . '/api/banner');
+                $response = wp_remote_get($url, [
+                    'timeout'   => 4,
+                    'redirection' => 2,
+                    'sslverify' => !schedule_banner_is_local_app($app),
+                    'headers'   => ['Accept' => 'application/json'],
+                ]);
+
+                if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
+                    $body = json_decode(wp_remote_retrieve_body($response), true);
+                    if (is_array($body)) {
+                        set_transient($fresh_key, $body, MINUTE_IN_SECONDS);
+                        set_transient($cache_key, $body, 10 * MINUTE_IN_SECONDS);
+                        $attempt['status'] = 'ok';
+                        $attempt['cache'] = 'live';
+                    }
+                }
+
+                if (!is_array($body)) {
+                    if (is_wp_error($response)) {
+                        $attempt['status'] = 'request_error';
+                        $attempt['error'] = $response->get_error_message();
+                    } else {
+                        $attempt['status'] = 'http_error';
+                        $attempt['http_code'] = (int) wp_remote_retrieve_response_code($response);
+                        $attempt['error'] = trim(wp_remote_retrieve_response_message($response));
+                    }
+
+                    $fallback = get_transient($cache_key);
+                    if (is_array($fallback)) {
+                        $body = $fallback;
+                        $attempt['cache'] = 'stale';
+                    }
+                }
+            }
+
+            if (is_array($body)) {
+                $attempt['items'] = schedule_banner_payload_count($body);
+                $attempt['reason'] = isset($body['reason']) ? (string) $body['reason'] : '';
+                if (isset($body['diagnostics']) && is_array($body['diagnostics'])) {
+                    $attempt['schedule_found'] = !empty($body['diagnostics']['scheduleFound']);
+                    $attempt['featured'] = isset($body['diagnostics']['featuredCount']) ? (int) $body['diagnostics']['featuredCount'] : null;
+                    $attempt['visible_targets'] = isset($body['diagnostics']['visibleTargets']) && is_array($body['diagnostics']['visibleTargets']) ? $body['diagnostics']['visibleTargets'] : [];
+                }
+
+                $score = schedule_banner_payload_score($body);
+                if ($score > $best_score) {
+                    $best_score = $score;
+                    $best_payload = $body;
+                    $best_diagnostics = ['payload' => $body, 'cache' => $attempt['cache'], 'http_code' => $attempt['http_code'] ?? 200, 'label' => $label];
+                }
+
+                if ($attempt['items'] > 0) {
+                    $diagnostics['attempts'][] = $attempt;
+                    break;
+                }
+            }
+
+            $diagnostics['attempts'][] = $attempt;
         }
 
-        $url = add_query_arg([
-            'apiKey'  => $key,
-            'embedId' => $settings['embed_id'],
-            'tz'      => $tz,
-            'range'   => $range,
-        ], $app . '/api/banner');
+        if (is_array($best_payload) && is_array($best_diagnostics)) {
+            schedule_banner_apply_payload_diagnostics($diagnostics, $best_diagnostics['payload'], $best_diagnostics['cache'], $best_diagnostics['http_code'], $best_diagnostics['label']);
+            return $best_payload;
+        }
 
-        $response = wp_remote_get($url, [
-            'timeout'   => 2,
-            'redirection' => 2,
-            'sslverify' => !schedule_banner_is_local_app($app),
-            'headers'   => [
-                'Accept' => 'application/json',
-            ],
-        ]);
+        $diagnostics['status'] = 'request_error';
+        $diagnostics['error'] = 'No banner API request returned usable JSON.';
+        return null;
+    }
+}
 
-        if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
-            $body = json_decode(wp_remote_retrieve_body($response), true);
-            if (is_array($body)) {
-                set_transient($fresh_key, $body, MINUTE_IN_SECONDS);
-                set_transient($cache_key, $body, 10 * MINUTE_IN_SECONDS);
-                $diagnostics['status'] = 'ok';
-                $diagnostics['cache'] = 'live';
-                $diagnostics['http_code'] = 200;
-                $diagnostics['items'] = isset($body['items']) && is_array($body['items']) ? count($body['items']) : 0;
-                $diagnostics['published_at'] = isset($body['publishedAt']) ? (string) $body['publishedAt'] : '';
-                $diagnostics['serial'] = isset($body['serial']) ? (string) $body['serial'] : '';
-                return $body;
+if (!function_exists('schedule_banner_resolve_public_key')) {
+    function schedule_banner_resolve_public_key($settings) {
+        $fetch = null;
+        schedule_banner_fetch_payload($settings, false, $fetch);
+        $label = is_array($fetch) && !empty($fetch['key_label']) ? (string) $fetch['key_label'] : '';
+        $candidates = schedule_banner_public_key_candidates();
+        foreach ($candidates as $candidate) {
+            if (($candidate['label'] ?? '') === $label && !empty($candidate['key'])) {
+                return $candidate['key'];
             }
         }
-
-        if (is_wp_error($response)) {
-            $diagnostics['status'] = 'request_error';
-            $diagnostics['error'] = $response->get_error_message();
-        } else {
-            $diagnostics['status'] = 'http_error';
-            $diagnostics['http_code'] = (int) wp_remote_retrieve_response_code($response);
-            $diagnostics['error'] = trim(wp_remote_retrieve_response_message($response));
-        }
-
-        $fallback = get_transient($cache_key);
-        if (is_array($fallback)) {
-            $diagnostics['cache'] = 'stale';
-            $diagnostics['items'] = isset($fallback['items']) && is_array($fallback['items']) ? count($fallback['items']) : 0;
-            $diagnostics['published_at'] = isset($fallback['publishedAt']) ? (string) $fallback['publishedAt'] : '';
-            $diagnostics['serial'] = isset($fallback['serial']) ? (string) $fallback['serial'] : '';
-            return $fallback;
-        }
-        return null;
+        return !empty($candidates[0]['key']) ? $candidates[0]['key'] : '';
     }
 }
 
@@ -355,7 +500,7 @@ if (!function_exists('schedule_banner_fallback_items')) {
 if (!function_exists('schedule_banner_admin_diagnostics')) {
     function schedule_banner_admin_diagnostics($settings) {
         $fetch = null;
-        $payload = schedule_banner_fetch_payload($settings, false, $fetch);
+        $payload = schedule_banner_fetch_payload($settings, true, $fetch);
         $items = (is_array($payload) && isset($payload['items']) && is_array($payload['items'])) ? $payload['items'] : [];
         $has_token = !empty(schedule_banner_get_public_key());
         $has_embed = !empty($settings['embed_id']);
@@ -368,8 +513,12 @@ if (!function_exists('schedule_banner_admin_diagnostics')) {
             $verdict = 'Will not render: no token/embed is selected and fallback text is empty.';
         } elseif (count($items) > 0) {
             $verdict = 'Will render ' . count($items) . ' highlighted item(s).';
+        } elseif (($fetch['reason'] ?? '') === 'schedule_not_found_for_token_scope') {
+            $verdict = 'Will render fallback text because the token WordPress is using cannot see a published schedule for this selected embed.';
+        } elseif (!empty($fetch['schedule_found']) && (int) ($fetch['schedule_events'] ?? 0) > 0 && (int) ($fetch['total_featured'] ?? 0) === 0) {
+            $verdict = 'Will render fallback text because the published schedule was found, but none of its snapshot events are starred as highlights.';
         } elseif ($has_fallback) {
-            $verdict = 'Will render fallback text because the selected embed has no highlighted items in the current window.';
+            $verdict = 'Will render fallback text because the API returned no banner items for the selected embed.';
         } else {
             $verdict = 'Will hide: the API returned no highlighted items and fallback text is empty.';
         }
@@ -395,6 +544,17 @@ if (!function_exists('schedule_banner_item_text')) {
     }
 }
 
+if (!function_exists('schedule_banner_logo_class')) {
+    function schedule_banner_logo_class($logo) {
+        $class = 'sb-logo';
+        $src = strtolower((string) $logo);
+        if (strpos($src, 'rugby-premship') !== false || strpos($src, '0708621a-5825-46bf-98c2-33b9e4f7c4fb') !== false) {
+            $class .= ' sb-logo-wordmark';
+        }
+        return $class;
+    }
+}
+
 if (!function_exists('schedule_banner_render_slide_html')) {
     function schedule_banner_render_slide_html($item, $settings, $active = false, $attrs = '') {
         if (!is_array($item)) return '';
@@ -406,23 +566,26 @@ if (!function_exists('schedule_banner_render_slide_html')) {
         $matchup = schedule_banner_item_text($item, 'matchup');
         if ($matchup === '') $matchup = schedule_banner_item_text($item, 'label');
         if ($matchup === '') $matchup = 'Featured match';
+        $logo_class = schedule_banner_logo_class($logo);
 
         ob_start();
         ?>
         <div class="sb-slide<?php echo $active ? ' sb-active' : ''; ?>"<?php echo $attrs !== '' ? ' ' . $attrs : ''; ?>>
             <?php if (!empty($settings['show_logos']) && $logo !== ''): ?>
-                <img class="sb-logo" src="<?php echo esc_url($logo); ?>" alt="" loading="eager" decoding="async" />
+                <img class="<?php echo esc_attr($logo_class); ?>" src="<?php echo esc_url($logo); ?>" alt="" loading="eager" decoding="async" />
             <?php endif; ?>
-            <?php if (!empty($settings['show_time']) && schedule_banner_item_text($item, 'time') !== ''): ?>
-                <span class="sb-time"><?php echo esc_html(schedule_banner_item_text($item, 'time')); ?></span>
-            <?php endif; ?>
-            <?php if (!empty($settings['show_time']) && schedule_banner_item_text($item, 'time') !== '' && $sport !== ''): ?>
-                <span class="sb-separator">&middot;</span>
-            <?php endif; ?>
-            <?php if ($sport !== ''): ?>
-                <span class="sb-sport"><?php echo esc_html($sport); ?>:</span>
-            <?php endif; ?>
-            <span class="sb-matchup"><?php echo esc_html($matchup); ?></span>
+            <span class="sb-copy">
+                <?php if (!empty($settings['show_time']) && schedule_banner_item_text($item, 'time') !== ''): ?>
+                    <span class="sb-time"><?php echo esc_html(schedule_banner_item_text($item, 'time')); ?></span>
+                <?php endif; ?>
+                <?php if (!empty($settings['show_time']) && schedule_banner_item_text($item, 'time') !== '' && $sport !== ''): ?>
+                    <span class="sb-separator">&middot;</span>
+                <?php endif; ?>
+                <?php if ($sport !== ''): ?>
+                    <span class="sb-sport"><?php echo esc_html($sport); ?>:</span>
+                <?php endif; ?>
+                <span class="sb-matchup"><?php echo esc_html($matchup); ?></span>
+            </span>
         </div>
         <?php
         return trim(ob_get_clean());
@@ -461,9 +624,8 @@ if (!function_exists('schedule_banner_render_inner_html')) {
 
 if (!function_exists('schedule_banner_get_public_key')) {
     function schedule_banner_get_public_key() {
-        $embed_token = get_option('schedule_embed_token', '');
-        $api_key     = get_option('schedule_api_key', '');
-        return !empty($embed_token) ? $embed_token : $api_key;
+        $candidates = schedule_banner_public_key_candidates();
+        return !empty($candidates[0]['key']) ? $candidates[0]['key'] : '';
     }
 }
 
@@ -490,7 +652,7 @@ if (!function_exists('schedule_banner_register_frontend_script')) {
 
 if (!function_exists('schedule_banner_enqueue_instance')) {
     function schedule_banner_enqueue_instance($settings, $target_id = 'sb-banner') {
-        $key = schedule_banner_get_public_key();
+        $key = schedule_banner_resolve_public_key($settings);
         if ((empty($key) || empty($settings['embed_id'])) && empty($settings['fallback_text'])) return false;
 
         schedule_banner_register_frontend_script();
@@ -570,15 +732,17 @@ if (!function_exists('schedule_banner_render_instance')) {
     #<?php echo esc_attr($target_id); ?>{<?php echo $pos_css; ?>width:100%;background:<?php echo esc_attr($bg); ?>;color:<?php echo esc_attr($fg); ?>;font-family:<?php echo $font; ?>;font-size:<?php echo $fs; ?>px;font-style:<?php echo esc_attr($font_style); ?>;line-height:1.2;overflow:hidden;display:none}
 #<?php echo esc_attr($target_id); ?>.sb-ready{display:block}
 #<?php echo esc_attr($target_id); ?> .sb-inner{display:flex;align-items:center;min-height:<?php echo max(34, $fs + 22); ?>px;background:<?php echo esc_attr($bg); ?>;padding:4px 0;box-sizing:border-box}
-#<?php echo esc_attr($target_id); ?> .sb-prefix{flex:0 0 auto;display:flex;align-items:center;gap:8px;color:<?php echo esc_attr($accent); ?>;font-weight:<?php echo $accent_weight; ?>;letter-spacing:.04em;text-transform:<?php echo $upper; ?>;text-decoration:<?php echo esc_attr($text_decoration); ?>;padding:0 14px 0 18px;white-space:nowrap}
+#<?php echo esc_attr($target_id); ?> .sb-prefix{flex:0 0 auto;display:flex;align-items:center;gap:8px;color:<?php echo esc_attr($accent); ?>;font-weight:<?php echo $accent_weight; ?>;letter-spacing:0;text-transform:<?php echo $upper; ?>;text-decoration:<?php echo esc_attr($text_decoration); ?>;padding:0 14px 0 18px;white-space:nowrap}
 #<?php echo esc_attr($target_id); ?> .sb-track{position:relative;flex:1 1 auto;align-self:stretch;min-width:0;overflow:hidden}
-#<?php echo esc_attr($target_id); ?> .sb-slide{position:absolute;inset:0;display:flex;align-items:center;gap:9px;padding:0 16px 0 4px;white-space:nowrap;text-transform:<?php echo $upper; ?>;font-weight:<?php echo $font_weight; ?>;text-decoration:<?php echo esc_attr($text_decoration); ?>;letter-spacing:.02em;opacity:0;pointer-events:none;will-change:transform}
+#<?php echo esc_attr($target_id); ?> .sb-slide{position:absolute;inset:0;display:flex;align-items:center;gap:9px;min-width:0;padding:0 16px 0 4px;white-space:nowrap;text-transform:<?php echo $upper; ?>;font-weight:<?php echo $font_weight; ?>;text-decoration:<?php echo esc_attr($text_decoration); ?>;letter-spacing:0;opacity:0;pointer-events:none;will-change:transform;box-sizing:border-box}
 #<?php echo esc_attr($target_id); ?> .sb-slide.sb-active{opacity:1;pointer-events:auto}
+#<?php echo esc_attr($target_id); ?> .sb-copy{display:block;flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.25}
 #<?php echo esc_attr($target_id); ?> .sb-time,#<?php echo esc_attr($target_id); ?> .sb-sport{font-weight:<?php echo $accent_weight; ?>;color:<?php echo esc_attr($accent); ?>}
 #<?php echo esc_attr($target_id); ?> .sb-separator{color:<?php echo esc_attr($accent); ?>;opacity:.75}
 #<?php echo esc_attr($target_id); ?> .sb-matchup{color:<?php echo esc_attr($fg); ?>}
 #<?php echo esc_attr($target_id); ?> .sb-round{color:<?php echo esc_attr($fg); ?>;opacity:.75}
 #<?php echo esc_attr($target_id); ?> .sb-logo{height:<?php echo $logo_height; ?>px;width:auto;max-width:<?php echo $logo_max_width; ?>px;object-fit:contain;vertical-align:middle;flex:0 0 auto;background:<?php echo esc_attr($logo_bg); ?>;border-radius:<?php echo esc_attr($logo_radius); ?>;padding:<?php echo $logo_padding; ?>px;box-sizing:border-box}
+#<?php echo esc_attr($target_id); ?> .sb-logo-wordmark{width:<?php echo $logo_height; ?>px;max-width:<?php echo $logo_height; ?>px;object-fit:contain}
 #<?php echo esc_attr($target_id); ?>.sb-anim-slide .sb-slide{transform:translateY(100%);transition:transform .32s cubic-bezier(.2,.85,.2,1)}
 #<?php echo esc_attr($target_id); ?>.sb-anim-slide .sb-slide.sb-active{transform:translateY(0)}
 #<?php echo esc_attr($target_id); ?>.sb-anim-slide .sb-slide.sb-leaving{transform:translateY(-100%);opacity:1}
@@ -595,7 +759,9 @@ if (!function_exists('schedule_banner_render_instance')) {
 <?php for ($i = 1; $i <= $item_count; $i++): ?>#<?php echo esc_attr($target_id); ?>:not(.sb-reel-mode):not(.sb-js-ready) .sb-slide:nth-child(<?php echo $i; ?>){animation-delay:<?php echo esc_attr((($i - 1) * $fallback_interval) - $fallback_motion_seconds); ?>s}
 <?php endfor; ?>
 <?php endif; ?>
-@media (max-width:600px){#<?php echo esc_attr($target_id); ?>{font-size:<?php echo max(11, $fs - 2); ?>px}#<?php echo esc_attr($target_id); ?> .sb-prefix{padding:0 10px 0 12px}#<?php echo esc_attr($target_id); ?> .sb-slide{gap:7px;padding-right:10px}}
+@media (max-width:1180px),(hover:none) and (pointer:coarse){#<?php echo esc_attr($target_id); ?> .sb-prefix{display:none}#<?php echo esc_attr($target_id); ?> .sb-slide{padding-left:16px}}
+@media (max-width:600px){#<?php echo esc_attr($target_id); ?> .sb-inner{align-items:flex-start;min-height:calc(2.5em + 12px);padding:3px 0}#<?php echo esc_attr($target_id); ?> .sb-slide{align-items:flex-start;gap:6px;padding:4px 12px;white-space:normal}#<?php echo esc_attr($target_id); ?> .sb-copy{overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere}#<?php echo esc_attr($target_id); ?> .sb-logo{height:<?php echo min($logo_height, 28); ?>px;max-width:<?php echo min($logo_max_width, 92); ?>px;padding:<?php echo min($logo_padding, 3); ?>px}#<?php echo esc_attr($target_id); ?> .sb-logo-wordmark{width:<?php echo min($logo_height, 28); ?>px;max-width:<?php echo min($logo_height, 28); ?>px}}
+@media (max-width:420px){#<?php echo esc_attr($target_id); ?> .sb-inner{min-height:calc(2.5em + 12px)}}
 @media (prefers-reduced-motion:reduce){#<?php echo esc_attr($target_id); ?> .sb-slide{transition:opacity .2s linear!important;transform:none!important}}
 </style>
 <div id="<?php echo esc_attr($target_id); ?>" class="<?php echo trim(($ready ? 'sb-ready' : '') . ($server_reel_mode ? ' sb-reel-mode' : '')); ?>" role="region" aria-label="<?php echo esc_attr($settings['prefix']); ?>" data-fixed="<?php echo $fixed ? '1' : '0'; ?>" data-serial="<?php echo esc_attr($serial); ?>"><?php echo $inner; ?></div>
@@ -695,7 +861,12 @@ if (!function_exists('schedule_banner_render_admin_page')) {
                     <li>Plugin version: <?php echo esc_html(SCHEDULE_PLUGIN_VERSION); ?></li>
                     <li>Enabled: <?php echo $diagnostics['enabled'] ? 'Yes' : 'No'; ?>; token connected: <?php echo $diagnostics['has_token'] ? 'Yes' : 'No'; ?>; selected embed: <?php echo $diagnostics['has_embed'] ? esc_html($diagnostics['embed_id']) : 'None'; ?>; fallback text: <?php echo $diagnostics['has_fallback'] ? 'Yes' : 'No'; ?></li>
                     <li>App endpoint: <?php echo esc_html($diagnostics['app']); ?>; match window: <?php echo esc_html($diagnostics['range']); ?></li>
-                    <li>API status: <?php echo esc_html($diagnostics['fetch']['status'] ?? 'not_checked'); ?><?php echo !empty($diagnostics['fetch']['http_code']) ? ' (' . esc_html((string) $diagnostics['fetch']['http_code']) . ')' : ''; ?>; cache: <?php echo esc_html($diagnostics['fetch']['cache'] ?? 'none'); ?>; returned items: <?php echo esc_html((string) ($diagnostics['fetch']['items'] ?? $diagnostics['items'])); ?></li>
+                    <li>API status: <?php echo esc_html($diagnostics['fetch']['status'] ?? 'not_checked'); ?><?php echo !empty($diagnostics['fetch']['http_code']) ? ' (' . esc_html((string) $diagnostics['fetch']['http_code']) . ')' : ''; ?>; cache: <?php echo esc_html($diagnostics['fetch']['cache'] ?? 'none'); ?>; token used: <?php echo esc_html($diagnostics['fetch']['key_label'] ?? 'none'); ?>; returned items: <?php echo esc_html((string) ($diagnostics['fetch']['items'] ?? $diagnostics['items'])); ?></li>
+                    <?php if (!empty($diagnostics['fetch']['reason'])): ?><li>API reason: <?php echo esc_html($diagnostics['fetch']['reason']); ?><?php echo !empty($diagnostics['fetch']['hint']) ? ' — ' . esc_html($diagnostics['fetch']['hint']) : ''; ?></li><?php endif; ?>
+                    <?php if (array_key_exists('schedule_found', $diagnostics['fetch'])): ?><li>Published schedule found: <?php echo !empty($diagnostics['fetch']['schedule_found']) ? 'Yes' : 'No'; ?>; snapshot events: <?php echo esc_html((string) ($diagnostics['fetch']['schedule_events'] ?? 0)); ?>; selected: <?php echo esc_html((string) ($diagnostics['fetch']['selected_count'] ?? 0)); ?>; featured: <?php echo esc_html((string) ($diagnostics['fetch']['total_featured'] ?? 0)); ?>; featured in current window: <?php echo esc_html((string) ($diagnostics['fetch']['windowed_featured'] ?? 0)); ?></li><?php endif; ?>
+                    <?php if (!empty($diagnostics['fetch']['visible_targets'])): ?><li>Visible published targets for this token: <?php echo esc_html(implode(', ', array_slice(array_map('strval', $diagnostics['fetch']['visible_targets']), 0, 8))); ?></li><?php endif; ?>
+                    <?php if (!empty($diagnostics['fetch']['attempts']) && is_array($diagnostics['fetch']['attempts'])): ?><li>Token attempts: <?php $parts = []; foreach ($diagnostics['fetch']['attempts'] as $attempt) { if (!is_array($attempt)) continue; $parts[] = trim((string) ($attempt['key_label'] ?? 'token')) . ' => ' . trim((string) ($attempt['status'] ?? 'unknown')) . '/' . trim((string) ($attempt['cache'] ?? 'none')) . ', items ' . (string) ($attempt['items'] ?? 'n/a') . (!empty($attempt['reason']) ? ', ' . trim((string) $attempt['reason']) : ''); } echo esc_html(implode(' | ', $parts)); ?></li><?php endif; ?>
+                    <?php if (!empty($diagnostics['fetch']['source'])): ?><li>Banner data source: <?php echo esc_html($diagnostics['fetch']['source']); ?></li><?php endif; ?>
                     <?php if (!empty($diagnostics['fetch']['error'])): ?><li>Last API error: <?php echo esc_html($diagnostics['fetch']['error']); ?></li><?php endif; ?>
                 </ul>
             </div>
@@ -711,6 +882,7 @@ if (!function_exists('schedule_banner_render_admin_page')) {
             .sb-banner-preview-logo img{display:block;width:auto;height:100%;max-width:100%;object-fit:contain}
             .sb-banner-preview-text{display:flex;align-items:center;gap:8px;font-weight:<?php echo (int) $s['font_weight']; ?>;white-space:nowrap;min-width:0}
             .sb-banner-preview-accent{color:<?php echo esc_attr($s['accent_color']); ?>;font-weight:<?php echo (int) $s['accent_weight']; ?>}
+            #sb-banner-preview-matchup{min-width:0;overflow-wrap:anywhere}
             .sb-color-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;max-width:760px}
             .sb-color-card{border:1px solid #dcdcde;border-radius:8px;padding:12px;background:#f6f7f7}
             .sb-color-title{display:block;font-weight:600;margin-bottom:8px;color:#1d2327}
@@ -722,7 +894,7 @@ if (!function_exists('schedule_banner_render_admin_page')) {
             .sb-inline-control input[type=range]{width:180px}
             .sb-compact-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 18px;max-width:760px}
             .sb-compact-grid label{display:block;font-weight:600;margin-bottom:4px;color:#1d2327}
-            @media (max-width:782px){.sb-color-row{grid-template-columns:1fr}.sb-banner-preview{display:block}.sb-banner-preview-prefix,.sb-banner-preview-text{min-height:38px}}
+            @media (max-width:782px){.sb-color-row{grid-template-columns:1fr}.sb-banner-preview{align-items:center;flex-wrap:wrap}.sb-banner-preview-prefix{display:none}.sb-banner-preview-text{flex:1 1 100%;flex-wrap:wrap;gap:4px 7px;min-height:0;white-space:normal}#sb-banner-preview-matchup{flex:1 1 100%}}
             </style>
 
             <form method="post" action="" class="sb-banner-form">
@@ -952,7 +1124,7 @@ if (!function_exists('schedule_banner_render_admin_page')) {
             var logoPaddingRange = document.getElementById('sb_logo_padding_range');
             var previewConfig = <?php echo wp_json_encode([
                 'app' => rtrim(schedule_get_app_domain(), '/'),
-                'token' => schedule_banner_get_public_key(),
+                'token' => schedule_banner_resolve_public_key($s),
                 'timeZone' => schedule_banner_site_timezone(),
             ], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT); ?>;
             var previewItems = [];

@@ -3,7 +3,6 @@ import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import type { MatchEvent } from '@/types';
 import { getOrgMemberIds } from '@/lib/supabase/org';
-import { refreshSnapshotEvents } from '@/lib/refreshSnapshotEvents';
 import { getEventDisplay } from '@/lib/eventDisplay';
 import { SPORTS_CONFIG } from '@/lib/config';
 
@@ -60,6 +59,34 @@ interface BannerItem {
 }
 
 type BannerRange = 'today' | 'week';
+type BannerItemSource = 'requested-window' | 'latest-published-snapshot' | 'none';
+
+interface BannerBuildResult {
+  items: BannerItem[];
+  source: BannerItemSource;
+  totalFeatured: number;
+  windowedFeatured: number;
+  dateWindow: { start: string; end: string };
+}
+
+interface BannerDiagnostics {
+  status: 'ok' | 'empty' | 'error';
+  reason: string;
+  requestedEmbedId: string;
+  resolvedEmbedTarget: string;
+  tokenUser: string;
+  orgMemberCount: number;
+  scheduleFound: boolean;
+  schedulePublishedAt: string;
+  scheduleRange: { start: string; end: string };
+  scheduleEventCount: number;
+  selectedCount: number;
+  featuredCount: number;
+  windowedFeaturedCount: number;
+  dateWindow: { start: string; end: string } | null;
+  visibleTargets: string[];
+  hint: string;
+}
 
 function publicOrigin(origin: string): string {
   return origin.replace('://0.0.0.0', '://localhost').replace('://[::]', '://localhost');
@@ -203,48 +230,75 @@ function bannerCacheHeaders(): Record<string, string> {
   };
 }
 
-/** Build the banner items from a published schedule's featured (starred) events. */
-function buildItems(events: MatchEvent[], origin: string, timeZone: string, range: BannerRange): BannerItem[] {
-  const window = bannerDateWindow(range, timeZone);
+function diagnosticFingerprint(value: string): string {
+  return crypto.createHash('sha1').update(value).digest('hex').slice(0, 8);
+}
 
-  return events
-    .filter((e) => {
-      if (!e || !e.isFeatured) return false;
-      const eventDate = eventDateForTimeZone(e as SnapshotEvent, timeZone);
-      return eventDate >= window.start && eventDate <= window.end;
-    })
-    .sort((a, b) => {
-      const eventA = a as SnapshotEvent;
-      const eventB = b as SnapshotEvent;
-      return eventDateForTimeZone(eventA, timeZone).localeCompare(eventDateForTimeZone(eventB, timeZone))
-        || textField(eventA, ['time', 'strTime']).localeCompare(textField(eventB, ['time', 'strTime']));
-    })
-    .map((e) => {
-      const event = e as SnapshotEvent;
-      const sport = textField(event, ['category', 'sport', 'sportLabel', 'leagueLabel']);
-      const league = normalizeLeagueName(textField(event, ['leagueLabel', 'league', 'strLeague', 'cardName', 'category']), event);
-      const { home, away, matchup } = buildMatchup(event);
-      const labelCore = league ? `${league}: ${matchup}` : matchup;
-      const rawLeagueLogo = normalizeLeagueLogo(
-        configuredLeagueLogo(event, league) || textField(event, ['leagueLogo', 'strLeagueBadge', 'strThumb']) || fallbackLeagueLogo(league, sport),
-        league,
-        sport,
-      );
-      return {
-        label: labelCore,
-        sport,
-        league,
-        matchup,
-        home,
-        away,
-        time: textField(event, ['time', 'strTime']),
-        date: eventDateForTimeZone(event, timeZone),
-        round: '',
-        leagueLogo: toAbsoluteAssetUrl(rawLeagueLogo, origin),
-        homeLogo: toAbsoluteAssetUrl(textField(event, ['homeLogo', 'homeTeamLogo', 'strHomeTeamBadge']), origin),
-        awayLogo: toAbsoluteAssetUrl(textField(event, ['awayLogo', 'awayTeamLogo', 'strAwayTeamBadge']), origin),
-      };
-    });
+function eventCounts(events: MatchEvent[]): { selected: number; featured: number } {
+  let selected = 0;
+  let featured = 0;
+  for (const event of events) {
+    if (!event) continue;
+    if (event.isSelected) selected += 1;
+    if (event.isFeatured) featured += 1;
+  }
+  return { selected, featured };
+}
+
+function compareBannerEvents(a: MatchEvent, b: MatchEvent, timeZone: string): number {
+  const eventA = a as SnapshotEvent;
+  const eventB = b as SnapshotEvent;
+  return eventDateForTimeZone(eventA, timeZone).localeCompare(eventDateForTimeZone(eventB, timeZone))
+    || textField(eventA, ['time', 'strTime']).localeCompare(textField(eventB, ['time', 'strTime']));
+}
+
+function toBannerItem(e: MatchEvent, origin: string, timeZone: string): BannerItem {
+  const event = e as SnapshotEvent;
+  const sport = textField(event, ['category', 'sport', 'sportLabel', 'leagueLabel']);
+  const league = normalizeLeagueName(textField(event, ['leagueLabel', 'league', 'strLeague', 'cardName', 'category']), event);
+  const { home, away, matchup } = buildMatchup(event);
+  const labelCore = league ? `${league}: ${matchup}` : matchup;
+  const rawLeagueLogo = normalizeLeagueLogo(
+    configuredLeagueLogo(event, league) || textField(event, ['leagueLogo', 'strLeagueBadge', 'strThumb']) || fallbackLeagueLogo(league, sport),
+    league,
+    sport,
+  );
+  return {
+    label: labelCore,
+    sport,
+    league,
+    matchup,
+    home,
+    away,
+    time: textField(event, ['time', 'strTime']),
+    date: eventDateForTimeZone(event, timeZone),
+    round: '',
+    leagueLogo: toAbsoluteAssetUrl(rawLeagueLogo, origin),
+    homeLogo: toAbsoluteAssetUrl(textField(event, ['homeLogo', 'homeTeamLogo', 'strHomeTeamBadge']), origin),
+    awayLogo: toAbsoluteAssetUrl(textField(event, ['awayLogo', 'awayTeamLogo', 'strAwayTeamBadge']), origin),
+  };
+}
+
+/** Build banner items from the latest published schedule's featured events. */
+function buildItems(events: MatchEvent[], origin: string, timeZone: string, range: BannerRange): BannerBuildResult {
+  const window = bannerDateWindow(range, timeZone);
+  const featuredEvents = events.filter((e) => e && e.isFeatured);
+  const windowedEvents = featuredEvents.filter((e) => {
+    const eventDate = eventDateForTimeZone(e as SnapshotEvent, timeZone);
+    return eventDate >= window.start && eventDate <= window.end;
+  });
+  const sourceEvents = windowedEvents.length > 0 ? windowedEvents : featuredEvents;
+
+  return {
+    items: sourceEvents
+      .slice()
+      .sort((a, b) => compareBannerEvents(a, b, timeZone))
+      .map((e) => toBannerItem(e, origin, timeZone)),
+    source: windowedEvents.length > 0 ? 'requested-window' : (featuredEvents.length > 0 ? 'latest-published-snapshot' : 'none'),
+    totalFeatured: featuredEvents.length,
+    windowedFeatured: windowedEvents.length,
+    dateWindow: window,
+  };
 }
 
 export async function GET(req: NextRequest) {
@@ -268,17 +322,18 @@ export async function GET(req: NextRequest) {
       .from('user_api_keys')
       .select('user_id')
       .eq('key_hash', hash)
-      .single();
+      .maybeSingle();
 
     if (!keyData) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401, headers: corsHeaders });
     }
 
     const orgMemberIds = await getOrgMemberIds(keyData.user_id as string);
+    const tokenUser = diagnosticFingerprint(keyData.user_id as string);
 
     const { data: schedule } = await supabase
       .from('published_schedules')
-      .select('events_snapshot, published_at')
+      .select('events_snapshot, published_at, date_range_start, date_range_end, embed_target')
       .in('user_id', orgMemberIds)
       .eq('embed_target', embedId)
       .order('published_at', { ascending: false })
@@ -286,16 +341,103 @@ export async function GET(req: NextRequest) {
       .maybeSingle();
 
     if (!schedule) {
-      return NextResponse.json({ items: [], publishedAt: '', serial: 'none' }, { headers: bannerCacheHeaders() });
+      const { data: visibleRows } = await supabase
+        .from('published_schedules')
+        .select('embed_target, published_at')
+        .in('user_id', orgMemberIds)
+        .not('embed_target', 'is', null)
+        .order('published_at', { ascending: false })
+        .limit(50);
+
+      const visibleTargets: string[] = [];
+      const seenTargets = new Set<string>();
+      for (const row of visibleRows ?? []) {
+        const target = typeof row.embed_target === 'string' ? row.embed_target.trim() : '';
+        if (!target || seenTargets.has(target)) continue;
+        seenTargets.add(target);
+        visibleTargets.push(target);
+      }
+
+      const diagnostics: BannerDiagnostics = {
+        status: 'empty',
+        reason: 'schedule_not_found_for_token_scope',
+        requestedEmbedId: embedId,
+        resolvedEmbedTarget: '',
+        tokenUser,
+        orgMemberCount: orgMemberIds.length,
+        scheduleFound: false,
+        schedulePublishedAt: '',
+        scheduleRange: { start: '', end: '' },
+        scheduleEventCount: 0,
+        selectedCount: 0,
+        featuredCount: 0,
+        windowedFeaturedCount: 0,
+        dateWindow: bannerDateWindow(range, timeZone),
+        visibleTargets,
+        hint: visibleTargets.length > 0
+          ? `This token is valid, but no published schedule named "${embedId}" is visible to it. Choose one of the visible targets or reconnect WordPress with the account that published this embed.`
+          : `This token is valid, but it cannot see any published embed targets. Reconnect WordPress with the account that published "${embedId}".`,
+      };
+
+      return NextResponse.json({
+        items: [],
+        publishedAt: '',
+        range,
+        serial: 'none',
+        source: 'none',
+        reason: diagnostics.reason,
+        diagnostics,
+      }, { headers: bannerCacheHeaders() });
     }
 
     const snapshotEvents = (Array.isArray(schedule.events_snapshot) ? schedule.events_snapshot : []) as MatchEvent[];
-    const events = await refreshSnapshotEvents(snapshotEvents, timeZone);
-    const items = buildItems(events, req.nextUrl.origin, timeZone, range);
+    const banner = buildItems(snapshotEvents, req.nextUrl.origin, timeZone, range);
+    const items = banner.items;
     const publishedAt = schedule.published_at ?? '';
+    const counts = eventCounts(snapshotEvents);
+    const reason = items.length > 0 ? 'ok' : (snapshotEvents.length === 0 ? 'schedule_snapshot_empty' : 'no_featured_events_in_snapshot');
+    const diagnostics: BannerDiagnostics = {
+      status: items.length > 0 ? 'ok' : 'empty',
+      reason,
+      requestedEmbedId: embedId,
+      resolvedEmbedTarget: schedule.embed_target ?? embedId,
+      tokenUser,
+      orgMemberCount: orgMemberIds.length,
+      scheduleFound: true,
+      schedulePublishedAt: publishedAt,
+      scheduleRange: {
+        start: schedule.date_range_start ?? '',
+        end: schedule.date_range_end ?? '',
+      },
+      scheduleEventCount: snapshotEvents.length,
+      selectedCount: counts.selected,
+      featuredCount: counts.featured,
+      windowedFeaturedCount: banner.windowedFeatured,
+      dateWindow: banner.dateWindow,
+      visibleTargets: [schedule.embed_target ?? embedId].filter(Boolean),
+      hint: items.length > 0
+        ? 'The selected published schedule contains banner items.'
+        : 'The selected published schedule was found, but none of its snapshot events are starred for banner highlights.',
+    };
 
     return NextResponse.json(
-      { items, publishedAt, range, serial: buildSerial(publishedAt, items, range) },
+      {
+        items,
+        publishedAt,
+        range,
+        serial: buildSerial(publishedAt, items, range),
+        source: banner.source,
+        reason,
+        totalFeatured: banner.totalFeatured,
+        windowedFeatured: banner.windowedFeatured,
+        dateWindow: banner.dateWindow,
+        scheduleRange: {
+          start: schedule.date_range_start ?? '',
+          end: schedule.date_range_end ?? '',
+        },
+        embedTarget: schedule.embed_target ?? embedId,
+        diagnostics,
+      },
       {
         headers: bannerCacheHeaders(),
       },

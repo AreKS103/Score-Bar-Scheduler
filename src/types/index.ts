@@ -52,6 +52,7 @@ export interface SportConfig {
   category: string;
   espnSlug: string | null;
   sportsdbId?: string;
+  sportsdbTeamId?: string;
   openf1?: boolean;
   logo: string;
   publishLogo?: string;

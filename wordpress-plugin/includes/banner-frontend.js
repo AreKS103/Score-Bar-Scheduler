@@ -34,6 +34,12 @@
     try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { return ''; }
   }
 
+  function logoClass(src) {
+    var lower = String(src || '').toLowerCase();
+    var isPremRugby = lower.indexOf('rugby-premship') !== -1 || lower.indexOf('0708621a-5825-46bf-98c2-33b9e4f7c4fb') !== -1;
+    return isPremRugby ? 'sb-logo sb-logo-wordmark' : 'sb-logo';
+  }
+
   function initBanner(cfg) {
     if (!cfg) return;
 
@@ -66,23 +72,25 @@
     function buildSlideHtml(item) {
       item = item || {};
       var parts = [];
+      var textParts = [];
       var logo = item.leagueLogo || item.homeLogo || item.awayLogo || '';
       var sport = item.league || item.sport || '';
       var matchup = item.matchup || item.label || '';
 
       if (cfg.showLogos && logo) {
-        parts.push('<img class="sb-logo" src="' + esc(logo) + '" alt="" loading="lazy" decoding="async" onerror="this.style.display=\'none\'" />');
+        parts.push('<img class="' + logoClass(logo) + '" src="' + esc(logo) + '" alt="" loading="lazy" decoding="async" onerror="this.style.display=\'none\'" />');
       }
       if (cfg.showTime && item.time) {
-        parts.push('<span class="sb-time">' + esc(item.time) + '</span>');
+        textParts.push('<span class="sb-time">' + esc(item.time) + '</span>');
       }
       if (cfg.showTime && item.time && sport) {
-        parts.push('<span class="sb-separator">&middot;</span>');
+        textParts.push('<span class="sb-separator">&middot;</span>');
       }
       if (sport) {
-        parts.push('<span class="sb-sport">' + esc(sport) + ':</span>');
+        textParts.push('<span class="sb-sport">' + esc(sport) + ':</span>');
       }
-      parts.push('<span class="sb-matchup">' + esc(matchup || 'Featured match') + '</span>');
+      textParts.push('<span class="sb-matchup">' + esc(matchup || 'Featured match') + '</span>');
+      parts.push('<span class="sb-copy">' + textParts.join(' ') + '</span>');
       return parts.join('');
     }
 
@@ -143,10 +151,17 @@
       reel.style.transition = 'none';
       track.style.height = '';
       for (var i = 0; i < kids.length; i++) {
-        kids[i].style.height = '';
+        kids[i].style.height = 'auto';
       }
-      rowH = track.clientHeight;
-      if (rowH <= 0 && kids.length) rowH = kids[0].offsetHeight;
+      rowH = 0;
+      for (var h = 0; h < kids.length; h++) {
+        rowH = Math.max(rowH, kids[h].scrollHeight || 0, kids[h].offsetHeight || 0);
+      }
+      rowH = Math.ceil(Math.max(rowH, track.clientHeight || 0));
+      if (rowH <= 0) {
+        track.style.height = '';
+        return;
+      }
       // The track is the clipped viewport and the reel is the moving stack.
       // Locking every slide to the viewport height places the next row exactly
       // at the bottom edge, so one translateY transition moves both rows
@@ -155,7 +170,36 @@
       for (var j = 0; j < kids.length; j++) {
         kids[j].style.height = rowH + 'px';
       }
+      for (var overflow = 0; overflow < kids.length; overflow++) {
+        rowH = Math.max(rowH, kids[overflow].scrollHeight || 0);
+      }
+      rowH = Math.ceil(rowH);
+      track.style.height = rowH + 'px';
+      for (var locked = 0; locked < kids.length; locked++) {
+        kids[locked].style.height = rowH + 'px';
+      }
       reel.style.transform = 'translateY(' + (-current * rowH) + 'px)';
+      syncFixedOffset();
+    }
+
+    function measureStaticTrack() {
+      var track = banner.querySelector('.sb-track');
+      if (!track) return;
+      var slides = banner.querySelectorAll('.sb-slide');
+      if (!slides.length) return;
+      track.style.height = '';
+      var maxH = 0;
+      for (var i = 0; i < slides.length; i++) {
+        slides[i].style.height = '';
+        maxH = Math.max(maxH, slides[i].scrollHeight || 0, slides[i].offsetHeight || 0);
+      }
+      if (maxH > 0) track.style.height = Math.ceil(maxH) + 'px';
+      syncFixedOffset();
+    }
+
+    function measureLayout() {
+      if (useReel) measureReel();
+      else measureStaticTrack();
     }
 
     function advanceReel() {
@@ -262,6 +306,12 @@
       if (useReel) {
         reel = banner.querySelector('.sb-reel');
         measureReel();
+      } else {
+        measureStaticTrack();
+      }
+
+      if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(measureLayout);
       }
 
       applyFixedOffset();
@@ -296,6 +346,7 @@
         '&embedId=' + encodeURIComponent(cfg.embedId) +
         '&tz=' + encodeURIComponent(getTz(cfg)) +
         '&range=' + encodeURIComponent(cfg.range === 'week' ? 'week' : 'today');
+      if (force) url += '&_=' + Date.now();
 
       fetch(url, { credentials: 'omit', cache: force ? 'no-cache' : 'default' })
         .then(function (r) { return r.ok ? r.json() : null; })
@@ -310,6 +361,7 @@
             render(items, serial, true);
           } else {
             if (needsReelHydration) hydrateExistingReel(items.length);
+            measureLayout();
             startRotation();
           }
         })
@@ -338,10 +390,12 @@
     window.addEventListener('focus', function () { load(true); });
     window.addEventListener('pageshow', function () { load(false); });
     window.addEventListener('online', function () { load(true); });
-    window.addEventListener('resize', function () { if (useReel) measureReel(); });
+    window.addEventListener('resize', measureLayout);
 
     if (banner.classList.contains('sb-reel-mode')) {
       hydrateExistingReel(banner.querySelectorAll('.sb-slide:not([data-i="clone"])').length);
+    } else {
+      measureStaticTrack();
     }
 
     applyFixedOffset();

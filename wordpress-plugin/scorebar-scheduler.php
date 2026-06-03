@@ -3,7 +3,7 @@
  * Plugin Name: Scheduler
  * Plugin URI:
  * Description: A sports schedule widget for your website.
- * Version: 1.3.15
+ * Version: 1.3.19
  * Text Domain: scorebar-scheduler
  * Requires at least: 6.0
  * Tested up to: 6.7
@@ -13,7 +13,7 @@
 if (!defined('ABSPATH')) exit;
 
 // Plugin version — must match the "Version:" header above.
-define('SCHEDULE_PLUGIN_VERSION', '1.3.15');
+define('SCHEDULE_PLUGIN_VERSION', '1.3.19');
 
 // ── PHP version gate ────────────────────────────────────────────────────────
 if (version_compare(PHP_VERSION, '7.4', '<')) {
@@ -48,52 +48,93 @@ if (!function_exists('schedule_get_app_domain')) {
 
 if (!function_exists('schedule_get_public_embed_key')) {
     function schedule_get_public_embed_key() {
-        $embed_token = get_option('schedule_embed_token', '');
-        $api_key     = get_option('schedule_api_key', '');
-        return !empty($embed_token) ? $embed_token : $api_key;
+        $candidates = function_exists('schedule_get_public_embed_key_candidates')
+            ? schedule_get_public_embed_key_candidates()
+            : [];
+        return !empty($candidates[0]['key']) ? $candidates[0]['key'] : '';
+    }
+}
+
+if (!function_exists('schedule_public_embed_key_from_api_key')) {
+    function schedule_public_embed_key_from_api_key($api_key) {
+        $api_key = trim((string) $api_key);
+        if ($api_key === '') return '';
+        return preg_match('/^[0-9a-f]{64}$/', $api_key) ? $api_key : hash('sha256', $api_key);
+    }
+}
+
+if (!function_exists('schedule_get_public_embed_key_candidates')) {
+    function schedule_get_public_embed_key_candidates() {
+        $embed_token = trim((string) get_option('schedule_embed_token', ''));
+        $api_key     = trim((string) get_option('schedule_api_key', ''));
+        $candidates  = [];
+        $seen        = [];
+
+        $add = function ($label, $key) use (&$candidates, &$seen) {
+            $key = trim((string) $key);
+            if ($key === '' || isset($seen[$key])) return;
+            $seen[$key] = true;
+            $candidates[] = ['label' => $label, 'key' => $key];
+        };
+
+        $add('embed_token', $embed_token);
+        $add('api_key_public_hash', schedule_public_embed_key_from_api_key($api_key));
+
+        return $candidates;
     }
 }
 
 if (!function_exists('schedule_get_embed_target_choices')) {
     function schedule_get_embed_target_choices() {
-        $key = schedule_get_public_embed_key();
-        if (empty($key)) return [];
+        $candidates = function_exists('schedule_get_public_embed_key_candidates')
+            ? schedule_get_public_embed_key_candidates()
+            : [];
+        if (empty($candidates)) return [];
 
-        $cache_key = 'schedule_embed_targets_live_' . md5(schedule_get_app_domain() . '|' . $key);
+        $cache_key = 'schedule_embed_targets_live_' . md5(schedule_get_app_domain() . '|' . wp_json_encode($candidates));
         $cached = get_transient($cache_key);
         if (is_array($cached)) return $cached;
-
-        $url = add_query_arg(
-            ['apiKey' => $key, '_' => time()],
-            schedule_get_app_domain() . '/api/embed-instances'
-        );
-        $response = wp_remote_get($url, [
-            'timeout' => 8,
-            'headers' => ['Accept' => 'application/json'],
-        ]);
-
-        if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
-            set_transient($cache_key, [], 30);
-            return [];
-        }
-
-        $body = json_decode(wp_remote_retrieve_body($response), true);
-        if (!is_array($body)) {
-            set_transient($cache_key, [], 30);
-            return [];
-        }
 
         $choices = [];
         $seen = [];
 
-        if (!empty($body['instances']) && is_array($body['instances'])) {
-            foreach ($body['instances'] as $inst) {
-                if (!is_array($inst)) continue;
-                $target = sanitize_text_field($inst['embed_id'] ?? $inst['display_id'] ?? '');
-                $target = trim($target);
-                if ($target === '' || isset($seen[$target])) continue;
-                $seen[$target] = true;
-                $choices[$target] = $target;
+        $add_choice = function ($target) use (&$choices, &$seen) {
+            $target = sanitize_text_field($target ?? '');
+            $target = trim($target);
+            if ($target === '' || isset($seen[$target])) return;
+            $seen[$target] = true;
+            $choices[$target] = $target;
+        };
+
+        foreach ($candidates as $candidate) {
+            $key = $candidate['key'] ?? '';
+            if ($key === '') continue;
+
+            $url = add_query_arg(
+                ['apiKey' => $key, '_' => time()],
+                schedule_get_app_domain() . '/api/embed-instances'
+            );
+            $response = wp_remote_get($url, [
+                'timeout' => 8,
+                'headers' => ['Accept' => 'application/json'],
+            ]);
+
+            if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) continue;
+
+            $body = json_decode(wp_remote_retrieve_body($response), true);
+            if (!is_array($body)) continue;
+
+            if (!empty($body['publishedTargets']) && is_array($body['publishedTargets'])) {
+                foreach ($body['publishedTargets'] as $target) {
+                    $add_choice($target);
+                }
+            }
+
+            if (!empty($body['instances']) && is_array($body['instances'])) {
+                foreach ($body['instances'] as $inst) {
+                    if (!is_array($inst)) continue;
+                    $add_choice($inst['embed_id'] ?? $inst['display_id'] ?? '');
+                }
             }
         }
 

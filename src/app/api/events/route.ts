@@ -184,7 +184,7 @@ const LEAGUE_METADATA: Record<string, { label: string; category: string; logo: s
   'boxing': { label: 'Boxing', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/6enin21740228549.png' },
   'rugby-superrugby': { label: 'Super Rugby Pacific', category: 'Rugby', logo: 'https://r2.thesportsdb.com/images/media/league/badge/gz76v11717091774.png' },
   'rugby-sixnations': { label: 'Six Nations', category: 'Rugby', logo: 'https://r2.thesportsdb.com/images/media/league/badge/7h1wr91738670253.png' },
-  'rugby-premship': { label: 'Premiership Rugby', category: 'Rugby', logo: 'https://media-cdn.cortextech.io/0708621a-5825-46bf-98c2-33b9e4f7c4fb.png' },
+  'rugby-premship': { label: 'Premiership Rugby', category: 'Rugby', logo: '/league-logos/rugby-premship.webp' },
   'rugby-top14': { label: 'Top 14', category: 'Rugby', logo: 'https://r2.thesportsdb.com/images/media/league/badge/xrsqtw1452903237.png' },
   'rugby-urc': { label: 'United Rugby Championship', category: 'Rugby', logo: 'https://r2.thesportsdb.com/images/media/league/badge/o6dhfo1716481482.png' },
   'rugby-champscup': { label: 'Champions Cup', category: 'Rugby', logo: 'https://r2.thesportsdb.com/images/media/league/badge/kohne11716546580.png' },
@@ -1044,7 +1044,7 @@ async function fetchAllESPN(startDate: string, endDate: string, timeZone: string
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SPORTSDB FETCHING — Only for CPL and MotoGP (no ESPN coverage)
+// SPORTSDB FETCHING — SportsDB-backed leagues and Cambodian team feeds
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const SPORTSDB_BASE = 'https://www.thesportsdb.com/api/v1/json/123';
@@ -1065,6 +1065,30 @@ const SPORTSDB_ONLY_LEAGUES = [
   return meta ? { ...league, label: meta.label, category: meta.category, logo: meta.logo } : league;
 });
 
+const SPORTSDB_TEAM_FEEDS = [
+  {
+    id: 'soccer-cambodia-national-team',
+    sportsdbTeamId: '140140',
+    teamName: 'Cambodia',
+    pageSlug: 'cambodia',
+    label: 'Cambodia National Team',
+    category: 'Football',
+    logo: 'https://r2.thesportsdb.com/images/media/team/badge/xie69i1742101652.png',
+  },
+  {
+    id: 'soccer-national-defense',
+    sportsdbTeamId: '139405',
+    teamName: 'National Defense',
+    pageSlug: 'national-defense',
+    label: 'National Defense',
+    category: 'Football',
+    logo: 'https://r2.thesportsdb.com/images/media/team/badge/qg6cbf1583341501.png',
+  },
+].map((team) => {
+  const meta = getLeagueMetadata(team.id);
+  return meta ? { ...team, label: meta.label, category: meta.category, logo: meta.logo } : team;
+});
+
 interface SportsDBEvent {
   idEvent: string;
   strEvent: string;
@@ -1078,6 +1102,8 @@ interface SportsDBEvent {
   strPostponed?: string;
   strLeague?: string;
   strRound?: string;
+  strCountry?: string;
+  strVenue?: string;
 }
 
 // C-League team IDs — all 11 clubs in the 2025-26 season
@@ -1198,6 +1224,174 @@ function mapSDBEvent(event: SportsDBEvent, league: typeof SPORTSDB_ONLY_LEAGUES[
     isFeatured: false,
     isSelected: false,
   };
+}
+
+interface TeamPageEventCandidate {
+  idEvent: string;
+  dateEvent: string;
+}
+
+const SDB_TEAM_PAGE_CACHE = new Map<string, { data: TeamPageEventCandidate[]; ts: number }>();
+const SDB_TEAM_PAGE_TTL = 60 * 60 * 1000;
+const MONTH_TO_NUMBER: Record<string, string> = {
+  jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+  jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+};
+
+function offsetIsoDate(dateStr: string, days: number): string {
+  const date = new Date(`${dateStr}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return dateStr;
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function parseTeamPageDate(day: string, month: string, yearSuffix: string): string | null {
+  const monthNumber = MONTH_TO_NUMBER[month.slice(0, 3).toLowerCase()];
+  const year = 2000 + Number.parseInt(yearSuffix, 10);
+  if (!monthNumber || Number.isNaN(year)) return null;
+  return `${year}-${monthNumber}-${day.padStart(2, '0')}`;
+}
+
+function extractTeamPageEventCandidates(html: string): TeamPageEventCandidate[] {
+  const rows = html.match(/<tr\b[\s\S]*?<\/tr>/gi) ?? [];
+  const seen = new Set<string>();
+  const candidates: TeamPageEventCandidate[] = [];
+
+  for (const row of rows) {
+    const dateMatch = row.match(/(\d{1,2})\s+([A-Za-z]{3})\s+<span\s+class=['"]team-table-year['"]>(\d{2})<\/span>/i);
+    const idMatch = row.match(/href=['"]\/event\/(\d+)-/i);
+    if (!dateMatch || !idMatch) continue;
+
+    const dateEvent = parseTeamPageDate(dateMatch[1], dateMatch[2], dateMatch[3]);
+    const idEvent = idMatch[1];
+    if (!dateEvent || seen.has(idEvent)) continue;
+
+    seen.add(idEvent);
+    candidates.push({ idEvent, dateEvent });
+  }
+
+  return candidates;
+}
+
+async function fetchSportsDBTeamPageEventCandidates(team: typeof SPORTSDB_TEAM_FEEDS[0]): Promise<TeamPageEventCandidate[]> {
+  const cacheKey = `${team.sportsdbTeamId}-${team.pageSlug}`;
+  const hit = SDB_TEAM_PAGE_CACHE.get(cacheKey);
+  if (hit && Date.now() - hit.ts < SDB_TEAM_PAGE_TTL) return hit.data;
+
+  try {
+    const res = await fetch(`https://www.thesportsdb.com/team/${cacheKey}`, {
+      signal: AbortSignal.timeout(8_000),
+      headers: {
+        'User-Agent':      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    });
+    if (!res.ok) return [];
+
+    const data = extractTeamPageEventCandidates(await res.text());
+    SDB_TEAM_PAGE_CACHE.set(cacheKey, { data, ts: Date.now() });
+    return data;
+  } catch {
+    return [];
+  }
+}
+
+async function fetchSportsDBTeamPageEvents(
+  team: typeof SPORTSDB_TEAM_FEEDS[0],
+  startDate: string,
+  endDate: string,
+): Promise<SportsDBEvent[]> {
+  const minDate = offsetIsoDate(startDate, -1);
+  const maxDate = offsetIsoDate(endDate, 1);
+  const candidates = (await fetchSportsDBTeamPageEventCandidates(team))
+    .filter(candidate => candidate.dateEvent >= minDate && candidate.dateEvent <= maxDate)
+    .slice(0, 10);
+
+  if (candidates.length === 0) return [];
+  const eventLists = await Promise.all(
+    candidates.map(candidate => sdbFetch(`lookupevent.php?id=${candidate.idEvent}`))
+  );
+  return eventLists.flat();
+}
+
+function normalizeSportsDBTeamName(value: string | undefined): string {
+  return (value ?? '').trim().toLowerCase();
+}
+
+function mapSDBTeamEvent(event: SportsDBEvent, team: typeof SPORTSDB_TEAM_FEEDS[0], timeZone: string): MatchEvent {
+  const { date, time } = sportsDBToLocal(event.dateEvent, event.strTime || '00:00:00', timeZone);
+  const home = event.strHomeTeam || event.strEvent || team.teamName || 'TBD';
+  const away = event.strAwayTeam || '';
+  const teamName = normalizeSportsDBTeamName(team.teamName);
+  const homeIsTeam = normalizeSportsDBTeamName(home) === teamName;
+  const awayIsTeam = normalizeSportsDBTeamName(away) === teamName;
+  const rawHomeLogo = event.strHomeTeamBadge || undefined;
+  const rawAwayLogo = event.strAwayTeamBadge || undefined;
+  let homeLogo = homeIsTeam ? team.logo : rawHomeLogo;
+  let awayLogo = awayIsTeam ? team.logo : rawAwayLogo;
+
+  if (homeIsTeam && !awayIsTeam && rawAwayLogo === team.logo && rawHomeLogo && rawHomeLogo !== team.logo) {
+    awayLogo = rawHomeLogo;
+  }
+  if (awayIsTeam && !homeIsTeam && rawHomeLogo === team.logo && rawAwayLogo && rawAwayLogo !== team.logo) {
+    homeLogo = rawAwayLogo;
+  }
+
+  return {
+    id: `sportsdb-${team.id}-${event.idEvent}`,
+    source: 'sportsdb',
+    sportId: team.id,
+    category: team.category,
+    leagueLabel: team.label,
+    leagueLogo: team.logo,
+    date,
+    time,
+    home,
+    away,
+    homeLogo,
+    awayLogo,
+    round: event.strLeague || event.strRound || '',
+    tags: [],
+    isFeatured: false,
+    isSelected: false,
+    sourceEventId: event.idEvent,
+    status: event.strStatus,
+    venue: event.strVenue,
+    country: event.strCountry,
+  };
+}
+
+async function fetchSportsDBTeamFeed(
+  team: typeof SPORTSDB_TEAM_FEEDS[0],
+  startDate: string,
+  endDate: string,
+  timeZone: string
+): Promise<MatchEvent[]> {
+  const allCalls: Promise<SportsDBEvent[]>[] = [
+    sdbFetch(`eventsnext.php?id=${team.sportsdbTeamId}`),
+    sdbFetch(`eventslast.php?id=${team.sportsdbTeamId}`, 'results'),
+    fetchSportsDBTeamPageEvents(team, startDate, endDate),
+  ];
+  const allRaw = (await Promise.all(allCalls)).flat();
+  const teamName = normalizeSportsDBTeamName(team.teamName);
+  const seen = new Set<string>();
+  const deduped = allRaw.filter(event => {
+    if (!event?.idEvent || seen.has(event.idEvent)) return false;
+    seen.add(event.idEvent);
+    if ((event.strPostponed ?? 'no').toLowerCase() === 'yes') return false;
+    const home = normalizeSportsDBTeamName(event.strHomeTeam);
+    const away = normalizeSportsDBTeamName(event.strAwayTeam);
+    const name = normalizeSportsDBTeamName(event.strEvent);
+    return home === teamName || away === teamName || name.includes(teamName);
+  });
+
+  const mapped = deduped
+    .map(event => mapSDBTeamEvent(event, team, timeZone))
+    .filter(event => event.date >= startDate && event.date <= endDate);
+
+  console.log(`[SportsDB-Team] ✓ ${team.label}: ${mapped.length} events in date range`);
+  return mapped;
 }
 
 // ── Combat Sports (UFC / Boxing) mapper for TheSportsDB events ──────────────
@@ -1681,7 +1875,7 @@ async function fetchMotoGPOfficial(
 async function fetchAllSportsDB(startDate: string, endDate: string, timeZone: string): Promise<MatchEvent[]> {
   const results: MatchEvent[] = [];
 
-  // Phase 1: Cambodian leagues use heavy fan-out strategies — run them first
+  // Phase 1: Cambodian leagues and team feeds use targeted fan-out strategies — run them first
   const cambodianLeagues = SPORTSDB_ONLY_LEAGUES.filter(l => l.id === 'soccer-cpl' || l.id === 'soccer-hun-sen-cup');
   for (const league of cambodianLeagues) {
     try {
@@ -1691,6 +1885,16 @@ async function fetchAllSportsDB(startDate: string, endDate: string, timeZone: st
       console.warn(`[SportsDB] ${league.label} fetch failed:`, err);
     }
     await sleep(150);
+  }
+
+  for (const team of SPORTSDB_TEAM_FEEDS) {
+    try {
+      const events = await fetchSportsDBTeamFeed(team, startDate, endDate, timeZone);
+      results.push(...events);
+    } catch (err) {
+      console.warn(`[SportsDB-Team] ${team.label} fetch failed:`, err);
+    }
+    await sleep(100);
   }
 
   // Phase 2: Remaining leagues in batches (each uses ≤2-4 API calls)
