@@ -74,10 +74,17 @@ export function useSelectionsRealtime({
           // so DELETE echoes cannot briefly clear freshly-clicked local UI.
           if (row.client_id && row.client_id === myClientId) return;
 
+          const selections = row.selections ?? {};
+          const selectedCount = Object.values(selections).filter((s) => s.isSelected || s.isFeatured || s.tags.length > 0).length;
+          console.log(
+            `[SelectionSync] remote ${isDelete ? 'DELETE' : payload.eventType} embed=${row.embed_target || '(default)'} selected=${selectedCount}`,
+            { updatedAt: row.updated_at, fromClient: row.client_id ?? null },
+          );
+
           cbRef.current({
             embedTarget: row.embed_target ?? '',
             state: {
-              selections: row.selections ?? {},
+              selections,
               leagueOrder: row.league_order ?? [],
               featuredLeagues: row.featured_leagues ?? {},
               savedAt: row.updated_at ? new Date(row.updated_at).getTime() : Date.now(),

@@ -1080,6 +1080,8 @@ export default function SchedulePage() {
         return e;
       });
 
+      const selectedBeforeFetch = events.filter(e => e.isSelected || e.isFeatured || e.tags.length > 0).length;
+
       // ── Preserve selected events missing from fresh API response ──────
       // When SportsDB times out, selected events would vanish because the
       // merge above only iterates events the API returned.  Fall back to
@@ -1111,6 +1113,20 @@ export default function SchedulePage() {
       if (preserved.length > 0) {
         console.log(`[Schedule] Preserved ${preserved.length} selected events not in fresh API response`);
         allEvents.push(...preserved);
+      }
+
+      const selectedAfterMerge = allEvents.filter(e => e.isSelected || e.isFeatured || e.tags.length > 0).length;
+      if (selectedBeforeFetch > 0 && selectedAfterMerge < selectedBeforeFetch) {
+        console.warn(
+          `[Schedule] Fetch merge reduced selected count ${selectedBeforeFetch} -> ${selectedAfterMerge}`,
+          {
+            range: currentRange,
+            timeZone,
+            apiEvents: mergedRaw.length,
+            preserved: preserved.length,
+            target: effectiveTargetRef.current,
+          },
+        );
       }
 
       setEvents(allEvents);

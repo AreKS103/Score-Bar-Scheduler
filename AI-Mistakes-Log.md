@@ -16,3 +16,8 @@
 - **The Error:** Cambodia National Team fixtures were added from SportsDB source probes but did not appear in the actual `/api/events` response for June 3-6.
 - **The Mistake:** Verified direct SportsDB endpoints and a standalone script, but did not test the integrated route; the route called team JSON endpoints after heavy SportsDB fan-outs, hit 429 rate limits, and `sdbFetch` silently returned empty arrays.
 - **The Rule:** For SportsDB additions, always verify the real `/api/events` response for the requested date window. Avoid adding extra JSON API calls behind heavy fan-outs; prefer cached page-derived data or existing cached endpoints, and log 429s instead of silently swallowing them.
+
+### 2026-06-04
+- **The Error:** Cambodia fixtures could display raw SportsDB UTC times on the live app instead of the user's selected timezone.
+- **The Mistake:** Verified the server conversion for one timezone, but did not audit the full settings-to-route path or prove the resolved timezone in the API response.
+- **The Rule:** For timezone bugs, verify provider source timezone, route `timeZone` param, API resolved timezone, and final `event.date/time` together. Preserve provider UTC timestamps (`isoDate`) so every displayed time can be rechecked against the requested IANA timezone.

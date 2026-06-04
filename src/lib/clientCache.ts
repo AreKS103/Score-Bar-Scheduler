@@ -556,6 +556,18 @@ export function saveSelectionToSupabase(state: SavedSelectionState, embedTarget 
       const featDiff = diffRecord(prev.featuredLeagues, state.featuredLeagues);
       const orderChanged = !arraysEqual(prev.leagueOrder, state.leagueOrder);
 
+      if (selDiff.rm.length > 0 || Object.keys(selDiff.set).length > 0 || orderChanged) {
+        const prevCount = Object.values(prev.selections).filter((s) => s.isSelected || s.isFeatured || s.tags.length > 0).length;
+        const nextCount = Object.values(state.selections).filter((s) => s.isSelected || s.isFeatured || s.tags.length > 0).length;
+        const setCount = Object.keys(selDiff.set).length;
+        const message = `[SelectionSync] diff save embed=${embedTarget || '(default)'} prev=${prevCount} next=${nextCount} set=${setCount} rm=${selDiff.rm.length} orderChanged=${orderChanged}`;
+        if (selDiff.rm.length > 0 && setCount === 0) {
+          console.warn(message, { removed: selDiff.rm.slice(0, 12), clientId: getClientId() });
+        } else {
+          console.log(message);
+        }
+      }
+
       // Nothing actually changed since last known remote — skip the round trip.
       if (
         Object.keys(selDiff.set).length === 0 &&
