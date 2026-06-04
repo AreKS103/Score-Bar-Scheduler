@@ -1095,9 +1095,12 @@ export default function SchedulePage() {
       const data = await res.json();
       const allEventsRaw = data.events ?? [];
       
-      // Build in-memory selection map (for manual refresh while page is open)
+      // Build in-memory selection map from the latest store state, not this
+      // async callback's closed-over `events`. A fetch that started before a
+      // user deselected a match must not re-apply stale saved/local selections.
+      const latestEventsForSelection = useScheduleStore.getState().events;
       const memSel = new Map(
-        events.map(e => [e.id, { isSelected: e.isSelected, isFeatured: e.isFeatured, tags: e.tags }])
+        latestEventsForSelection.map(e => [e.id, { isSelected: e.isSelected, isFeatured: e.isFeatured, tags: e.tags }])
       );
       
       // Merge local fallback custom events to survive Supabase custom_events issues
@@ -1111,29 +1114,41 @@ export default function SchedulePage() {
 
       // Merge with preserved selections (in-memory > localStorage > default)
       const savedSel = loadSelectionState(effectiveTargetRef.current)?.selections ?? {};
+      const staleSavedReselectIds: string[] = [];
       const allEvents = mergedRaw.map((e: MatchEvent) => {
         const mem = memSel.get(e.id);
-        if (mem && (mem.isSelected || mem.isFeatured || mem.tags.length > 0)) return { ...e, ...mem };
         const saved = savedSel[e.id];
+        if (mem) {
+          if (saved && (saved.isSelected || saved.isFeatured || saved.tags.length > 0)
+              && !(mem.isSelected || mem.isFeatured || mem.tags.length > 0)) {
+            staleSavedReselectIds.push(e.id);
+          }
+          return { ...e, ...mem };
+        }
         if (saved) return { ...e, ...saved };
         return e;
       });
 
-      const selectedBeforeFetch = events.filter(e => e.isSelected || e.isFeatured || e.tags.length > 0).length;
+      const selectedBeforeFetch = latestEventsForSelection.filter(e => e.isSelected || e.isFeatured || e.tags.length > 0).length;
 
       // ── Preserve selected events missing from fresh API response ──────
       // When SportsDB times out, selected events would vanish because the
       // merge above only iterates events the API returned.  Fall back to
       // the in-memory events (manual refresh) or localStorage event cache
       // (page refresh where the closure captures events=[]).
-      const prevForFallback = events.length > 0
-        ? events
+      const prevForFallback = latestEventsForSelection.length > 0
+        ? latestEventsForSelection
         : (getCachedEvents(currentRange, timeZone) ?? []);
       const prevById = new Map(prevForFallback.map(e => [e.id, e]));
       const preserved: MatchEvent[] = [];
       const preservedIds = new Set<string>();
       for (const [id, sel] of Object.entries(savedSel)) {
         if (!mergedRawById.has(id) && (sel.isSelected || sel.isFeatured)) {
+          const mem = memSel.get(id);
+          if (mem && !(mem.isSelected || mem.isFeatured || mem.tags.length > 0)) {
+            staleSavedReselectIds.push(id);
+            continue;
+          }
           // Prefer snapshot (full event survives Supabase round-trip) over prev cache
           const eventData = sel.snapshot ?? prevById.get(id);
           if (eventData) {
@@ -1152,6 +1167,14 @@ export default function SchedulePage() {
       if (preserved.length > 0) {
         console.log(`[Schedule] Preserved ${preserved.length} selected events not in fresh API response`);
         allEvents.push(...preserved);
+      }
+      if (staleSavedReselectIds.length > 0) {
+        console.warn('[SelectionSync] blocked stale saved selection during fetch merge', {
+          target: effectiveTargetRef.current || '(default)',
+          blockedCount: staleSavedReselectIds.length,
+          sample: staleSavedReselectIds.slice(0, 12),
+          localDirty: selectionDirtyRef.current,
+        });
       }
 
       const selectedAfterMerge = allEvents.filter(e => e.isSelected || e.isFeatured || e.tags.length > 0).length;
@@ -1251,11 +1274,16 @@ export default function SchedulePage() {
       const currentById = new Map(latestEvents.map((event) => [event.id, event]));
       const savedSel = loadSelectionState(effectiveTargetRef.current)?.selections ?? {};
       const nonWorldCupEvents = latestEvents.filter((event) => event.sportId !== WORLD_CUP_SPORT_ID);
+      const staleSavedWorldCupIds: string[] = [];
       const mergedFixtures = fixtures.map((fixture) => {
         const current = currentById.get(fixture.id);
         const saved = savedSel[fixture.id];
 
-        if (current && (current.isSelected || current.isFeatured || current.tags.length > 0)) {
+        if (current) {
+          if (saved && (saved.isSelected || saved.isFeatured || saved.tags.length > 0)
+              && !(current.isSelected || current.isFeatured || current.tags.length > 0)) {
+            staleSavedWorldCupIds.push(fixture.id);
+          }
           return {
             ...fixture,
             isSelected: current.isSelected,
@@ -1266,6 +1294,14 @@ export default function SchedulePage() {
         if (saved) return { ...fixture, ...saved };
         return fixture;
       });
+      if (staleSavedWorldCupIds.length > 0) {
+        console.warn('[SelectionSync] blocked stale saved World Cup selection during fixture merge', {
+          target: effectiveTargetRef.current || '(default)',
+          blockedCount: staleSavedWorldCupIds.length,
+          sample: staleSavedWorldCupIds.slice(0, 12),
+          localDirty: selectionDirtyRef.current,
+        });
+      }
 
       setEvents([...nonWorldCupEvents, ...mergedFixtures]);
       setFetchStatuses({
@@ -1497,25 +1533,29 @@ export default function SchedulePage() {
     if (!initialLoadDoneRef.current) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     const target = effectiveTargetRef.current;
+    const selections: SavedSelectionState['selections'] = {};
+    for (const e of events) {
+      if (e.isSelected || e.isFeatured || e.tags.length > 0) {
+        const entry: SavedSelectionState['selections'][string] = { isSelected: e.isSelected, isFeatured: e.isFeatured, tags: e.tags };
+        // Save full event data for SportsDB events so they can be resurrected
+        // after a refresh even when TheSportsDB is rate-limited.
+        if (e.id.startsWith('sportsdb-')) entry.snapshot = e;
+        selections[e.id] = entry;
+      }
+    }
+    const stateToSave: SavedSelectionState = {
+      selections,
+      leagueOrder,
+      featuredLeagues: Object.fromEntries(featuredLeagues),
+      savedAt: Date.now(),
+    };
+    if (selectionDirtyRef.current) {
+      saveSelectionState(stateToSave, target);
+    }
     saveTimerRef.current = setTimeout(() => {
       if (!selectionDirtyRef.current) return;
       selectionDirtyRef.current = false;
-      const selections: SavedSelectionState['selections'] = {};
-      for (const e of events) {
-        if (e.isSelected || e.isFeatured || e.tags.length > 0) {
-          const entry: SavedSelectionState['selections'][string] = { isSelected: e.isSelected, isFeatured: e.isFeatured, tags: e.tags };
-          // Save full event data for SportsDB events so they can be resurrected
-          // after a refresh even when TheSportsDB is rate-limited.
-          if (e.id.startsWith('sportsdb-')) entry.snapshot = e;
-          selections[e.id] = entry;
-        }
-      }
-      saveSelectionToSupabase({
-        selections,
-        leagueOrder,
-        featuredLeagues: Object.fromEntries(featuredLeagues),
-        savedAt: Date.now(),
-      }, target);
+      saveSelectionToSupabase(stateToSave, target);
     }, 250);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [events, leagueOrder, featuredLeagues, isFetching, embedInstances]);

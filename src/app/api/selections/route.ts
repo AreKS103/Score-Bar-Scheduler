@@ -215,8 +215,24 @@ export async function POST(req: NextRequest) {
     const scope = await resolveSelectionScope(userId);
     const row = await loadSelectionRow(scope, embedTarget);
     const nextSavedAt = Date.now();
-    const nextState = applySelectionSyncDiff(rowToState(row), diff, nextSavedAt);
+    const previousState = rowToState(row);
+    const nextState = applySelectionSyncDiff(previousState, diff, nextSavedAt);
     const rowOwnerUserId = scope.orgId ? row?.user_id ?? scope.canonicalUserId : userId;
+
+    console.log('[SelectionSync] api save', {
+      embedTarget: embedTarget || '(default)',
+      orgScoped: Boolean(scope.orgId),
+      user: userId.slice(0, 8),
+      rowOwner: rowOwnerUserId.slice(0, 8),
+      prevCount: countActiveSelections(previousState.selections),
+      nextCount: countActiveSelections(nextState.selections),
+      selectionsSet: Object.keys(diff.selectionsSet).length,
+      selectionsRemove: diff.selectionsRemove.length,
+      featuredSet: Object.keys(diff.featuredLeaguesSet).length,
+      featuredRemove: diff.featuredLeaguesRemove.length,
+      orderChanged: Boolean(diff.leagueOrder),
+      client: clientId?.slice(0, 8) ?? null,
+    });
 
     if (isSelectionSyncStateEmpty(nextState)) {
       if (row) {

@@ -31,3 +31,8 @@
 - **The Error:** Clearing all selections from the `Homepage` embed appeared to work briefly, then the old selections reappeared.
 - **The Mistake:** The debounced autosave called `saveSelectionToSupabase(state)` without the active embed target, so the empty clear was saved to the default slot while the `Homepage` row kept its old selected matches.
 - **The Rule:** Every selection save path must pass the resolved embed target. When debugging embed-specific sync, compare the intended embed row and the default row in Supabase before changing merge logic.
+
+### 2026-06-04
+- **The Error:** Deselecting a sport/league could briefly reselect it, then clear again, especially while background event refreshes were in flight.
+- **The Mistake:** Refresh merges treated localStorage as fresher than the current in-memory editor state when the current event existed but had just been deselected; stale saved selections could win during the debounce window.
+- **The Rule:** During refresh merges, current in-memory selection flags are authoritative for existing events, including explicit `false` values. LocalStorage is only a fallback for events not currently in memory, and stale saved reselects should be logged and blocked.
