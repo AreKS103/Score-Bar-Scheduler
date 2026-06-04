@@ -163,8 +163,8 @@ export default function SettingsModal({ isOpen, onClose, onOpenSetupWizard }: Se
           setIsOrgCreator(data.isCreator ?? true);
           setCreatorConnectedSite(data.creatorConnectedSite ?? null);
           setOrgTimezone(data.orgTimezone ?? null);
-          // If non-creator member and org has a timezone, lock to it
-          if (!data.isCreator && data.orgTimezone) {
+          // Keep the active store aligned with the saved organization timezone.
+          if (data.orgTimezone) {
             setTimezone(data.orgTimezone);
           }
         }

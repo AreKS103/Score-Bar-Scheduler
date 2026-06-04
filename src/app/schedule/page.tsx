@@ -718,11 +718,12 @@ export default function SchedulePage() {
               setOrgName(organizations[0].name ?? null);
               // Determine if user is owner so we can gate destructive actions
               setIsOwner(organizations[0].role === 'owner');
-              // Apply org timezone for non-creator members
+              // Apply the saved org timezone before event fetches so schedules
+              // use the same timezone shown in Settings on every device.
               fetch('/api/org/creator-settings')
                 .then(r => r.ok ? r.json() : null)
                 .then(csData => {
-                  if (csData && !csData.isCreator && csData.orgTimezone) {
+                  if (csData?.orgTimezone) {
                     useTimezoneStore.getState().setTimezone(csData.orgTimezone);
                   }
                 })
@@ -797,11 +798,12 @@ export default function SchedulePage() {
           setPendingInvites([]);
           // Refresh embed instances (org members' embeds now included)
           loadEmbedInstances();
-          // Apply org timezone for non-creator members
+          // Apply the saved org timezone before event fetches so schedules
+          // use the same timezone shown in Settings on every device.
           fetch('/api/org/creator-settings')
             .then(r => r.ok ? r.json() : null)
             .then(csData => {
-              if (csData && !csData.isCreator && csData.orgTimezone) {
+              if (csData?.orgTimezone) {
                 useTimezoneStore.getState().setTimezone(csData.orgTimezone);
               }
             })
@@ -1042,7 +1044,7 @@ export default function SchedulePage() {
       const timeout = setTimeout(() => ctrl.abort(), 45_000); // 45s safety timeout
       let res: Response;
       try {
-        res = await fetch(url, { signal: ctrl.signal });
+        res = await fetch(url, { signal: ctrl.signal, cache: forceRefresh ? 'no-store' : 'default' });
       } finally {
         clearTimeout(timeout);
       }
@@ -3288,11 +3290,12 @@ export default function SchedulePage() {
         setOrgName(name);
         // Reload embeds immediately (org members' embeds now included)
         loadEmbedInstances();
-        // Apply org timezone for non-creator members
+        // Apply the saved org timezone before event fetches so schedules
+        // use the same timezone shown in Settings on every device.
         fetch('/api/org/creator-settings')
           .then(r => r.ok ? r.json() : null)
           .then(csData => {
-            if (csData && !csData.isCreator && csData.orgTimezone) {
+            if (csData?.orgTimezone) {
               useTimezoneStore.getState().setTimezone(csData.orgTimezone);
             }
           })

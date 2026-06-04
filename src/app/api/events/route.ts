@@ -1094,6 +1094,7 @@ interface SportsDBEvent {
   strEvent: string;
   dateEvent: string;
   strTime?: string;
+  strTimestamp?: string;
   strHomeTeam?: string;
   strAwayTeam?: string;
   strHomeTeamBadge?: string;
@@ -1186,16 +1187,30 @@ async function sdbFetch(endpoint: string, responseKey: 'events' | 'results' = 'e
   }
 }
 
-function sportsDBToLocal(dateStr: string, timeStr: string, timeZone: string): { date: string; time: string } {
-  try {
-    const [y, m, d] = dateStr.split('-').map(Number);
-    const [h, min, sec] = (timeStr || '00:00:00').split(':').map(Number);
-    const utc = new Date(Date.UTC(y, m - 1, d, h || 0, min || 0, sec || 0));
-    if (Number.isNaN(utc.getTime())) return { date: dateStr, time: '00:00' };
-    return formatUtcDateInTimeZone(utc, timeZone);
-  } catch {
-    return { date: dateStr, time: '00:00' };
+function normalizeSportsDBTime(timeStr: string | undefined): string {
+  const clean = (timeStr || '00:00:00').trim();
+  if (/^\d{1,2}:\d{2}$/.test(clean)) return `${clean}:00`;
+  return clean || '00:00:00';
+}
+
+function sportsDBUtcIso(event: SportsDBEvent): string {
+  const timestamp = event.strTimestamp?.trim();
+  if (timestamp) {
+    const hasZone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(timestamp);
+    const iso = hasZone ? timestamp : `${timestamp}Z`;
+    const date = new Date(iso);
+    if (!Number.isNaN(date.getTime())) return date.toISOString();
   }
+
+  const fallback = `${event.dateEvent}T${normalizeSportsDBTime(event.strTime)}Z`;
+  const date = new Date(fallback);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+}
+
+function sportsDBEventToLocal(event: SportsDBEvent, timeZone: string): { date: string; time: string } {
+  const isoDate = sportsDBUtcIso(event);
+  if (!isoDate) return { date: event.dateEvent, time: '00:00' };
+  return formatUtcDateInTimeZone(new Date(isoDate), timeZone);
 }
 
 function formatSportsDBCyclingTitle(eventName: string): string {
@@ -1207,8 +1222,9 @@ function formatSportsDBCyclingTitle(eventName: string): string {
 }
 
 function mapSDBEvent(event: SportsDBEvent, league: typeof SPORTSDB_ONLY_LEAGUES[0], timeZone: string): MatchEvent {
-  const { date, time } = sportsDBToLocal(event.dateEvent, event.strTime || '00:00:00', timeZone);
+  const { date, time } = sportsDBEventToLocal(event, timeZone);
   const isCycling = league.category === 'Cycling';
+  const isoDate = sportsDBUtcIso(event);
   return {
     id: `sportsdb-${event.idEvent}`,
     source: 'sportsdb',
@@ -1226,6 +1242,8 @@ function mapSDBEvent(event: SportsDBEvent, league: typeof SPORTSDB_ONLY_LEAGUES[
     tags: [],
     isFeatured: false,
     isSelected: false,
+    sourceEventId: event.idEvent,
+    isoDate: isoDate || undefined,
   };
 }
 
@@ -1309,6 +1327,7 @@ function extractTeamPageEvents(html: string): SportsDBEvent[] {
       strEvent: `${names[0]} vs ${names[1]}`,
       dateEvent,
       strTime,
+      strTimestamp: `${dateEvent}T${strTime}Z`,
       strHomeTeam: names[0],
       strAwayTeam: names[1],
       strHomeTeamBadge: badges[0],
@@ -1348,7 +1367,8 @@ function normalizeSportsDBTeamName(value: string | undefined): string {
 }
 
 function mapSDBTeamEvent(event: SportsDBEvent, team: typeof SPORTSDB_TEAM_FEEDS[0], timeZone: string): MatchEvent {
-  const { date, time } = sportsDBToLocal(event.dateEvent, event.strTime || '00:00:00', timeZone);
+  const { date, time } = sportsDBEventToLocal(event, timeZone);
+  const isoDate = sportsDBUtcIso(event);
   const home = event.strHomeTeam || event.strEvent || team.teamName || 'TBD';
   const away = event.strAwayTeam || '';
   const teamName = normalizeSportsDBTeamName(team.teamName);
@@ -1384,6 +1404,7 @@ function mapSDBTeamEvent(event: SportsDBEvent, team: typeof SPORTSDB_TEAM_FEEDS[
     isFeatured: false,
     isSelected: false,
     sourceEventId: event.idEvent,
+    isoDate: isoDate || undefined,
     status: event.strStatus,
     venue: event.strVenue,
     country: event.strCountry,
@@ -1507,7 +1528,8 @@ function mapSDBCombatEvent(
   league: typeof SPORTSDB_ONLY_LEAGUES[0],
   timeZone: string
 ): MatchEvent {
-  const { date, time } = sportsDBToLocal(event.dateEvent, event.strTime || '00:00:00', timeZone);
+  const { date, time } = sportsDBEventToLocal(event, timeZone);
+  const isoDate = sportsDBUtcIso(event);
   const { cardName, home, away } = parseSDBFightEvent(event.strEvent, league.sportsdbId);
 
   // Build leagueLabel used by generateHTML's getLeagueAbbrev:
@@ -1540,6 +1562,8 @@ function mapSDBCombatEvent(
     cardName: cardName || undefined,
     isMainCard: true,
     fightOrder: 0,
+    sourceEventId: event.idEvent,
+    isoDate: isoDate || undefined,
   };
 }
 
@@ -2077,6 +2101,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       events: payload.fixtures,
       cached: false,
+      timeZone,
       source: payload.source,
       complete: payload.complete,
       updatedAt: payload.updatedAt,
@@ -2130,6 +2155,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       events: [...cached.data, ...customEvents],
       cached: true,
+      timeZone,
       age: Math.round((now - cached.timestamp) / 1000),
     }, { headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600' } });
   }
@@ -2153,6 +2179,7 @@ export async function GET(req: NextRequest) {
       events: [...cached.data, ...customEvents],
       cached: true,
       stale: true,
+      timeZone,
       age: Math.round((now - cached.timestamp) / 1000),
     }, { headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=300' } });
   }
@@ -2164,7 +2191,7 @@ export async function GET(req: NextRequest) {
     // return each other's data.
     if (fetchPromises.has(cacheKey)) {
       const [events, customEvents] = await Promise.all([fetchPromises.get(cacheKey)!.promise, getCustomEvents()]);
-      return NextResponse.json({ events: [...events, ...customEvents], cached: false });
+      return NextResponse.json({ events: [...events, ...customEvents], cached: false, timeZone });
     }
 
     const p = fetchAllEvents(startDate, endDate, timeZone);
@@ -2177,7 +2204,7 @@ export async function GET(req: NextRequest) {
     CACHE.set(cacheKey, { data: events, timestamp: Date.now() });
     fetchPromises.delete(cacheKey);
 
-    return NextResponse.json({ events: [...events, ...customEvents], cached: false }, {
+    return NextResponse.json({ events: [...events, ...customEvents], cached: false, timeZone }, {
       headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600' },
     });
   } catch (err) {
@@ -2191,6 +2218,7 @@ export async function GET(req: NextRequest) {
         events: [...cached.data, ...customEvents],
         cached: true,
         stale: true,
+        timeZone,
         error: 'Fetch failed, returning stale data',
       });
     }
