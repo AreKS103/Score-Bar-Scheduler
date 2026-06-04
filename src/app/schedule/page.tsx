@@ -1496,6 +1496,7 @@ export default function SchedulePage() {
     // otherwise we'd overwrite the saved selections with an all-deselected state.
     if (!initialLoadDoneRef.current) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    const target = effectiveTargetRef.current;
     saveTimerRef.current = setTimeout(() => {
       if (!selectionDirtyRef.current) return;
       selectionDirtyRef.current = false;
@@ -1514,7 +1515,7 @@ export default function SchedulePage() {
         leagueOrder,
         featuredLeagues: Object.fromEntries(featuredLeagues),
         savedAt: Date.now(),
-      });
+      }, target);
     }, 250);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [events, leagueOrder, featuredLeagues, isFetching, embedInstances]);

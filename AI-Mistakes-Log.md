@@ -26,3 +26,8 @@
 - **The Error:** Same-account/org schedule selections flickered selected/unselected because remote or fetched full snapshots were auto-saved back as local removal diffs.
 - **The Mistake:** Treated every store change as user intent, even when the change came from realtime, embed switching, or server snapshot application; the selection row was also user-scoped while the workflow was org-shared.
 - **The Rule:** Selection sync must distinguish explicit local edits from programmatic remote state. Persist operation diffs through a server-owned authoritative scope, and never auto-save remote/fetch/snapshot-applied absent keys as removals.
+
+### 2026-06-04
+- **The Error:** Clearing all selections from the `Homepage` embed appeared to work briefly, then the old selections reappeared.
+- **The Mistake:** The debounced autosave called `saveSelectionToSupabase(state)` without the active embed target, so the empty clear was saved to the default slot while the `Homepage` row kept its old selected matches.
+- **The Rule:** Every selection save path must pass the resolved embed target. When debugging embed-specific sync, compare the intended embed row and the default row in Supabase before changing merge logic.
