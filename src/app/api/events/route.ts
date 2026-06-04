@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { MatchEvent } from '@/types';
 import { createClient } from '@/lib/supabase/server';
+import { getOrgMemberIds } from '@/lib/supabase/org';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { normalizeTournamentGame, MARCH_MADNESS_LOGO, MARCH_MADNESS_WOMEN_LOGO } from '@/lib/marchMadness';
 import { fetchWorldCupFixtures, formatWorldCupStage, WORLD_CUP_LABEL, WORLD_CUP_LOGO, WORLD_CUP_SPORT_ID, WORLD_CUP_ESPN_SLUG } from '@/lib/worldCup';
@@ -2118,11 +2119,12 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Fetch this user's custom events (per-user, not server-cached)
+  // Fetch current org's custom events (solo users resolve to just themselves).
   const getCustomEvents = async (): Promise<MatchEvent[]> => {
     if (!supabase || !userId) return [];
 
-    const customCacheKey = `${userId}|${startDate}|${endDate}`;
+    const orgMemberIds = await getOrgMemberIds(userId);
+    const customCacheKey = `${orgMemberIds.slice().sort().join(',')}|${startDate}|${endDate}`;
     const now = Date.now();
     const cachedCustom = CUSTOM_EVENTS_CACHE.get(customCacheKey);
     if (cachedCustom && now - cachedCustom.timestamp < CUSTOM_EVENTS_CACHE_TTL) {
@@ -2133,7 +2135,7 @@ export async function GET(req: NextRequest) {
       const { data } = await supabase
         .from('custom_events')
         .select('event_data')
-        .eq('user_id', userId)
+        .in('user_id', orgMemberIds)
         .gt('expires_at', new Date().toISOString());
       const all = (data ?? []).map(r => r.event_data as MatchEvent);
       const filtered = all.filter(e => e.date >= startDate && e.date <= endDate);

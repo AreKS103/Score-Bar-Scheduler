@@ -310,16 +310,53 @@ export default function SchedulePage() {
       }
     | null
   >(null);
+  const selectionDirtyRef = useRef(false);
+  const markSelectionDirty = useCallback(() => {
+    selectionDirtyRef.current = true;
+  }, []);
   const handleToggleSelected = useCallback(
     (id: string) => {
+      markSelectionDirty();
       const match = useScheduleStore.getState().events.find(e => e.id === id);
       toggleSelected(id);
       if (match && !match.isSelected) {
         setScrollToMatch({ id, ts: Date.now() });
       }
     },
-    [toggleSelected]
+    [markSelectionDirty, toggleSelected]
   );
+  const handleToggleFeatured = useCallback((id: string) => {
+    markSelectionDirty();
+    toggleFeatured(id);
+  }, [markSelectionDirty, toggleFeatured]);
+  const handleSetNote = useCallback((id: string, note: string) => {
+    markSelectionDirty();
+    setNote(id, note);
+  }, [markSelectionDirty, setNote]);
+  const handleToggleTag = useCallback((id: string, tag: string) => {
+    markSelectionDirty();
+    toggleTag(id, tag);
+  }, [markSelectionDirty, toggleTag]);
+  const handleBatchToggleTag = useCallback((ids: string[], tag: string) => {
+    markSelectionDirty();
+    batchToggleTag(ids, tag);
+  }, [batchToggleTag, markSelectionDirty]);
+  const handleSelectAll = useCallback(() => {
+    markSelectionDirty();
+    selectAll();
+  }, [markSelectionDirty, selectAll]);
+  const handleDeselectAll = useCallback(() => {
+    markSelectionDirty();
+    deselectAll();
+  }, [deselectAll, markSelectionDirty]);
+  const handleBatchSetSelected = useCallback((ids: string[], selected: boolean) => {
+    markSelectionDirty();
+    batchSetSelected(ids, selected);
+  }, [batchSetSelected, markSelectionDirty]);
+  const handleBatchClearAll = useCallback((ids: string[]) => {
+    markSelectionDirty();
+    batchClearAll(ids);
+  }, [batchClearAll, markSelectionDirty]);
 
   const [flashKey, setFlashKey] = useState(0);
   const [embedInstances, setEmbedInstances] = useState<EmbedInstanceState[]>([]);
@@ -970,19 +1007,21 @@ export default function SchedulePage() {
     const previous = undoStackRef.current.pop();
     if (!previous) return;
 
+    markSelectionDirty();
     const current = captureHistoryState();
     redoStackRef.current.push(current);
     applyHistoryState(previous);
-  }, [applyHistoryState, captureHistoryState]);
+  }, [applyHistoryState, captureHistoryState, markSelectionDirty]);
 
   const redo = useCallback(() => {
     const next = redoStackRef.current.pop();
     if (!next) return;
 
+    markSelectionDirty();
     const current = captureHistoryState();
     undoStackRef.current.push(current);
     applyHistoryState(next);
-  }, [applyHistoryState, captureHistoryState]);
+  }, [applyHistoryState, captureHistoryState, markSelectionDirty]);
 
   const canUndo = historyVersion >= 0 && undoStackRef.current.length > 0;
   const canRedo = historyVersion >= 0 && redoStackRef.current.length > 0;
@@ -1458,6 +1497,8 @@ export default function SchedulePage() {
     if (!initialLoadDoneRef.current) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
+      if (!selectionDirtyRef.current) return;
+      selectionDirtyRef.current = false;
       const selections: SavedSelectionState['selections'] = {};
       for (const e of events) {
         if (e.isSelected || e.isFeatured || e.tags.length > 0) {
@@ -1473,7 +1514,7 @@ export default function SchedulePage() {
         leagueOrder,
         featuredLeagues: Object.fromEntries(featuredLeagues),
         savedAt: Date.now(),
-      }, effectiveTargetRef.current);
+      });
     }, 250);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [events, leagueOrder, featuredLeagues, isFetching, embedInstances]);
@@ -1696,6 +1737,7 @@ export default function SchedulePage() {
   // NOTE: main schedule list uses natural groupedByLeague order (unchanged by panel reordering)
 
   const moveLeague = useCallback((league: string, dir: -1 | 1) => {
+    markSelectionDirty();
     setActiveSortLeague(league);
     setLeagueOrder((prev) => {
       // Build the visible-only order from the current leagueOrder so we always
@@ -1713,16 +1755,17 @@ export default function SchedulePage() {
       [arr[idxA], arr[idxB]] = [arr[idxB], arr[idxA]];
       return arr;
     });
-  }, []);
+  }, [markSelectionDirty]);
 
   const toggleFeaturedLeague = useCallback((sportId: string) => {
+    markSelectionDirty();
     setFeaturedLeagues((prev) => {
       const next = new Map(prev);
       if (next.has(sportId)) next.delete(sportId);
       else next.set(sportId, '');
       return next;
     });
-  }, []);
+  }, [markSelectionDirty]);
 
   const openHighlightMenu = useCallback((payload:
     | {
@@ -1759,6 +1802,7 @@ export default function SchedulePage() {
   }, []);
 
   const setLeagueHighlight = useCallback((sportId: string, leagueLabel: string, shouldHighlight: boolean) => {
+    markSelectionDirty();
     setFeaturedLeagues((prev) => {
       const next = new Map(prev);
       if (shouldHighlight) {
@@ -1770,7 +1814,7 @@ export default function SchedulePage() {
       return next;
     });
     closeHighlightMenu();
-  }, [closeHighlightMenu]);
+  }, [closeHighlightMenu, markSelectionDirty]);
 
   const setMatchHighlight = useCallback((eventId: string, shouldHighlight: boolean) => {
     const event = events.find((e) => e.id === eventId);
@@ -1779,10 +1823,10 @@ export default function SchedulePage() {
       return;
     }
     if (Boolean(event.isFeatured) !== shouldHighlight) {
-      toggleFeatured(eventId);
+      handleToggleFeatured(eventId);
     }
     closeHighlightMenu();
-  }, [events, toggleFeatured, closeHighlightMenu]);
+  }, [events, handleToggleFeatured, closeHighlightMenu]);
 
   useEffect(() => {
     if (!highlightMenu) return;
@@ -1835,8 +1879,8 @@ export default function SchedulePage() {
 
   const bulkSelectLeague = useCallback((sportId: string, selectAll: boolean) => {
     const ids = useScheduleStore.getState().events.filter((e) => e.sportId === sportId).map((e) => e.id);
-    batchSetSelected(ids, selectAll);
-  }, [batchSetSelected]);
+    handleBatchSetSelected(ids, selectAll);
+  }, [handleBatchSetSelected]);
 
   const handleDeleteSchedule = useCallback(async () => {
     // Pass the current embedTarget so the API deletes the correct schedule row.
@@ -1930,6 +1974,7 @@ export default function SchedulePage() {
   const handlePreviewDelete = useCallback(async () => {
     const checkedIds = Array.from(previewCheckedIds);
     if (checkedIds.length === 0) return;
+    markSelectionDirty();
 
     const checkedEvents = events.filter((e) => checkedIds.includes(e.id));
     const manualIds = checkedEvents.filter((e) => e.source === 'manual').map((e) => e.id);
@@ -1937,7 +1982,7 @@ export default function SchedulePage() {
 
     // Non-manual items are cleared (isSelected, isFeatured, tags) only.
     if (nonManualIds.length > 0) {
-      batchClearAll(nonManualIds);
+      handleBatchClearAll(nonManualIds);
     }
 
     // Manual/custom items are removed locally only after Supabase confirms delete.
@@ -1948,15 +1993,17 @@ export default function SchedulePage() {
     }
 
     setPreviewCheckedIds(new Set(failedManualIds));
-  }, [previewCheckedIds, events, batchClearAll, deleteManualEventsPermanently]);
+  }, [previewCheckedIds, events, handleBatchClearAll, deleteManualEventsPermanently, markSelectionDirty]);
 
   const handleDeleteAll = useCallback(async () => {
     const previewEvents = events.filter((e) => e.isSelected || e.isFeatured);
+    if (previewEvents.length === 0) return;
+    markSelectionDirty();
     const manualIds = previewEvents.filter((e) => e.source === 'manual').map((e) => e.id);
     const nonManualIds = previewEvents.filter((e) => e.source !== 'manual').map((e) => e.id);
 
     if (nonManualIds.length > 0) {
-      batchClearAll(nonManualIds);
+      handleBatchClearAll(nonManualIds);
     }
 
     let failedManualIds: string[] = [];
@@ -1967,7 +2014,7 @@ export default function SchedulePage() {
 
     setDeleteAllConfirm(false);
     setPreviewCheckedIds(new Set(failedManualIds));
-  }, [events, batchClearAll, deleteManualEventsPermanently]);
+  }, [events, handleBatchClearAll, deleteManualEventsPermanently, markSelectionDirty]);
 
   // ─── HTML generation — recomputes whenever leagueOrder, events, or sortVersion changes ─
   const html = useMemo(
@@ -2035,6 +2082,7 @@ export default function SchedulePage() {
 
   const pasteSelections = useCallback(() => {
     if (!embedClipboard) return;
+    markSelectionDirty();
     // Push current state to undo stack so paste can be undone with Ctrl+Z
     const current = captureHistoryState();
     undoStackRef.current.push(current);
@@ -2074,7 +2122,7 @@ export default function SchedulePage() {
     setPanelContextMenu(null);
     closeHighlightMenu();
     setPreviewCheckedIds(new Set()); // clear any selection checks after paste
-  }, [embedClipboard, events, captureHistoryState, setEvents, leagueOrder, featuredLeagues, closeHighlightMenu]);
+  }, [embedClipboard, events, captureHistoryState, setEvents, leagueOrder, featuredLeagues, closeHighlightMenu, markSelectionDirty]);
 
   // Ctrl+C / Ctrl+V shortcuts for embed selection copy/paste
   // Defined here (after copySelections/pasteSelections) to avoid TDZ ordering issues.
@@ -2445,10 +2493,10 @@ export default function SchedulePage() {
 
             <Separator orientation="vertical" className="h-5 hidden sm:block" />
 
-            <Button variant="ghost" size="sm" className="sm:text-xs sm:h-7 sm:px-2" onClick={selectAll}>
+            <Button variant="ghost" size="sm" className="sm:text-xs sm:h-7 sm:px-2" onClick={handleSelectAll}>
               <CheckSquare className="w-3.5 h-3.5" /> <span className="phone-ls-hide">Select All</span>
             </Button>
-            <Button variant="ghost" size="sm" className="sm:text-xs sm:h-7 sm:px-2" onClick={deselectAll}>
+            <Button variant="ghost" size="sm" className="sm:text-xs sm:h-7 sm:px-2" onClick={handleDeselectAll}>
               <Square className="w-3.5 h-3.5" /> <span className="phone-ls-hide">Deselect</span>
             </Button>
 
@@ -2515,9 +2563,9 @@ export default function SchedulePage() {
               isLoading={fetchStatuses[sportId]?.loading}
               error={fetchStatuses[sportId]?.error}
               onToggleSelected={handleToggleSelected}
-              onToggleFeatured={toggleFeatured}
-              onSetNote={setNote}
-              onToggleTag={toggleTag}
+              onToggleFeatured={handleToggleFeatured}
+              onSetNote={handleSetNote}
+              onToggleTag={handleToggleTag}
               isFeaturedLeague={featuredLeagues.has(sportId)}
               onToggleFeaturedLeague={toggleFeaturedLeague}
               onBulkSelectLeague={bulkSelectLeague}
@@ -2774,7 +2822,7 @@ export default function SchedulePage() {
                         >
                           {/* Star — click to un-highlight */}
                           <button
-                            onClick={(e) => { e.stopPropagation(); toggleFeatured(m.id); }}
+                            onClick={(e) => { e.stopPropagation(); handleToggleFeatured(m.id); }}
                             className="shrink-0 w-6 flex items-center justify-center text-amber-400 hover:text-amber-300 hover:bg-amber-400/10 transition-colors"
                             title="Remove from highlights"
                           >
@@ -2907,7 +2955,7 @@ export default function SchedulePage() {
                           >
                             {/* Star — toggle featured without triggering row selection */}
                             <button
-                              onClick={(e) => { e.stopPropagation(); toggleFeatured(m.id); }}
+                              onClick={(e) => { e.stopPropagation(); handleToggleFeatured(m.id); }}
                               data-no-league-menu="true"
                               className={cn(
                                 'shrink-0 w-6 flex items-center justify-center transition-colors hover:bg-amber-400/10',
@@ -3109,7 +3157,7 @@ export default function SchedulePage() {
                   return (
                     <button
                       key={preset.value}
-                      onClick={() => { batchToggleTag(tagTargetIds, preset.value); closeHighlightMenu(); }}
+                      onClick={() => { handleBatchToggleTag(tagTargetIds, preset.value); closeHighlightMenu(); }}
                       className={cn(
                         'w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors',
                         active ? 'bg-accent font-medium text-foreground' : 'text-foreground hover:bg-accent'
@@ -3126,7 +3174,7 @@ export default function SchedulePage() {
                   return (
                     <div key={ctag} className="flex items-center gap-0.5">
                       <button
-                        onClick={() => { batchToggleTag(tagTargetIds, ctag); closeHighlightMenu(); }}
+                        onClick={() => { handleBatchToggleTag(tagTargetIds, ctag); closeHighlightMenu(); }}
                         className={cn(
                           'flex-1 flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors min-w-0',
                           active ? 'bg-accent font-medium text-foreground' : 'text-foreground hover:bg-accent'
@@ -3166,7 +3214,7 @@ export default function SchedulePage() {
                       if (e.key === 'Enter') {
                         const tag = customTagInput.trim();
                         if (tag) {
-                          batchToggleTag(tagTargetIds, tag);
+                          handleBatchToggleTag(tagTargetIds, tag);
                           const isPreset = PRESET_TAGS.some((p) => p.value === tag);
                           if (!isPreset && !customTags.includes(tag)) {
                             addCustomTag(tag);
@@ -3183,7 +3231,7 @@ export default function SchedulePage() {
                     onClick={() => {
                       const tag = customTagInput.trim();
                       if (tag) {
-                        batchToggleTag(tagTargetIds, tag);
+                        handleBatchToggleTag(tagTargetIds, tag);
                         const isPreset = PRESET_TAGS.some((p) => p.value === tag);
                         if (!isPreset && !customTags.includes(tag)) {
                           addCustomTag(tag);
@@ -3220,6 +3268,7 @@ export default function SchedulePage() {
           // If this is the first selected event for the league, pin it to top
           // so newly added custom matches are immediately visible in preview.
           if (!hasSelectedInLeague) {
+            markSelectionDirty();
             setLeagueOrder((prev) => [event.sportId, ...prev.filter((id) => id !== event.sportId)]);
           }
           // Durable local fallback: keep manual event across refresh even if Supabase fails.
@@ -3402,7 +3451,7 @@ export default function SchedulePage() {
           }
 
           // Select them in the store
-          batchSetSelected(eventIds, true);
+          handleBatchSetSelected(eventIds, true);
 
           // Pin new leagues to the top of league order
           const newSportIds = new Set<string>();
@@ -3410,6 +3459,7 @@ export default function SchedulePage() {
             if (idSet.has(ev.id)) newSportIds.add(ev.sportId);
           }
           if (newSportIds.size > 0) {
+            markSelectionDirty();
             setLeagueOrder((prev) => {
               const additions = Array.from(newSportIds).filter((id) => !prev.includes(id));
               return additions.length > 0 ? [...additions, ...prev] : prev;

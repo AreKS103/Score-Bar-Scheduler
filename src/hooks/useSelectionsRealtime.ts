@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { getClientId, type SavedSelectionState } from '@/lib/clientCache';
+import { getClientId, loadSelectionFromSupabase, type SavedSelectionState } from '@/lib/clientCache';
 
 /**
  * Payload delivered to the consumer when another device updates a row in
@@ -18,12 +18,9 @@ export interface RemoteSelectionChange {
 }
 
 /**
- * Subscribe to real-time changes on the `user_selections` table for the current
- * authenticated user. Fires `onRemoteChange` for INSERT/UPDATE/DELETE events
- * originating from OTHER devices/tabs (echoes from the same tab are suppressed
- * via the per-tab `client_id` written into the row).
- *
- * Pairs with `apply_user_selection_diff` RPC + migration 041.
+ * Subscribe to real-time selection changes. Postgres changes cover legacy
+ * per-user rows; Broadcast covers the org-aware canonical row written by
+ * `/api/selections`.
  */
 export function useSelectionsRealtime({
   userId,
@@ -35,6 +32,7 @@ export function useSelectionsRealtime({
   enabled?: boolean;
 }) {
   const cbRef = useRef(onRemoteChange);
+  const latestBroadcastRef = useRef<string>('');
 
   useEffect(() => {
     cbRef.current = onRemoteChange;
@@ -43,8 +41,40 @@ export function useSelectionsRealtime({
   useEffect(() => {
     if (!enabled || !userId) return;
 
+    let disposed = false;
     const myClientId = getClientId();
     const supabase = createClient();
+
+    const handleBroadcast = async (rawPayload: unknown) => {
+      const envelope = rawPayload && typeof rawPayload === 'object' ? rawPayload as Record<string, unknown> : {};
+      const payload = envelope.payload && typeof envelope.payload === 'object'
+        ? envelope.payload as Record<string, unknown>
+        : envelope;
+      const embedTarget = typeof payload.embedTarget === 'string' ? payload.embedTarget : '';
+      const clientId = typeof payload.clientId === 'string' ? payload.clientId : null;
+      const savedAt = typeof payload.savedAt === 'number' ? payload.savedAt : Date.now();
+      const dedupeKey = `${embedTarget}:${savedAt}:${clientId ?? ''}`;
+
+      if (clientId && clientId === myClientId) return;
+      if (latestBroadcastRef.current === dedupeKey) return;
+      latestBroadcastRef.current = dedupeKey;
+
+      const state = await loadSelectionFromSupabase(embedTarget, { preferRemote: true });
+      if (disposed) return;
+      const deleted = Boolean(payload.deleted) || !state;
+      const nextState = state ?? {
+        selections: {},
+        leagueOrder: [],
+        featuredLeagues: {},
+        savedAt,
+      };
+      const selectedCount = Object.values(nextState.selections).filter((s) => s.isSelected || s.isFeatured || s.tags.length > 0).length;
+      console.log(
+        `[SelectionSync] broadcast embed=${embedTarget || '(default)'} selected=${selectedCount}`,
+        { fromClient: clientId, deleted },
+      );
+      cbRef.current({ embedTarget, state: nextState, deleted });
+    };
 
     const channel = supabase
       .channel(`user-selections-${userId}`)
@@ -95,8 +125,34 @@ export function useSelectionsRealtime({
       )
       .subscribe();
 
+    const broadcastChannels = [
+      supabase
+        .channel(`selection-sync:user:${userId}`)
+        .on('broadcast', { event: 'selection-updated' }, handleBroadcast)
+        .subscribe(),
+    ];
+
+    fetch('/api/selections?scope=1', { cache: 'no-store' })
+      .then((response) => response.ok ? response.json() : null)
+      .then((data: { scope?: { orgId?: string | null; topic?: string | null } } | null) => {
+        if (disposed) return;
+        const topic = data?.scope?.topic;
+        if (!topic || topic === `selection-sync:user:${userId}`) return;
+        broadcastChannels.push(
+          supabase
+            .channel(topic)
+            .on('broadcast', { event: 'selection-updated' }, handleBroadcast)
+            .subscribe(),
+        );
+      })
+      .catch((error) => console.warn('[SelectionSync] Failed to subscribe to org broadcast scope:', error));
+
     return () => {
+      disposed = true;
       supabase.removeChannel(channel);
+      for (const broadcastChannel of broadcastChannels) {
+        supabase.removeChannel(broadcastChannel);
+      }
     };
   }, [userId, enabled]);
 }

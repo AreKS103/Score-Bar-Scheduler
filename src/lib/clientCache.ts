@@ -428,18 +428,10 @@ export function pruneStaleSelectionKeys(liveEmbedIds: Set<string>): void {
 }
 
 // ─── Supabase Selection Sync ──────────────────────────────────────────────────
-// Mirrors selection state to Supabase `user_selections` table for cross-device
-// persistence AND real-time multi-device sync.
-//
-// Architecture (see migration 041):
-//  - Writes go through the `apply_user_selection_diff` RPC, which merges only
-//    the changed keys server-side via JSONB `(col - removed) || added`.
-//    Concurrent edits from two devices on the same account targeting DIFFERENT
-//    event ids no longer clobber each other (the old whole-blob upsert did).
-//  - Each tab has a sessionStorage `client_id` so it can ignore its own writes
-//    coming back over the realtime channel (echo suppression).
-//  - `lastRemoteSnapshots` holds the last successfully-saved or remotely-
-//    observed state per embedTarget — used to compute the diff to send.
+// Mirrors selection state to Supabase via `/api/selections` for cross-device
+// persistence and org-aware collaboration. The browser computes a per-key diff;
+// the server resolves the correct org scope and applies the diff to one
+// canonical row, then broadcasts a lightweight reload notification.
 
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 
@@ -503,8 +495,8 @@ function arraysEqual(a: string[], b: string[]): boolean {
  * Save selection state to Supabase (debounced), scoped to embedTarget.
  * Also writes to localStorage immediately via saveSelectionState.
  *
- * Uses the `apply_user_selection_diff` RPC so only changed keys are sent and
- * concurrent edits from other devices targeting other keys are preserved.
+ * Sends only changed keys to `/api/selections`; the server resolves user/org
+ * scope and merges them into the authoritative row.
  */
 export function saveSelectionToSupabase(state: SavedSelectionState, embedTarget = ''): void {
   // Always save to localStorage first (instant)
@@ -523,27 +515,6 @@ export function saveSelectionToSupabase(state: SavedSelectionState, embedTarget 
       if (!user) return;
       // Guard: ensure localStorage is scoped to this user before writing
       checkAndClearIfUserChanged(user.id);
-
-      // Empty state → delete row so we don't accumulate stale empties.
-      if (
-        Object.keys(state.selections).length === 0 &&
-        Object.keys(state.featuredLeagues).length === 0 &&
-        state.leagueOrder.length === 0
-      ) {
-        const clientId = getClientId();
-        await supabase
-          .from('user_selections')
-          .update({ client_id: clientId })
-          .eq('user_id', user.id)
-          .eq('embed_target', embedTarget);
-        await supabase
-          .from('user_selections')
-          .delete()
-          .eq('user_id', user.id)
-          .eq('embed_target', embedTarget);
-        lastRemoteSnapshots.delete(embedTarget);
-        return;
-      }
 
       const prev = lastRemoteSnapshots.get(embedTarget) ?? {
         selections: {},
@@ -579,27 +550,46 @@ export function saveSelectionToSupabase(state: SavedSelectionState, embedTarget 
         return;
       }
 
-      const { data, error } = await supabase.rpc('apply_user_selection_diff', {
-        p_embed_target: embedTarget,
-        p_selections_set: selDiff.set,
-        p_selections_rm: selDiff.rm,
-        p_featured_set: featDiff.set,
-        p_featured_rm: featDiff.rm,
-        p_league_order: orderChanged ? state.leagueOrder : null,
-        p_client_id: getClientId(),
+      const res = await fetch('/api/selections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          embedTarget,
+          selectionsSet: selDiff.set,
+          selectionsRemove: selDiff.rm,
+          featuredLeaguesSet: featDiff.set,
+          featuredLeaguesRemove: featDiff.rm,
+          leagueOrder: orderChanged ? state.leagueOrder : null,
+          clientId: getClientId(),
+        }),
       });
 
-      if (error) throw error;
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error ?? `Selection save failed (${res.status})`);
+      }
+
+      const data = await res.json() as {
+        state?: {
+          selections?: SavedSelectionState['selections'];
+          leagueOrder?: string[];
+          featuredLeagues?: Record<string, string>;
+          savedAt?: number;
+        };
+        deleted?: boolean;
+      };
 
       // Update snapshot from the authoritative server response so the next diff
       // is computed against what the database actually holds (including merges
       // from concurrent edits by other devices).
-      if (data) {
+      if (data.deleted) {
+        lastRemoteSnapshots.delete(embedTarget);
+      } else if (data.state) {
         setLastRemoteSnapshot(embedTarget, {
-          selections: (data as { selections?: SavedSelectionState['selections'] }).selections ?? {},
-          leagueOrder: (data as { league_order?: string[] }).league_order ?? [],
-          featuredLeagues: (data as { featured_leagues?: Record<string, string> }).featured_leagues ?? {},
-          savedAt: new Date((data as { updated_at?: string }).updated_at ?? Date.now()).getTime(),
+          selections: data.state.selections ?? {},
+          leagueOrder: data.state.leagueOrder ?? [],
+          featuredLeagues: data.state.featuredLeagues ?? {},
+          savedAt: data.state.savedAt ?? Date.now(),
         });
       }
     } catch (e) {
@@ -616,7 +606,10 @@ export function saveSelectionToSupabase(state: SavedSelectionState, embedTarget 
  * if a different account is logged in on the same browser, the previous user's
  * cached selections are wiped before they can contaminate the new session.
  */
-export async function loadSelectionFromSupabase(embedTarget = ''): Promise<SavedSelectionState | null> {
+export async function loadSelectionFromSupabase(
+  embedTarget = '',
+  options: { preferRemote?: boolean } = {},
+): Promise<SavedSelectionState | null> {
   // Try Supabase first — must resolve user BEFORE reading localStorage
   if (isSupabaseConfigured()) {
     try {
@@ -628,24 +621,38 @@ export async function loadSelectionFromSupabase(embedTarget = ''): Promise<Saved
 
         const localState = loadSelectionState(embedTarget);
 
-        const { data } = await supabase
-          .from('user_selections')
-          .select('selections, league_order, featured_leagues, updated_at')
-          .eq('user_id', user.id)
-          .eq('embed_target', embedTarget)
-          .maybeSingle();
+        const res = await fetch(`/api/selections?target=${encodeURIComponent(embedTarget)}`, { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json() as {
+            state?: {
+              selections?: SavedSelectionState['selections'];
+              leagueOrder?: string[];
+              featuredLeagues?: Record<string, string>;
+              savedAt?: number;
+            };
+            deleted?: boolean;
+          };
+          const remote = data.state;
+          if (!remote || data.deleted) {
+            lastRemoteSnapshots.delete(embedTarget);
+            return options.preferRemote ? null : localState;
+          }
 
-        if (data) {
           const remoteState: SavedSelectionState = {
-            selections: data.selections ?? {},
-            leagueOrder: data.league_order ?? [],
-            featuredLeagues: data.featured_leagues ?? {},
-            savedAt: new Date(data.updated_at).getTime(),
+            selections: remote.selections ?? {},
+            leagueOrder: remote.leagueOrder ?? [],
+            featuredLeagues: remote.featuredLeagues ?? {},
+            savedAt: remote.savedAt ?? Date.now(),
           };
 
           // Record the server's authoritative state so future writes diff
           // against it (not against an empty starting point).
           setLastRemoteSnapshot(embedTarget, remoteState);
+
+          if (options.preferRemote) {
+            saveSelectionState(remoteState, embedTarget);
+            return remoteState;
+          }
 
           // If local is newer, keep it. This prevents stale remote rows from
           // wiping freshly-added custom selections when Supabase save failed.
@@ -673,6 +680,11 @@ export async function loadSelectionFromSupabase(embedTarget = ''): Promise<Saved
           // Sync merged view to localStorage
           saveSelectionState(merged, embedTarget);
           return merged;
+        }
+
+        if (res.status !== 404) {
+          const body = await res.json().catch(() => null) as { error?: string } | null;
+          throw new Error(body?.error ?? `Selection load failed (${res.status})`);
         }
 
         // Supabase has no row for this embed — clear the snapshot too so the

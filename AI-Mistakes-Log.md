@@ -21,3 +21,8 @@
 - **The Error:** Cambodia fixtures could display raw SportsDB UTC times on the live app instead of the user's selected timezone.
 - **The Mistake:** Verified the server conversion for one timezone, but did not audit the full settings-to-route path or prove the resolved timezone in the API response.
 - **The Rule:** For timezone bugs, verify provider source timezone, route `timeZone` param, API resolved timezone, and final `event.date/time` together. Preserve provider UTC timestamps (`isoDate`) so every displayed time can be rechecked against the requested IANA timezone.
+
+### 2026-06-04
+- **The Error:** Same-account/org schedule selections flickered selected/unselected because remote or fetched full snapshots were auto-saved back as local removal diffs.
+- **The Mistake:** Treated every store change as user intent, even when the change came from realtime, embed switching, or server snapshot application; the selection row was also user-scoped while the workflow was org-shared.
+- **The Rule:** Selection sync must distinguish explicit local edits from programmatic remote state. Persist operation diffs through a server-owned authoritative scope, and never auto-save remote/fetch/snapshot-applied absent keys as removals.
