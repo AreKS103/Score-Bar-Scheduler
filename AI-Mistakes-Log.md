@@ -36,3 +36,8 @@
 - **The Error:** Deselecting a sport/league could briefly reselect it, then clear again, especially while background event refreshes were in flight.
 - **The Mistake:** Refresh merges treated localStorage as fresher than the current in-memory editor state when the current event existed but had just been deselected; stale saved selections could win during the debounce window.
 - **The Rule:** During refresh merges, current in-memory selection flags are authoritative for existing events, including explicit `false` values. LocalStorage is only a fallback for events not currently in memory, and stale saved reselects should be logged and blocked.
+
+### 2026-06-04
+- **The Error:** With two tabs open, selecting and then quickly unselecting a match could leave the other tab showing the match selected until another edit occurred.
+- **The Mistake:** The unselect save could diff against the old remote baseline while the earlier select write was still in flight, decide there was nothing to send, and then the select response became the new remote state with no queued removal.
+- **The Rule:** Selection saves must be serialized per embed and keep the latest desired state. After any in-flight write completes, compare the latest desired state to the new authoritative snapshot and flush a follow-up diff if needed.

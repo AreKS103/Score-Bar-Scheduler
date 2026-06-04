@@ -436,6 +436,8 @@ export function pruneStaleSelectionKeys(liveEmbedIds: Set<string>): void {
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 
 const supabaseSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const pendingRemoteSaveStates = new Map<string, SavedSelectionState>();
+const inFlightRemoteSaves = new Set<string>();
 
 /** Snapshot of what the server is believed to currently hold for each embed. */
 const lastRemoteSnapshots = new Map<string, SavedSelectionState>();
@@ -491,6 +493,181 @@ function arraysEqual(a: string[], b: string[]): boolean {
   return true;
 }
 
+function cloneSelectionState(state: SavedSelectionState): SavedSelectionState {
+  return {
+    selections: Object.fromEntries(
+      Object.entries(state.selections).map(([eventId, selection]) => [
+        eventId,
+        { ...selection, tags: [...selection.tags] },
+      ]),
+    ),
+    leagueOrder: [...state.leagueOrder],
+    featuredLeagues: { ...state.featuredLeagues },
+    savedAt: state.savedAt,
+  };
+}
+
+function emptyRemoteSnapshot(): SavedSelectionState {
+  return {
+    selections: {},
+    leagueOrder: [],
+    featuredLeagues: {},
+    savedAt: 0,
+  };
+}
+
+function activeSelectionCount(selections: SavedSelectionState['selections']): number {
+  return Object.values(selections).filter((selection) => (
+    selection.isSelected || selection.isFeatured || selection.tags.length > 0
+  )).length;
+}
+
+function selectionStateChanged(prev: SavedSelectionState, next: SavedSelectionState): boolean {
+  const selDiff = diffRecord(prev.selections, next.selections);
+  const featDiff = diffRecord(prev.featuredLeagues, next.featuredLeagues);
+  return (
+    Object.keys(selDiff.set).length > 0 ||
+    selDiff.rm.length > 0 ||
+    Object.keys(featDiff.set).length > 0 ||
+    featDiff.rm.length > 0 ||
+    !arraysEqual(prev.leagueOrder, next.leagueOrder)
+  );
+}
+
+function scheduleRemoteSelectionSave(embedTarget: string, delayMs = 80): void {
+  const existing = supabaseSaveTimers.get(embedTarget);
+  if (existing) clearTimeout(existing);
+  supabaseSaveTimers.set(embedTarget, setTimeout(() => {
+    supabaseSaveTimers.delete(embedTarget);
+    void flushRemoteSelectionSave(embedTarget);
+  }, delayMs));
+}
+
+async function flushRemoteSelectionSave(embedTarget: string): Promise<void> {
+  if (inFlightRemoteSaves.has(embedTarget)) {
+    const queued = pendingRemoteSaveStates.get(embedTarget);
+    console.log('[SelectionSync] save queued behind in-flight request', {
+      embedTarget: embedTarget || '(default)',
+      queuedCount: queued ? activeSelectionCount(queued.selections) : 0,
+    });
+    return;
+  }
+
+  const requestState = pendingRemoteSaveStates.get(embedTarget);
+  if (!requestState) return;
+
+  inFlightRemoteSaves.add(embedTarget);
+  let completed = false;
+
+  try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      completed = true;
+      return;
+    }
+    checkAndClearIfUserChanged(user.id);
+
+    const prev = lastRemoteSnapshots.get(embedTarget) ?? emptyRemoteSnapshot();
+    const selDiff = diffRecord(prev.selections, requestState.selections);
+    const featDiff = diffRecord(prev.featuredLeagues, requestState.featuredLeagues);
+    const orderChanged = !arraysEqual(prev.leagueOrder, requestState.leagueOrder);
+
+    if (selDiff.rm.length > 0 || Object.keys(selDiff.set).length > 0 || orderChanged) {
+      const prevCount = activeSelectionCount(prev.selections);
+      const nextCount = activeSelectionCount(requestState.selections);
+      const setCount = Object.keys(selDiff.set).length;
+      const message = `[SelectionSync] diff save embed=${embedTarget || '(default)'} prev=${prevCount} next=${nextCount} set=${setCount} rm=${selDiff.rm.length} orderChanged=${orderChanged}`;
+      if (selDiff.rm.length > 0 && setCount === 0) {
+        console.warn(message, { removed: selDiff.rm.slice(0, 12), clientId: getClientId() });
+      } else {
+        console.log(message);
+      }
+    }
+
+    if (
+      Object.keys(selDiff.set).length === 0 &&
+      selDiff.rm.length === 0 &&
+      Object.keys(featDiff.set).length === 0 &&
+      featDiff.rm.length === 0 &&
+      !orderChanged
+    ) {
+      completed = true;
+      return;
+    }
+
+    const res = await fetch('/api/selections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        embedTarget,
+        selectionsSet: selDiff.set,
+        selectionsRemove: selDiff.rm,
+        featuredLeaguesSet: featDiff.set,
+        featuredLeaguesRemove: featDiff.rm,
+        leagueOrder: orderChanged ? requestState.leagueOrder : null,
+        clientId: getClientId(),
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => null) as { error?: string } | null;
+      throw new Error(body?.error ?? `Selection save failed (${res.status})`);
+    }
+
+    const data = await res.json() as {
+      state?: {
+        selections?: SavedSelectionState['selections'];
+        leagueOrder?: string[];
+        featuredLeagues?: Record<string, string>;
+        savedAt?: number;
+      };
+      deleted?: boolean;
+    };
+
+    if (data.deleted) {
+      lastRemoteSnapshots.delete(embedTarget);
+    } else if (data.state) {
+      setLastRemoteSnapshot(embedTarget, {
+        selections: data.state.selections ?? {},
+        leagueOrder: data.state.leagueOrder ?? [],
+        featuredLeagues: data.state.featuredLeagues ?? {},
+        savedAt: data.state.savedAt ?? Date.now(),
+      });
+    }
+
+    completed = true;
+  } catch (error) {
+    console.warn('[SelectionSync] Failed to save to Supabase:', error);
+  } finally {
+    inFlightRemoteSaves.delete(embedTarget);
+    const latestState = pendingRemoteSaveStates.get(embedTarget);
+
+    if (!completed) {
+      if (latestState) scheduleRemoteSelectionSave(embedTarget, 1000);
+      return;
+    }
+
+    if (!latestState) return;
+    if (latestState === requestState) {
+      pendingRemoteSaveStates.delete(embedTarget);
+      return;
+    }
+
+    const remoteState = lastRemoteSnapshots.get(embedTarget) ?? emptyRemoteSnapshot();
+    if (selectionStateChanged(remoteState, latestState)) {
+      console.log('[SelectionSync] flushing queued desired state after in-flight save', {
+        embedTarget: embedTarget || '(default)',
+        remoteCount: activeSelectionCount(remoteState.selections),
+        desiredCount: activeSelectionCount(latestState.selections),
+      });
+      scheduleRemoteSelectionSave(embedTarget, 0);
+    } else {
+      pendingRemoteSaveStates.delete(embedTarget);
+    }
+  }
+}
+
 /**
  * Save selection state to Supabase (debounced), scoped to embedTarget.
  * Also writes to localStorage immediately via saveSelectionState.
@@ -503,99 +680,10 @@ export function saveSelectionToSupabase(state: SavedSelectionState, embedTarget 
   saveSelectionState(state, embedTarget);
 
   if (!isSupabaseConfigured()) return;
-  const existing = supabaseSaveTimers.get(embedTarget);
-  if (existing) clearTimeout(existing);
+  pendingRemoteSaveStates.set(embedTarget, cloneSelectionState(state));
   // 80 ms — batches rapid clicks but flushes fast so remote tabs see edits
   // within ~1s end-to-end (outer page debounce 250 ms + this 80 ms + RTT).
-  supabaseSaveTimers.set(embedTarget, setTimeout(async () => {
-    supabaseSaveTimers.delete(embedTarget);
-    try {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      // Guard: ensure localStorage is scoped to this user before writing
-      checkAndClearIfUserChanged(user.id);
-
-      const prev = lastRemoteSnapshots.get(embedTarget) ?? {
-        selections: {},
-        leagueOrder: [],
-        featuredLeagues: {},
-        savedAt: 0,
-      };
-
-      const selDiff = diffRecord(prev.selections, state.selections);
-      const featDiff = diffRecord(prev.featuredLeagues, state.featuredLeagues);
-      const orderChanged = !arraysEqual(prev.leagueOrder, state.leagueOrder);
-
-      if (selDiff.rm.length > 0 || Object.keys(selDiff.set).length > 0 || orderChanged) {
-        const prevCount = Object.values(prev.selections).filter((s) => s.isSelected || s.isFeatured || s.tags.length > 0).length;
-        const nextCount = Object.values(state.selections).filter((s) => s.isSelected || s.isFeatured || s.tags.length > 0).length;
-        const setCount = Object.keys(selDiff.set).length;
-        const message = `[SelectionSync] diff save embed=${embedTarget || '(default)'} prev=${prevCount} next=${nextCount} set=${setCount} rm=${selDiff.rm.length} orderChanged=${orderChanged}`;
-        if (selDiff.rm.length > 0 && setCount === 0) {
-          console.warn(message, { removed: selDiff.rm.slice(0, 12), clientId: getClientId() });
-        } else {
-          console.log(message);
-        }
-      }
-
-      // Nothing actually changed since last known remote — skip the round trip.
-      if (
-        Object.keys(selDiff.set).length === 0 &&
-        selDiff.rm.length === 0 &&
-        Object.keys(featDiff.set).length === 0 &&
-        featDiff.rm.length === 0 &&
-        !orderChanged
-      ) {
-        return;
-      }
-
-      const res = await fetch('/api/selections', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          embedTarget,
-          selectionsSet: selDiff.set,
-          selectionsRemove: selDiff.rm,
-          featuredLeaguesSet: featDiff.set,
-          featuredLeaguesRemove: featDiff.rm,
-          leagueOrder: orderChanged ? state.leagueOrder : null,
-          clientId: getClientId(),
-        }),
-      });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => null) as { error?: string } | null;
-        throw new Error(body?.error ?? `Selection save failed (${res.status})`);
-      }
-
-      const data = await res.json() as {
-        state?: {
-          selections?: SavedSelectionState['selections'];
-          leagueOrder?: string[];
-          featuredLeagues?: Record<string, string>;
-          savedAt?: number;
-        };
-        deleted?: boolean;
-      };
-
-      // Update snapshot from the authoritative server response so the next diff
-      // is computed against what the database actually holds (including merges
-      // from concurrent edits by other devices).
-      if (data.deleted) {
-        lastRemoteSnapshots.delete(embedTarget);
-      } else if (data.state) {
-        setLastRemoteSnapshot(embedTarget, {
-          selections: data.state.selections ?? {},
-          leagueOrder: data.state.leagueOrder ?? [],
-          featuredLeagues: data.state.featuredLeagues ?? {},
-          savedAt: data.state.savedAt ?? Date.now(),
-        });
-      }
-    } catch (e) {
-      console.warn('[SelectionSync] Failed to save to Supabase:', e);
-    }
-  }, 80));
+  scheduleRemoteSelectionSave(embedTarget, 80);
 }
 
 /**
