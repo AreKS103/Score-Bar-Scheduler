@@ -95,7 +95,7 @@ function buildHighlightEvent(e: MatchEvent, opts: EmbedRenderOpts, labelOverride
     .filter((part): part is string => Boolean(part))
     .map((part) => esc(part));
   const detailHtml = detailParts.length ? `<div class="hl-event-detail">${detailParts.join(' &middot; ')}</div>` : '';
-  return `<div class="hl-event"><div class="hl-event-main">${timeHtml}${teamsHtml}${detailHtml}</div></div>`;
+  return `<div class="hl-event"><div class="hl-event-main">${timeHtml}${detailHtml}${teamsHtml}</div></div>`;
 }
 
 function buildMatchLine(event: MatchEvent, showTime: boolean, sharedRound: string): string {

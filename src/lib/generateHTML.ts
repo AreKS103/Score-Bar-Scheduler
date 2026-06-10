@@ -88,19 +88,19 @@ function generateHighlights(
   const s = {
     section: 'margin-bottom:20px',
     title: 'font-size:1.1em;font-weight:800;margin:0 0 10px;text-transform:uppercase;letter-spacing:0.04em',
-    dateGroup: 'margin:12px 0 0;padding-top:8px;border-top:1px solid rgba(128,128,128,0.28)',
+    dateGroup: 'margin:12px 0 0;padding-top:0',
     dateHeader: 'font-size:0.72em;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;opacity:1;padding:0 0 7px;border-bottom:1px solid rgba(128,128,128,0.25);margin-bottom:1px',
     event: 'padding:9px 0;border-bottom:1px solid rgba(128,128,128,0.18)',
     eventMain: 'display:grid;grid-template-columns:minmax(42px,max-content) minmax(0,1fr);align-items:center;column-gap:10px;row-gap:3px',
     time: 'font-size:0.78em;font-weight:800;line-height:1;white-space:nowrap',
-    teams: 'display:flex;align-items:center;flex-wrap:wrap;min-width:0;gap:6px;font-size:1em;font-weight:700;line-height:1.25',
+    teams: 'grid-column:2;grid-row:2;display:flex;align-items:center;flex-wrap:wrap;min-width:0;gap:6px;font-size:1em;font-weight:700;line-height:1.25',
     team: 'display:inline-flex;align-items:center;gap:5px;min-width:0;font-weight:700',
     teamName: 'min-width:0;overflow-wrap:anywhere',
     flag: 'display:inline-flex;align-items:center;line-height:1;font-size:1.05em;flex-shrink:0',
     teamLogo: 'height:22px;max-width:28px;width:auto;vertical-align:middle;flex-shrink:0;object-fit:contain;border-radius:2px',
     vs: 'font-style:italic;font-size:0.78em;opacity:0.45;margin:0 2px;flex-shrink:0',
-    detail: 'grid-column:2;font-size:0.72em;font-weight:700;line-height:1.2;opacity:0.68;letter-spacing:0.05em;text-transform:uppercase',
-    spotlight: 'padding:6px 0;font-weight:700;font-size:1em;display:flex;align-items:center;gap:8px',
+    detail: 'grid-column:2;grid-row:1;font-size:0.72em;font-weight:600;line-height:1.2;opacity:0.72;letter-spacing:0.05em;text-transform:uppercase',
+    spotlight: 'padding:6px 0;font-weight:600;font-size:1em;display:flex;align-items:center;gap:8px',
   };
 
   const buildHighlightEvent = (e: MatchEvent, labelOverride?: string): string => {
@@ -120,12 +120,12 @@ function generateHighlights(
     const teamsHtml = display.isHeadToHead
       ? `<div class="hl-teams hl-teams-h2h" style="${s.teams}"><span class="hl-team hl-team-primary" style="${s.team}">${homeBadge}<span class="hl-team-name" style="${s.teamName}">${escapeHTML(display.primary)}</span></span><span class="hl-vs" style="${s.vs}">vs</span><span class="hl-team hl-team-secondary" style="${s.team}">${awayBadge}<span class="hl-team-name" style="${s.teamName}">${escapeHTML(display.secondary)}</span></span></div>`
       : `<div class="hl-teams hl-teams-single" style="${s.teams}"><span class="hl-team hl-team-primary" style="${s.team}">${leagueFallbackImg}${homeImg}<span class="hl-team-name" style="${s.teamName}">${escapeHTML(display.title)}</span></span></div>`;
-    const timeHtml = e.time ? `<span class="hl-time" style="${s.time}">${escapeHTML(e.time)}</span>` : `<span class="hl-time hl-time-empty" aria-hidden="true" style="${s.time};visibility:hidden"></span>`;
+    const timeHtml = e.time ? `<span class="hl-time" style="${s.time};grid-column:1;grid-row:2">${escapeHTML(e.time)}</span>` : `<span class="hl-time hl-time-empty" aria-hidden="true" style="${s.time};grid-column:1;grid-row:2;visibility:hidden"></span>`;
     const detailParts = [labelOverride ?? cleanCombatLabel(e), e.round]
       .filter((part): part is string => Boolean(part))
       .map((part) => escapeHTML(part));
     const detailHtml = detailParts.length ? `<div class="hl-event-detail" style="${s.detail}">${detailParts.join(' &middot; ')}</div>` : '';
-    return `<div class="hl-event" style="${s.event}"><div class="hl-event-main" style="${s.eventMain}">${timeHtml}${teamsHtml}${detailHtml}</div></div>`;
+    return `<div class="hl-event" style="${s.event}"><div class="hl-event-main" style="${s.eventMain}">${timeHtml}${detailHtml}${teamsHtml}</div></div>`;
   };
 
   const parts: string[] = [
