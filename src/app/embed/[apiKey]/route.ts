@@ -189,22 +189,30 @@ ${isCard ? `.league-block{background:var(--card-bg);border:1px solid var(--borde
 .ml-match{display:flex;align-items:center;gap:3px;flex:1;flex-wrap:wrap}
 .mc-team{display:inline-flex;align-items:center;gap:3px}
 .mc-round{font-size:.82em;color:var(--muted,#888)}
-.hl-section{margin-bottom:22px}
-.hl-title{font-size:var(--sb-h3-size)!important;font-weight:800;color:var(--hl-title-color,#000);margin:0 0 4px;text-transform:uppercase}
+.hl-section{margin-bottom:24px}
+.hl-title{font-size:var(--sb-h3-size)!important;font-weight:800;color:var(--hl-title-color,#000);margin:0 0 10px;text-transform:uppercase;letter-spacing:.04em}
 .hl-updated{font-size:12px;color:#6b7280;margin:0 0 12px;display:flex;align-items:center;gap:6px}
 .hl-updated-dot{width:8px;height:8px;border-radius:50%;background:#ef4444;flex-shrink:0;display:inline-block}
-.hl-date-group{margin-bottom:10px}
-.hl-date-header{font-size:var(--sb-date-size)!important;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--heading,var(--text));padding:6px 0;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:8px}
-.hl-event{padding:7px 0}
-.hl-event-meta{display:flex;align-items:center;gap:6px;margin-bottom:4px}
-.hl-time{font-size:var(--sb-date-size)!important;font-weight:600;color:var(--accent,#3b82f6)}
-.hl-league-name{font-size:var(--sb-date-size)!important;font-weight:700;color:var(--heading,var(--text))}
-.hl-teams{display:flex;align-items:center;flex-wrap:wrap;gap:4px;font-size:var(--sb-hl-size)!important;font-weight:600;color:var(--heading,#111827)}
-.hl-team{display:inline-flex;align-items:center;gap:4px;font-weight:600}
-.hl-team-logo{height:24px;width:auto;flex-shrink:0}
-.hl-vs{font-style:italic;font-size:.82em;color:var(--muted,#888);margin:0 4px}
+.hl-date-group{margin:12px 0 0;padding-top:8px;border-top:1px solid var(--border,#e5e7eb)}
+.hl-section .hl-date-group:first-of-type{margin-top:0}
+.hl-date-header{font-size:var(--sb-date-size)!important;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--heading,var(--text));padding:0 0 7px;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:1px}
+.hl-event{padding:9px 0;border-bottom:1px solid rgba(128,128,128,.18)}
+.hl-event:last-child{border-bottom:0}
+.hl-event-main{display:grid;grid-template-columns:minmax(42px,max-content) minmax(0,1fr);align-items:center;column-gap:10px;row-gap:3px}
+.hl-time{font-size:var(--sb-date-size)!important;font-weight:800;color:var(--accent,#3b82f6);line-height:1;white-space:nowrap}
+.hl-time-empty{visibility:hidden}
+.hl-teams{display:flex;align-items:center;min-width:0;gap:6px;font-size:var(--sb-hl-size)!important;font-weight:700;color:var(--heading,#111827);line-height:1.25}
+.hl-teams-h2h{flex-wrap:nowrap}
+.hl-teams-single{flex-wrap:wrap}
+.hl-team{display:inline-flex;align-items:center;gap:5px;min-width:0;font-weight:700}
+.hl-team-name{min-width:0;overflow-wrap:anywhere}
+.hl-team-logo{height:22px;max-width:28px;width:auto;object-fit:contain;flex-shrink:0;border-radius:2px}
+.hl-flag{display:inline-flex;align-items:center;line-height:1;font-size:1.05em;flex-shrink:0}
+.hl-vs{font-style:italic;font-size:.78em;color:var(--muted,#888);margin:0 2px;flex-shrink:0}
+.hl-event-detail{grid-column:2;font-size:var(--sb-date-size)!important;font-weight:700;line-height:1.2;color:var(--muted,#888);letter-spacing:.05em;text-transform:uppercase}
 .hl-round{font-size:.72em;color:var(--muted,#888);margin-top:2px;font-style:italic}
 .hl-league-spotlight{padding:6px 0;font-weight:700;font-size:var(--sb-hl-size)!important;color:var(--heading,var(--text));display:flex;align-items:center;gap:8px}
+@media (max-width:520px){.hl-event{padding:10px 0}.hl-event-main{grid-template-columns:minmax(38px,max-content) minmax(0,1fr);column-gap:9px}.hl-teams-h2h{display:grid;grid-template-columns:minmax(0,1fr);gap:3px}.hl-teams-h2h .hl-vs{display:none}.hl-team{align-items:flex-start}.hl-team-logo{height:18px;max-width:24px;margin-top:1px}.hl-event-detail{font-size:var(--sb-date-size)!important}}
 .vt-bar{display:flex;justify-content:flex-end;gap:4px;margin-bottom:10px}
 .vt-btn{padding:4px 12px;border-radius:999px;border:1px solid var(--border,#e5e7eb);background:var(--tab-bg,#f3f4f6);color:var(--tab-text,#6b7280);cursor:pointer;font-size:12px;font-family:inherit;font-weight:500;white-space:nowrap;transition:all .15s}
 .vt-btn:hover{color:var(--text);border-color:var(--accent,#3b82f6)}

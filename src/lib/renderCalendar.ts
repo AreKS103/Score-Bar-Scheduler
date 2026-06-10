@@ -51,6 +51,40 @@ function countryFlag(code: string): string {
   return Array.from(c).map(ch => String.fromCodePoint(0x1F1E6 + ch.charCodeAt(0) - 65)).join('');
 }
 
+function cleanCombatLabel(e: MatchEvent): string {
+  if (!['boxing', 'ufc', 'bellator'].includes(e.sportId) || !e.away) return e.leagueLabel;
+  const colon = e.leagueLabel.indexOf(':');
+  if (colon > 0 && /vs\.?\s/i.test(e.leagueLabel.slice(colon))) {
+    return e.leagueLabel.slice(0, colon).trim();
+  }
+  return e.leagueLabel;
+}
+
+function buildHighlightEvent(e: MatchEvent, opts: CalendarRenderOpts, labelOverride?: string): string {
+  const display = getEventDisplay(e, { stripLeaguePrefix: true });
+  const isCombat = ['boxing', 'ufc', 'bellator'].includes(e.sportId);
+  const homeFlag = isCombat && e.homeCountry ? `<span class="hl-flag">${countryFlag(e.homeCountry)}</span>` : '';
+  const awayFlag = isCombat && e.awayCountry ? `<span class="hl-flag">${countryFlag(e.awayCountry)}</span>` : '';
+  const homeImg = (!opts.hideLogos && e.homeLogo) ? `<img class="hl-team-logo" src="${esc(e.homeLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
+  const awayImg = (!opts.hideLogos && e.awayLogo && display.isHeadToHead) ? `<img class="hl-team-logo" src="${esc(e.awayLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
+  const leagueFallback = !opts.hideLogos && !display.isHeadToHead && !homeImg ? (() => {
+    const cfg = SPORTS_CONFIG.find(s => s.id === e.sportId);
+    return cfg ? resolvePublishLogoUrl(cfg.logo || e.leagueLogo || '', cfg.publishLogo) : '';
+  })() : '';
+  const leagueFallbackImg = leagueFallback ? `<img class="hl-team-logo" src="${esc(leagueFallback)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
+  const homeBadge = isCombat ? (homeImg || homeFlag) : homeImg;
+  const awayBadge = isCombat ? (awayImg || awayFlag) : awayImg;
+  const teamsHtml = display.isHeadToHead
+    ? `<div class="hl-teams hl-teams-h2h"><span class="hl-team hl-team-primary">${homeBadge}<span class="hl-team-name">${esc(display.primary)}</span></span><span class="hl-vs">vs</span><span class="hl-team hl-team-secondary">${awayBadge}<span class="hl-team-name">${esc(display.secondary)}</span></span></div>`
+    : `<div class="hl-teams hl-teams-single"><span class="hl-team hl-team-primary">${leagueFallbackImg}${homeImg}<span class="hl-team-name">${esc(display.title)}</span></span></div>`;
+  const timeHtml = e.time ? `<span class="hl-time">${esc(e.time)}</span>` : '<span class="hl-time hl-time-empty" aria-hidden="true"></span>';
+  const detailParts = [labelOverride ?? cleanCombatLabel(e), e.round]
+    .filter((part): part is string => Boolean(part))
+    .map((part) => esc(part));
+  const detailHtml = detailParts.length ? `<div class="hl-event-detail">${detailParts.join(' &middot; ')}</div>` : '';
+  return `<div class="hl-event"><div class="hl-event-main">${timeHtml}${teamsHtml}${detailHtml}</div></div>`;
+}
+
 // ─── Public interface ─────────────────────────────────────────────────────────
 
 export interface CalendarRenderOpts {
@@ -162,24 +196,7 @@ export function renderCalendarContent(
       hlParts.push('<div class="hl-date-group">');
       hlParts.push(`<div class="hl-date-header">${esc(displayDate)}</div>`);
       for (const event of dayEvents) {
-        const display = getEventDisplay(event, { stripLeaguePrefix: true });
-        const isCombat = ['boxing', 'ufc', 'bellator'].includes(event.sportId);
-        const homeFlag = isCombat && event.homeCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(event.homeCountry)}</span>` : '';
-        const awayFlag = isCombat && event.awayCountry ? `<span style="font-size:1em;margin-right:2px">${countryFlag(event.awayCountry)}</span>` : '';
-        const homeImg = event.homeLogo ? `<img class="hl-team-logo" src="${esc(event.homeLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
-        const awayImg = event.awayLogo && display.isHeadToHead ? `<img class="hl-team-logo" src="${esc(event.awayLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
-        const leagueFallback = !display.isHeadToHead && !homeImg ? (() => {
-          const cfg = SPORTS_CONFIG.find(s => s.id === event.sportId);
-          return cfg ? resolvePublishLogoUrl(cfg.logo || event.leagueLogo || '', cfg.publishLogo) : '';
-        })() : '';
-        const leagueFallbackImg = leagueFallback ? `<img class="hl-team-logo" src="${esc(leagueFallback)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
-        const homeBadge = isCombat ? (homeImg || homeFlag) : homeImg;
-        const awayBadge = isCombat ? (awayImg || awayFlag) : awayImg;
-        const teamsHtml = display.isHeadToHead
-          ? `<span class="hl-team">${homeBadge}${esc(display.primary)}</span><span class="hl-vs">vs</span><span class="hl-team">${awayBadge}${esc(display.secondary)}</span>`
-          : `<span class="hl-team">${leagueFallbackImg}${homeImg}${esc(display.title)}</span>`;
-        const roundStr = event.round ? `<div class="hl-round">${esc(event.round)}</div>` : '';
-        hlParts.push(`<div class="hl-event"><div class="hl-event-meta">${event.time ? `<span class="hl-time">${esc(event.time)}</span>` : ''}<span class="hl-league-name">${esc(event.leagueLabel || '')}</span></div><div class="hl-teams">${teamsHtml}</div>${roundStr}</div>`);
+        hlParts.push(buildHighlightEvent(event, opts));
       }
       hlParts.push('</div>');
     }
@@ -191,11 +208,10 @@ export function renderCalendarContent(
         events.find(event => event.sportId === sportId && eventHasHeadToHead(event) && event.isFeatured) ||
         events.find(event => event.sportId === sportId && eventHasHeadToHead(event));
       if (teamEvent) {
-        const display = getEventDisplay(teamEvent, { stripLeaguePrefix: true });
-        const homeImg = teamEvent.homeLogo ? `<img class="hl-team-logo" src="${esc(teamEvent.homeLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
-        const awayImg = teamEvent.awayLogo ? `<img class="hl-team-logo" src="${esc(teamEvent.awayLogo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
-        const teamsHtml = `<span class="hl-team">${homeImg}${esc(display.primary)}</span><span class="hl-vs">vs</span><span class="hl-team">${awayImg}${esc(display.secondary)}</span>`;
-        hlParts.push(`<div class="hl-event"><div class="hl-event-meta">${teamEvent.time ? `<span class="hl-time">${esc(teamEvent.time)}</span>` : ''}<span class="hl-league-name">${esc(leagueLabel)}</span></div><div class="hl-teams">${teamsHtml}</div></div>`);
+        hlParts.push('<div class="hl-date-group hl-date-group-spotlight">');
+        hlParts.push(`<div class="hl-date-header">${esc(format(parseISO(teamEvent.date), 'EEEE d MMMM'))}</div>`);
+        hlParts.push(buildHighlightEvent(teamEvent, opts, leagueLabel));
+        hlParts.push('</div>');
       } else {
         const logoSrc = config ? resolvePublishLogoUrl(config.logo || '', config.publishLogo) : '';
         const logoImg = logoSrc ? `<img class="hl-team-logo" src="${esc(logoSrc)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />` : '';
@@ -536,19 +552,27 @@ export function getCalendarCSS(accent: string): string {
 /* ── Highlights section ── */
 .cal-highlights{margin-bottom:32px}
 .hl-section{width:100%}
-.hl-title{font-size:var(--sb-h3-size,1.15em)!important;font-weight:800;color:var(--heading,var(--text));margin:0 0 12px;text-transform:uppercase}
-.hl-date-group{margin-bottom:12px}
-.hl-date-header{font-size:var(--sb-date-size,.72em)!important;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--heading,var(--text));padding:6px 0;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:8px}
-.hl-event{padding:7px 0}
-.hl-event-meta{display:flex;align-items:center;gap:6px;margin-bottom:4px}
-.hl-time{font-size:var(--sb-date-size,.8em)!important;font-weight:600;color:var(--accent,#3b82f6)}
-.hl-league-name{font-size:var(--sb-date-size,.8em)!important;font-weight:700;color:var(--heading,var(--text))}
-.hl-teams{display:flex;align-items:center;flex-wrap:wrap;gap:4px;font-size:var(--sb-hl-size,.9em);font-weight:600;color:var(--heading,#111827)}
-.hl-team-logo{height:24px;width:auto;flex-shrink:0}
-.hl-team{display:inline-flex;align-items:center;gap:4px;font-weight:600}
-.hl-vs{font-style:italic;font-size:.82em;color:var(--muted,#888);margin:0 4px}
+.hl-title{font-size:var(--sb-h3-size,1.15em)!important;font-weight:800;color:var(--heading,var(--text));margin:0 0 10px;text-transform:uppercase;letter-spacing:.04em}
+.hl-date-group{margin:12px 0 0;padding-top:8px;border-top:1px solid var(--border,#e5e7eb)}
+.hl-section .hl-date-group:first-of-type{margin-top:0}
+.hl-date-header{font-size:var(--sb-date-size,.72em)!important;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--heading,var(--text));padding:0 0 7px;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:1px}
+.hl-event{padding:9px 0;border-bottom:1px solid rgba(128,128,128,.18)}
+.hl-event:last-child{border-bottom:0}
+.hl-event-main{display:grid;grid-template-columns:minmax(42px,max-content) minmax(0,1fr);align-items:center;column-gap:10px;row-gap:3px}
+.hl-time{font-size:var(--sb-date-size,.8em)!important;font-weight:800;color:var(--accent,#3b82f6);line-height:1;white-space:nowrap}
+.hl-time-empty{visibility:hidden}
+.hl-teams{display:flex;align-items:center;min-width:0;gap:6px;font-size:var(--sb-hl-size,.9em);font-weight:700;color:var(--heading,#111827);line-height:1.25}
+.hl-teams-h2h{flex-wrap:nowrap}
+.hl-teams-single{flex-wrap:wrap}
+.hl-team-logo{height:22px;max-width:28px;width:auto;object-fit:contain;flex-shrink:0;border-radius:2px}
+.hl-flag{display:inline-flex;align-items:center;line-height:1;font-size:1.05em;flex-shrink:0}
+.hl-team{display:inline-flex;align-items:center;gap:5px;min-width:0;font-weight:700}
+.hl-team-name{min-width:0;overflow-wrap:anywhere}
+.hl-vs{font-style:italic;font-size:.78em;color:var(--muted,#888);margin:0 2px;flex-shrink:0}
+.hl-event-detail{grid-column:2;font-size:var(--sb-date-size,.8em)!important;font-weight:700;line-height:1.2;color:var(--muted,#888);letter-spacing:.05em;text-transform:uppercase}
 .hl-round{font-size:.72em;color:var(--muted,#888);margin-top:2px;font-style:italic}
 .hl-league-spotlight{padding:6px 0;font-weight:700;color:var(--heading,var(--text));display:flex;align-items:center;gap:8px}
+@media (max-width:520px){.hl-event{padding:10px 0}.hl-event-main{grid-template-columns:minmax(38px,max-content) minmax(0,1fr);column-gap:9px}.hl-teams-h2h{display:grid;grid-template-columns:minmax(0,1fr);gap:3px}.hl-teams-h2h .hl-vs{display:none}.hl-team{align-items:flex-start}.hl-team-logo{height:18px;max-width:24px;margin-top:1px}.hl-event-detail{font-size:var(--sb-date-size,.8em)!important}}
 `;
 }
 
