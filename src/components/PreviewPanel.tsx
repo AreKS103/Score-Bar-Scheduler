@@ -57,6 +57,13 @@ export default function PreviewPanel({
     return (mod.default ?? mod) as typeof DOMPurifyType;
   }, []);
 
+  // Sanitizing the full preview HTML is expensive — only redo it when the
+  // HTML actually changes, not on every unrelated re-render.
+  const sanitizedHtml = useMemo(
+    () => (purify ? purify.sanitize(html, { USE_PROFILES: { html: true } }) : html),
+    [purify, html],
+  );
+
   useEffect(() => {
     if (!scrollToMatchId || !previewRef.current) return;
     
@@ -254,7 +261,7 @@ export default function PreviewPanel({
         "
         onContextMenu={handlePreviewContextMenu}
         onClick={handlePreviewClick}
-        dangerouslySetInnerHTML={{ __html: purify ? purify.sanitize(html, { USE_PROFILES: { html: true } }) : html }}
+        dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
       />
     </div>
   );
