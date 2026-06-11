@@ -406,42 +406,66 @@ export async function GET(
   //  • No ids at all → empty string → show empty
   let scheduleTarget = embedId;
   let widgetNotRegistered = false;
+
   const orgMemberIdsForWidget = await getOrgMemberIds(keyData.user_id);
+
+  type EmbedInstRow = { embed_id?: string | null };
+  type ScheduleRow = {
+    events_snapshot: unknown;
+    league_order: unknown;
+    featured_leagues: unknown;
+    published_at?: string;
+  };
+
+  const instPromise = widgetId
+    ? supabase
+        .from('embed_instances')
+        .select('embed_id')
+        .in('user_id', orgMemberIdsForWidget)
+        .eq('widget_id', widgetId)
+        .maybeSingle()
+    : Promise.resolve({ data: null as EmbedInstRow | null });
+
+  // Optimistic schedule fetch using embedId from the URL — runs in parallel with
+  // embed_instances lookup so we save one serial Supabase round-trip on cold loads.
+  const optimisticSchedulePromise = embedId
+    ? supabase
+        .from('published_schedules')
+        .select('events_snapshot, league_order, featured_leagues, published_at')
+        .in('user_id', orgMemberIdsForWidget)
+        .eq('embed_target', embedId)
+        .order('published_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : Promise.resolve({ data: null as ScheduleRow | null });
+
+  const [{ data: inst }, { data: optimisticSchedule }] = await Promise.all([
+    instPromise,
+    optimisticSchedulePromise,
+  ]);
+
   if (widgetId) {
-    const { data: inst } = await supabase
-      .from('embed_instances')
-      .select('embed_id')
-      .in('user_id', orgMemberIdsForWidget)
-      .eq('widget_id', widgetId)
-      .maybeSingle();
     if (inst?.embed_id) {
       scheduleTarget = inst.embed_id;
     } else if (!embedId) {
-      // embed_instances row missing.
-      // embedId is empty AND no DB row found.
-      // Truly unknown — show empty, not global schedule.
       widgetNotRegistered = true;
     }
   }
 
-  // Strict schedule resolution: ONLY query by exact embed_target match.
-  // Never fall back to NULL embed_target — that would risk showing the wrong
-  // embed's schedule (e.g. Homepage showing Schedule Page content or vice versa).
-  // scheduleTarget = 'Schedule Page' → WHERE embed_target = 'Schedule Page'
-  // scheduleTarget = 'Homepage'      → WHERE embed_target = 'Homepage'
-  // scheduleTarget = ''              → show empty
-  let schedule: { events_snapshot: unknown; league_order: unknown; featured_leagues: unknown; published_at?: string } | null = null;
+  let schedule: ScheduleRow | null = null;
   let scheduleAt = '';
 
   if (!widgetNotRegistered) {
     if (!scheduleTarget) {
-      schedule = null; // No target = show empty
+      schedule = null;
+    } else if (optimisticSchedule && scheduleTarget === embedId) {
+      schedule = optimisticSchedule;
+      scheduleAt = optimisticSchedule.published_at ?? '';
     } else {
-      const orgMemberIds = orgMemberIdsForWidget;
       const { data } = await supabase
         .from('published_schedules')
         .select('events_snapshot, league_order, featured_leagues, published_at')
-        .in('user_id', orgMemberIds)
+        .in('user_id', orgMemberIdsForWidget)
         .eq('embed_target', scheduleTarget)
         .order('published_at', { ascending: false })
         .limit(1)

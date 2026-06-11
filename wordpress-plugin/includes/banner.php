@@ -315,6 +315,20 @@ if (!function_exists('schedule_banner_apply_payload_diagnostics')) {
     }
 }
 
+if (!function_exists('schedule_banner_is_blocking_fetch_context')) {
+    /**
+     * Live banner API fetches block PHP TTFB. Only block in admin/editor/forced
+     * refresh — public pages use stale transients + banner-frontend.js refresh.
+     */
+    function schedule_banner_is_blocking_fetch_context($force = false) {
+        if ($force) return true;
+        if (is_admin()) return true;
+        if (function_exists('schedule_is_editor_context') && schedule_is_editor_context()) return true;
+        if (defined('WP_CLI') && WP_CLI) return true;
+        return false;
+    }
+}
+
 if (!function_exists('schedule_banner_fetch_payload')) {
     function schedule_banner_fetch_payload($settings, $force = false, &$diagnostics = null) {
         $candidates = schedule_banner_public_key_candidates();
@@ -356,7 +370,9 @@ if (!function_exists('schedule_banner_fetch_payload')) {
 
             $cache_key = 'schedule_banner_last_' . md5($app . '|' . $key . '|' . $settings['embed_id'] . '|' . $tz . '|' . $range);
             $fresh_key = 'schedule_banner_fresh_' . md5($app . '|' . $key . '|' . $settings['embed_id'] . '|' . $tz . '|' . $range);
+            $fail_key  = 'schedule_banner_fail_' . md5($app . '|' . $key . '|' . $settings['embed_id'] . '|' . $tz . '|' . $range);
             $attempt = ['key_label' => $label, 'status' => 'not_checked', 'cache' => 'none', 'items' => null, 'reason' => ''];
+            $blocking = schedule_banner_is_blocking_fetch_context($force);
 
             $body = null;
             if (!$force) {
@@ -368,7 +384,26 @@ if (!function_exists('schedule_banner_fetch_payload')) {
                 }
             }
 
-            if (!is_array($body)) {
+            // Public pages: serve stale immediately — banner-frontend.js refreshes in-browser.
+            if (!is_array($body) && !$blocking) {
+                $stale = get_transient($cache_key);
+                if (is_array($stale)) {
+                    $body = $stale;
+                    $attempt['status'] = 'ok';
+                    $attempt['cache'] = 'stale-fast';
+                }
+            }
+
+            if (!is_array($body) && $blocking && get_transient($fail_key)) {
+                $stale = get_transient($cache_key);
+                if (is_array($stale)) {
+                    $body = $stale;
+                    $attempt['status'] = 'ok';
+                    $attempt['cache'] = 'stale';
+                }
+            }
+
+            if (!is_array($body) && ($blocking || $force) && !get_transient($fail_key)) {
                 $query = [
                     'apiKey'  => $key,
                     'embedId' => $settings['embed_id'],
@@ -379,7 +414,7 @@ if (!function_exists('schedule_banner_fetch_payload')) {
 
                 $url = add_query_arg($query, $app . '/api/banner');
                 $response = wp_remote_get($url, [
-                    'timeout'   => 4,
+                    'timeout'   => 3,
                     'redirection' => 2,
                     'sslverify' => !schedule_banner_is_local_app($app),
                     'headers'   => ['Accept' => 'application/json'],
@@ -388,6 +423,7 @@ if (!function_exists('schedule_banner_fetch_payload')) {
                 if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
                     $body = json_decode(wp_remote_retrieve_body($response), true);
                     if (is_array($body)) {
+                        delete_transient($fail_key);
                         set_transient($fresh_key, $body, MINUTE_IN_SECONDS);
                         set_transient($cache_key, $body, 10 * MINUTE_IN_SECONDS);
                         $attempt['status'] = 'ok';
@@ -404,6 +440,7 @@ if (!function_exists('schedule_banner_fetch_payload')) {
                         $attempt['http_code'] = (int) wp_remote_retrieve_response_code($response);
                         $attempt['error'] = trim(wp_remote_retrieve_response_message($response));
                     }
+                    set_transient($fail_key, 1, MINUTE_IN_SECONDS);
 
                     $fallback = get_transient($cache_key);
                     if (is_array($fallback)) {
@@ -411,6 +448,10 @@ if (!function_exists('schedule_banner_fetch_payload')) {
                         $attempt['cache'] = 'stale';
                     }
                 }
+            } elseif (!is_array($body) && !$blocking) {
+                // No stale yet on a cold public page — skip blocking fetch; JS + fallback text handle it.
+                $attempt['status'] = 'deferred';
+                $attempt['cache'] = 'client';
             }
 
             if (is_array($body)) {
@@ -451,15 +492,12 @@ if (!function_exists('schedule_banner_fetch_payload')) {
 
 if (!function_exists('schedule_banner_resolve_public_key')) {
     function schedule_banner_resolve_public_key($settings) {
-        $fetch = null;
-        schedule_banner_fetch_payload($settings, false, $fetch);
-        $label = is_array($fetch) && !empty($fetch['key_label']) ? (string) $fetch['key_label'] : '';
-        $candidates = schedule_banner_public_key_candidates();
-        foreach ($candidates as $candidate) {
-            if (($candidate['label'] ?? '') === $label && !empty($candidate['key'])) {
-                return $candidate['key'];
-            }
+        // Avoid a blocking banner API round-trip just to pick the public key.
+        if (function_exists('schedule_get_public_embed_key')) {
+            $key = schedule_get_public_embed_key();
+            if ($key !== '') return $key;
         }
+        $candidates = schedule_banner_public_key_candidates();
         return !empty($candidates[0]['key']) ? $candidates[0]['key'] : '';
     }
 }
@@ -468,7 +506,7 @@ if (!function_exists('schedule_banner_clear_payload_cache')) {
     function schedule_banner_clear_payload_cache() {
         global $wpdb;
         if (!isset($wpdb) || empty($wpdb->options)) return;
-        foreach (['schedule_banner_last_', 'schedule_banner_fresh_'] as $prefix) {
+        foreach (['schedule_banner_last_', 'schedule_banner_fresh_', 'schedule_banner_fail_'] as $prefix) {
             $like = $wpdb->esc_like('_transient_' . $prefix) . '%';
             $timeout_like = $wpdb->esc_like('_transient_timeout_' . $prefix) . '%';
             $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s", $like, $timeout_like));

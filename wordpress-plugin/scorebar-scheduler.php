@@ -3,7 +3,7 @@
  * Plugin Name: Scheduler
  * Plugin URI:
  * Description: A sports schedule widget for your website.
- * Version: 1.3.20
+ * Version: 1.3.21
  * Text Domain: scorebar-scheduler
  * Requires at least: 6.0
  * Tested up to: 6.7
@@ -13,7 +13,7 @@
 if (!defined('ABSPATH')) exit;
 
 // Plugin version — must match the "Version:" header above.
-define('SCHEDULE_PLUGIN_VERSION', '1.3.20');
+define('SCHEDULE_PLUGIN_VERSION', '1.3.21');
 
 // ── PHP version gate ────────────────────────────────────────────────────────
 if (version_compare(PHP_VERSION, '7.4', '<')) {
@@ -84,6 +84,18 @@ if (!function_exists('schedule_get_public_embed_key_candidates')) {
     }
 }
 
+if (!function_exists('schedule_is_live_api_context')) {
+    /**
+     * Remote Vercel API calls belong in admin/editor only — never on public TTFB.
+     */
+    function schedule_is_live_api_context() {
+        if (is_admin()) return true;
+        if (function_exists('schedule_is_editor_context') && schedule_is_editor_context()) return true;
+        if (defined('WP_CLI') && WP_CLI) return true;
+        return false;
+    }
+}
+
 if (!function_exists('schedule_get_embed_target_choices')) {
     function schedule_get_embed_target_choices() {
         $candidates = function_exists('schedule_get_public_embed_key_candidates')
@@ -92,8 +104,18 @@ if (!function_exists('schedule_get_embed_target_choices')) {
         if (empty($candidates)) return [];
 
         $cache_key = 'schedule_embed_targets_live_' . md5(schedule_get_app_domain() . '|' . wp_json_encode($candidates));
+        $fail_key  = $cache_key . '_fail';
         $cached = get_transient($cache_key);
-        if (is_array($cached)) return $cached;
+        if (is_array($cached) && !empty($cached)) return $cached;
+
+        // Never block public page renders on a remote embed-instances fetch.
+        if (!schedule_is_live_api_context()) {
+            return is_array($cached) ? $cached : [];
+        }
+
+        if (get_transient($fail_key)) {
+            return is_array($cached) ? $cached : [];
+        }
 
         $choices = [];
         $seen = [];
@@ -106,6 +128,7 @@ if (!function_exists('schedule_get_embed_target_choices')) {
             $choices[$target] = $target;
         };
 
+        $got_response = false;
         foreach ($candidates as $candidate) {
             $key = $candidate['key'] ?? '';
             if ($key === '') continue;
@@ -115,12 +138,13 @@ if (!function_exists('schedule_get_embed_target_choices')) {
                 schedule_get_app_domain() . '/api/embed-instances'
             );
             $response = wp_remote_get($url, [
-                'timeout' => 8,
+                'timeout' => 5,
                 'headers' => ['Accept' => 'application/json'],
             ]);
 
             if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) continue;
 
+            $got_response = true;
             $body = json_decode(wp_remote_retrieve_body($response), true);
             if (!is_array($body)) continue;
 
@@ -138,8 +162,14 @@ if (!function_exists('schedule_get_embed_target_choices')) {
             }
         }
 
-        set_transient($cache_key, $choices, 60);
-        return $choices;
+        if ($got_response && !empty($choices)) {
+            delete_transient($fail_key);
+            set_transient($cache_key, $choices, 5 * MINUTE_IN_SECONDS);
+            return $choices;
+        }
+
+        set_transient($fail_key, 1, MINUTE_IN_SECONDS);
+        return is_array($cached) ? $cached : [];
     }
 }
 
@@ -281,13 +311,31 @@ add_action('wp_ajax_schedule_get_token',        'schedule_ajax_get_token');
 add_action('wp_ajax_nopriv_schedule_get_token', 'schedule_ajax_get_token');
 
 // ── Frontend script: inject _sbFrontendCfg (ajaxUrl + nonce + appUrl) ───────
-// Enqueued on every front-end page load so that sbFireDelete() in the inline
-// MutationObserver can resolve the live key via AJAX instead of using a stale
-// value stamped into the HTML at render time.
+// Only on pages that actually contain a Scheduler widget/shortcode.
+if (!function_exists('schedule_page_has_widget')) {
+    function schedule_page_has_widget() {
+        if (is_admin()) return false;
+        if (!is_singular()) return false;
+        global $post;
+        if (!$post instanceof WP_Post) return false;
+        $content = (string) $post->post_content;
+        if (has_shortcode($content, 'schedule')
+            || has_shortcode($content, 'scorebar_schedule')
+            || has_shortcode($content, 'sports_schedule')) {
+            return true;
+        }
+        $elementor_data = get_post_meta($post->ID, '_elementor_data', true);
+        if (is_string($elementor_data) && strpos($elementor_data, 'schedule_widget') !== false) {
+            return true;
+        }
+        return false;
+    }
+}
+
 if (!function_exists('schedule_enqueue_frontend_config')) {
     function schedule_enqueue_frontend_config() {
         $api_key = get_option('schedule_api_key', '');
-        if (empty($api_key)) return;
+        if (empty($api_key) || !schedule_page_has_widget()) return;
         wp_enqueue_script(
             'schedule-frontend',
             SCHEDULE_PLUGIN_URL . 'includes/schedule-frontend.js',

@@ -26,9 +26,13 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
         
         // ── Display Settings ────────────────────────────────────────────────
         $this->start_controls_section('content_section', ['label' => 'Display Settings', 'tab' => \Elementor\Controls_Manager::TAB_CONTENT]);
-        $embed_options = function_exists('schedule_get_embed_instance_options')
-            ? schedule_get_embed_instance_options('Choose a schedule embed')
-            : ['' => 'Choose a schedule embed'];
+        $embed_options = ['' => 'Choose a schedule embed'];
+        // register_controls runs on frontend too (Elementor quirk) — never remote-fetch here.
+        if (function_exists('schedule_is_editor_context') && schedule_is_editor_context()) {
+            $embed_options = function_exists('schedule_get_embed_instance_options')
+                ? schedule_get_embed_instance_options('Choose a schedule embed')
+                : $embed_options;
+        }
         $this->add_control('embed_id', ['label' => 'Schedule Embed', 'type' => \Elementor\Controls_Manager::SELECT, 'default' => '', 'options' => $embed_options, 'description' => 'Choose the schedule embed name from your Scheduler dashboard. Publish to the same embed in the app.']);
         $this->add_control('list_style', ['label' => 'Schedule View', 'type' => \Elementor\Controls_Manager::SELECT, 'default' => 'default', 'options' => ['default' => 'Default List', 'card' => 'Card Style', 'calendar' => 'Calendar Grid'], 'description' => 'Calendar Grid shows a full weekly view.']);
         $this->add_control('show_sport_tabs', ['label' => 'Sport Filter Tabs',    'type' => \Elementor\Controls_Manager::SWITCHER, 'label_on' => 'Show', 'label_off' => 'Hide', 'return_value' => '1', 'default' => '1']);
@@ -232,6 +236,20 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
         <div class="schedule-wrapper" id="<?php echo esc_attr($uid); ?>" style="position:relative;width:100%!important;max-width:100%!important;height:<?php echo $height_css; ?>;overflow:<?php echo $overflow; ?>;border:none!important;background:transparent!important;">
             <!-- Narrow grab-handle at top: lets Elementor select the widget without blocking iframe content -->
             <div class="schedule-editor-overlay" style="display:none;position:absolute;top:0;left:0;right:0;height:20px;z-index:2;cursor:grab;" title="Drag to reposition"><span style="display:flex;align-items:center;justify-content:center;height:100%;font-size:13px;color:rgba(150,150,150,0.55);pointer-events:none;user-select:none;">&#8942;</span></div>
+            <script>
+            (function(){
+                var fid='<?php echo esc_js($uid); ?>-frame';
+                var key='sb_h_'+fid;
+                try{
+                    var h=localStorage.getItem(key);
+                    var n=parseInt(h,10);
+                    if(n>=120){
+                        var f=document.getElementById(fid);
+                        if(f){f.style.height=n+'px';}
+                    }
+                }catch(e){}
+            })();
+            </script>
             <iframe id="<?php echo esc_attr($uid); ?>-frame"
                 data-layout="<?php echo $is_cal ? 'calendar' : 'list'; ?>"
                 src="<?php echo esc_url($iframe_url); ?>"
@@ -281,6 +299,7 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
                             try { if (typeof sbLog_<?php echo esc_js($uid); ?> === 'function') sbLog_<?php echo esc_js($uid); ?>('height', e.data.sbHeight, f.getAttribute('data-layout')); } catch(logErr) {}
                             if (e.data.sbHeight >= 120) {
                                 f.style.height = e.data.sbHeight + 'px';
+                                try { localStorage.setItem('sb_h_' + fid, String(e.data.sbHeight)); } catch (lsErr) {}
                                 if (window.parent && window.parent !== window) {
                                     window.parent.postMessage({ sbHeight: e.data.sbHeight, sbFromWidget: true }, '*');
                                 }

@@ -187,8 +187,10 @@ function schedule_fetch_seo_payload($iframe_url) {
         'pageUrl' => schedule_current_page_url(),
     ], $iframe_url);
     $cache_key = 'sb_seo_' . md5($seo_url);
+    $fail_key  = $cache_key . '_fail';
     $cached = get_transient($cache_key);
     if (is_array($cached)) return $cached;
+    if (get_transient($fail_key)) return null;
 
     $app = schedule_get_app_domain();
     $is_local = strpos($app, 'localhost') !== false || strpos($app, '127.0.0.1') !== false || strpos($app, '.local') !== false;
@@ -198,13 +200,17 @@ function schedule_fetch_seo_payload($iframe_url) {
         'sslverify' => !$is_local,
     ]);
     if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+        set_transient($fail_key, 1, MINUTE_IN_SECONDS);
         return null;
     }
 
     $payload = json_decode(wp_remote_retrieve_body($response), true);
     if (!is_array($payload) || empty($payload['bodyHtml'])) {
+        set_transient($fail_key, 1, MINUTE_IN_SECONDS);
         return null;
     }
+
+    delete_transient($fail_key);
 
     set_transient($cache_key, $payload, 5 * MINUTE_IN_SECONDS);
     return $payload;
