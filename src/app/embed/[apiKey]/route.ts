@@ -40,6 +40,16 @@ interface EmbedOpts {
   noCopy: boolean;
   highlightFontSize: string;
   timeFontSize: string;
+  // Per-section styling — normal schedule list ("normal") and highlights ("hl").
+  // Empty string = inherit existing/global styling (backward compatible).
+  normalFont: string;
+  normalWeight: string;
+  normalTextColor: string;
+  normalTimeColor: string;
+  hlFont: string;
+  hlWeight: string;
+  hlTextColor: string;
+  hlTimeColor: string;
 }
 
 const EMBED_POLL_INTERVAL_MS = 120_000;
@@ -121,11 +131,22 @@ function buildEmbedPage(
   const dateSize    = rp(opts.dateFontSize,          '10px', '11px',  '13px');
   const hlFontSize  = rp(opts.highlightFontSize||'18','14px','18px',  '22px');
   const timeSize    = rp(opts.timeFontSize||'11',     '9px',  '11px',  '13px');
-  const fontStack    = ({
+  const FONT_STACKS: Record<string, string> = {
     system: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     serif:  "Georgia, 'Times New Roman', Times, serif",
     mono:   "'SF Mono', 'Fira Code', Consolas, monospace",
-  } as Record<string, string>)[opts.fontFamily] ?? "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+  };
+  const fontStack = FONT_STACKS[opts.fontFamily] ?? FONT_STACKS.system;
+
+  // Per-section style values — fall back to inherit/theme defaults when unset
+  const normalFontCss  = FONT_STACKS[opts.normalFont] ?? 'inherit';
+  const hlFontCss      = FONT_STACKS[opts.hlFont] ?? 'inherit';
+  const normalWeight   = opts.normalWeight || '400';
+  const hlWeight       = opts.hlWeight || '400';
+  const normalTextCss  = opts.normalTextColor || 'var(--text)';
+  const hlTextCss      = opts.hlTextColor || 'var(--heading,#111827)';
+  const normalTimeCss  = opts.normalTimeColor || 'var(--time-default)';
+  const hlTimeCss      = opts.hlTimeColor || 'var(--time-default)';
 
   const isCard = opts.listStyle === 'card';
   const lineH = Math.max(0.8, Math.min(4, parseFloat(opts.lineHeight) || 1.6));
@@ -152,11 +173,11 @@ function buildEmbedPage(
 
   const bgOverride   = opts.bgColor || '';
   const textOverride = opts.textColor || '';
-  const lightVars = `--bg:${bgOverride || '#fff'};--text:${textOverride || '#111827'};--muted:#6b7280;--heading:${textOverride || '#111827'};--border:#e5e7eb;--tab-bg:#f3f4f6;--tab-text:#6b7280;--tab-active:${accent};--tab-active-text:#fff;--accent:${accent};--card-bg:#f4f6f9;--hl-title-color:#000;`;
-  const darkVars  = `--bg:${bgOverride || '#0f1117'};--text:${textOverride || '#e8eaf0'};--muted:#8b92a8;--heading:${textOverride || '#f0f2f8'};--border:#2d3142;--tab-bg:#1e2130;--tab-text:#8b92a8;--tab-active:${accent};--tab-active-text:#fff;--accent:${accent};--card-bg:#181c28;--hl-title-color:${textOverride || '#f0f2f8'};`;
+  const lightVars = `--bg:${bgOverride || '#fff'};--text:${textOverride || '#111827'};--muted:#6b7280;--heading:${textOverride || '#111827'};--border:#e5e7eb;--tab-bg:#f3f4f6;--tab-text:#6b7280;--tab-active:${accent};--tab-active-text:#fff;--accent:${accent};--card-bg:#f4f6f9;--hl-title-color:#000;--time-default:${textOverride || '#111827'};`;
+  const darkVars  = `--bg:${bgOverride || '#0f1117'};--text:${textOverride || '#e8eaf0'};--muted:#8b92a8;--heading:${textOverride || '#f0f2f8'};--border:#2d3142;--tab-bg:#1e2130;--tab-text:#8b92a8;--tab-active:${accent};--tab-active-text:#fff;--accent:${accent};--card-bg:#181c28;--hl-title-color:${textOverride || '#f0f2f8'};--time-default:#fff;`;
 
   const css = `
-:root{${isAuto ? lightVars : isDark ? darkVars : lightVars};--sb-match-size:${matchSize};--sb-date-size:${dateSize};--sb-h3-size:${h3Size};--sb-logo-height:${logoHeight};--sb-hl-size:${hlFontSize};--sb-time-size:${timeSize}}
+:root{${isAuto ? lightVars : isDark ? darkVars : lightVars};--sb-match-size:${matchSize};--sb-date-size:${dateSize};--sb-h3-size:${h3Size};--sb-logo-height:${logoHeight};--sb-hl-size:${hlFontSize};--sb-time-size:${timeSize};--sb-normal-font:${normalFontCss};--sb-normal-weight:${normalWeight};--sb-normal-text:${normalTextCss};--sb-normal-time-color:${normalTimeCss};--sb-hl-font:${hlFontCss};--sb-hl-weight:${hlWeight};--sb-hl-text:${hlTextCss};--sb-hl-time-color:${hlTimeCss}}
 ${isAuto ? `@media(prefers-color-scheme:dark){:root{${darkVars}}}` : ''}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{background:var(--bg);color:var(--text);font-family:${fontStack};font-size:15px;line-height:${lineH};-webkit-font-smoothing:antialiased;width:100%}
@@ -169,13 +190,14 @@ body{padding:${bodyPad}}
 .schedule-content h2{font-size:0.78em;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);padding:6px 0 5px;margin:8px 0 13px;border-bottom:1px solid var(--border)}
 .schedule-content h2:first-child{margin-top:8px}
 #schedule-root,.schedule-content{width:100%}
+.schedule-content{font-family:var(--sb-normal-font,inherit)}
 .schedule-content h3{font-size:var(--sb-h3-size)!important;font-weight:700;color:var(--heading);margin:${leagueGap} 0 3px;display:flex;align-items:center;gap:8px}
 .schedule-content img[data-preview-league]{height:var(--sb-logo-height)!important;width:auto!important;display:block;margin-top:${leagueGap}}
 .schedule-content img[data-preview-league]+h3{margin-top:4px}
 .schedule-content p>strong{display:block;font-size:var(--sb-date-size)!important;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:${dateMargin}}
 .schedule-content p{margin:0;padding:0;line-height:${lineH}}
 .match-group{margin:2px 0 ${Math.round(lineH * 8)}px}
-.schedule-content span[data-preview-match]{display:flex;align-items:center;gap:6px;padding:5px 0;color:var(--text);font-size:var(--sb-match-size)!important}
+.schedule-content span[data-preview-match]{display:flex;align-items:center;gap:6px;padding:5px 0;color:var(--sb-normal-text,var(--text));font-weight:var(--sb-normal-weight,400);font-size:var(--sb-match-size)!important}
 .schedule-content>br,.sport-section>br{display:none}
 .schedule-content ul{list-style:none;padding:0;margin:0 0 10px}
 .schedule-content ul li{padding:4px 0;border-bottom:1px solid var(--border);font-size:.9em}
@@ -185,11 +207,11 @@ ${isCard ? `.league-block{background:var(--card-bg);border:1px solid var(--borde
 .schedule-content p:empty{display:none}
 .team-logo{height:16px;width:auto;flex-shrink:0}
 .vs-sep{font-style:italic;font-size:.82em;color:var(--muted,#888);margin:0 3px}
-.ml-time{font-size:var(--sb-time-size,11px);font-weight:600;color:var(--text);flex-shrink:0;min-width:38px}
+.ml-time{font-size:var(--sb-time-size,11px);font-weight:var(--sb-normal-weight,400);color:var(--sb-normal-time-color,var(--time-default,var(--text)));flex-shrink:0;min-width:38px}
 .ml-match{display:flex;align-items:center;gap:3px;flex:1;flex-wrap:wrap}
 .mc-team{display:inline-flex;align-items:center;gap:3px}
 .mc-round{font-size:.82em;color:var(--muted,#888)}
-.hl-section{margin-bottom:24px}
+.hl-section{margin-bottom:24px;font-family:var(--sb-hl-font,inherit)}
 .hl-title{font-size:var(--sb-h3-size)!important;font-weight:800;color:var(--hl-title-color,#000);margin:0 0 10px;text-transform:uppercase;letter-spacing:.04em}
 .hl-updated{font-size:12px;color:#6b7280;margin:0 0 12px;display:flex;align-items:center;gap:6px}
 .hl-updated-dot{width:8px;height:8px;border-radius:50%;background:#ef4444;flex-shrink:0;display:inline-block}
@@ -199,12 +221,12 @@ ${isCard ? `.league-block{background:var(--card-bg);border:1px solid var(--borde
 .hl-event{padding:9px 0;border-bottom:1px solid rgba(128,128,128,.18)}
 .hl-event:last-child{border-bottom:0}
 .hl-event-main{display:grid;grid-template-columns:minmax(42px,max-content) minmax(0,1fr);align-items:center;column-gap:10px;row-gap:3px}
-.hl-time{grid-column:1;grid-row:2;font-size:var(--sb-date-size)!important;font-weight:800;color:var(--accent,#3b82f6);line-height:1;white-space:nowrap}
+.hl-time{grid-column:1;grid-row:2;font-size:var(--sb-date-size)!important;font-weight:var(--sb-hl-weight,400);color:var(--sb-hl-time-color,var(--time-default,var(--accent,#3b82f6)));line-height:1;white-space:nowrap}
 .hl-time-empty{visibility:hidden}
-.hl-teams{grid-column:2;grid-row:2;display:flex;align-items:center;min-width:0;gap:6px;font-size:var(--sb-hl-size)!important;font-weight:700;color:var(--heading,#111827);line-height:1.25}
+.hl-teams{grid-column:2;grid-row:2;display:flex;align-items:center;min-width:0;gap:6px;font-size:var(--sb-hl-size)!important;font-weight:var(--sb-hl-weight,400);color:var(--sb-hl-text,var(--heading,#111827));line-height:1.25}
 .hl-teams-h2h{flex-wrap:nowrap}
 .hl-teams-single{flex-wrap:wrap}
-.hl-team{display:inline-flex;align-items:center;gap:5px;min-width:0;font-weight:700}
+.hl-team{display:inline-flex;align-items:center;gap:5px;min-width:0;font-weight:var(--sb-hl-weight,400)}
 .hl-team-name{min-width:0;overflow-wrap:anywhere}
 .hl-team-logo{height:22px;max-width:28px;width:auto;object-fit:contain;flex-shrink:0;border-radius:2px}
 .hl-flag{display:inline-flex;align-items:center;line-height:1;font-size:1.05em;flex-shrink:0}
@@ -281,14 +303,17 @@ function buildCalendarPage(
   const paddingVal = Math.max(0, Math.min(80, parseInt(opts.padding) || 12));
   const bgOverride = opts.bgColor || '';
   const textOverride = opts.textColor || '';
-  const lightVars = `--bg:${bgOverride || '#fff'};--text:${textOverride || '#111827'};--muted:#6b7280;--heading:${textOverride || '#111827'};--border:#e5e7eb;--tab-bg:#f3f4f6;--surface:#f8f9fa;--accent:${accent};--card-bg:#f4f6f9;--hl-title-color:#000;`;
-  const darkVars  = `--bg:${bgOverride || '#0f1117'};--text:${textOverride || '#e8eaf0'};--muted:#8b92a8;--heading:${textOverride || '#f0f2f8'};--border:#2d3142;--tab-bg:#1e2130;--surface:#1a1d27;--accent:${accent};--card-bg:#181c28;--hl-title-color:${textOverride || '#f0f2f8'};`;
+  const lightVars = `--bg:${bgOverride || '#fff'};--text:${textOverride || '#111827'};--muted:#6b7280;--heading:${textOverride || '#111827'};--border:#e5e7eb;--tab-bg:#f3f4f6;--surface:#f8f9fa;--accent:${accent};--card-bg:#f4f6f9;--hl-title-color:#000;--time-default:${textOverride || '#111827'};`;
+  const darkVars  = `--bg:${bgOverride || '#0f1117'};--text:${textOverride || '#e8eaf0'};--muted:#8b92a8;--heading:${textOverride || '#f0f2f8'};--border:#2d3142;--tab-bg:#1e2130;--surface:#1a1d27;--accent:${accent};--card-bg:#181c28;--hl-title-color:${textOverride || '#f0f2f8'};--time-default:#fff;`;
 
   const h3SizeCal   = rpc(opts.headerSize,       '14px', '16px', '19px');
   const dateSizeCal  = rpc(opts.dateFontSize,      '10px', '11px', '13px');
+  const hlWeightCal  = opts.hlWeight || '400';
+  const hlTextCal    = opts.hlTextColor || 'var(--heading,#111827)';
+  const hlTimeCal    = opts.hlTimeColor || 'var(--time-default)';
 
   const baseCss = `
-:root{${isAuto ? lightVars : isDark ? darkVars : lightVars};--sb-hl-size:${hlFontSizeCal};--sb-h3-size:${h3SizeCal};--sb-date-size:${dateSizeCal}}
+:root{${isAuto ? lightVars : isDark ? darkVars : lightVars};--sb-hl-size:${hlFontSizeCal};--sb-h3-size:${h3SizeCal};--sb-date-size:${dateSizeCal};--sb-hl-weight:${hlWeightCal};--sb-hl-text:${hlTextCal};--sb-hl-time-color:${hlTimeCal}}
 ${isAuto ? `@media(prefers-color-scheme:dark){:root{${darkVars}}}` : ''}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{background:var(--bg);color:var(--text);font-family:${fontStack};font-size:${baseFontSize};line-height:1.5;-webkit-font-smoothing:antialiased;width:100%}
@@ -298,13 +323,13 @@ body{padding:${paddingVal}px}
 .vt-btn{padding:4px 12px;border-radius:999px;border:1px solid var(--border,#e5e7eb);background:var(--tab-bg,#f3f4f6);color:var(--tab-text,#6b7280);cursor:pointer;font-size:12px;font-family:inherit;font-weight:500;white-space:nowrap;transition:all .15s}
 .vt-btn:hover{color:var(--text);border-color:var(--accent,#3b82f6)}
 .vt-active{background:var(--accent,#3b82f6)!important;color:#fff!important;border-color:var(--accent,#3b82f6)!important}
-.hl-teams{font-size:var(--sb-hl-size)!important}
+.hl-teams{font-size:var(--sb-hl-size)!important;font-weight:var(--sb-hl-weight,400);color:var(--sb-hl-text,var(--heading,#111827))}
 .hl-league-spotlight{font-size:var(--sb-hl-size)!important;display:flex;align-items:center;gap:8px}
 .hl-title{font-size:var(--sb-h3-size)!important;font-weight:800;color:var(--hl-title-color,#000);margin:0 0 4px;text-transform:uppercase}
 .hl-updated{font-size:12px;color:#6b7280;margin:0 0 12px;display:flex;align-items:center;gap:6px}
 .hl-updated-dot{width:8px;height:8px;border-radius:50%;background:#ef4444;flex-shrink:0;display:inline-block}
 .hl-date-header{font-size:var(--sb-date-size)!important;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--heading,var(--text));padding:6px 0;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:8px}
-.hl-time{font-size:var(--sb-date-size)!important;font-weight:600;color:var(--accent,#3b82f6)}
+.hl-time{font-size:var(--sb-date-size)!important;font-weight:var(--sb-hl-weight,400);color:var(--sb-hl-time-color,var(--time-default,var(--accent,#3b82f6)))}
 .hl-league-name{font-size:var(--sb-date-size)!important;font-weight:700;color:var(--heading,var(--text))}
 `;
 
@@ -458,6 +483,10 @@ export async function GET(
 
   // Accept legacy sm/md/lg tokens OR direct numeric pixel values
   const sizeVal = (v: string | undefined) => { if (!v) return 'md'; if (v==='sm'||v==='md'||v==='lg') return v; const n=parseInt(v); return (!isNaN(n)&&n>=1&&n<=500)?v:'md'; };
+  // Per-section style param parsers — empty string means "not set" (inherit)
+  const fontVal   = (v: string | undefined) => ['system', 'serif', 'mono'].includes(v ?? '') ? (v as string) : '';
+  const weightVal = (v: string | undefined) => { const n = parseInt(v ?? ''); return (!isNaN(n) && n >= 100 && n <= 900) ? String(n) : ''; };
+  const colorVal  = (v: string | undefined) => v && /^#?[0-9a-fA-F]{3,8}$/.test(v) ? `#${v.replace(/^#/, '')}` : '';
   const opts: EmbedOpts = {
     showHeader:    sp.showHeader !== '0',
     showDate:      sp.showDate   !== '0',
@@ -484,6 +513,14 @@ export async function GET(
     noCopy:         sp.noCopy === '1',
     highlightFontSize: (() => { const n = parseInt(sp.highlightFontSize ?? ''); return (!isNaN(n) && n >= 1 && n <= 500) ? sp.highlightFontSize : '18'; })(),
     timeFontSize: (() => { const n = parseInt(sp.timeFontSize ?? ''); return (!isNaN(n) && n >= 1 && n <= 500) ? sp.timeFontSize : '11'; })(),
+    normalFont:      fontVal(sp.normalFont),
+    normalWeight:    weightVal(sp.normalWeight),
+    normalTextColor: colorVal(sp.normalTextColor),
+    normalTimeColor: colorVal(sp.normalTimeColor),
+    hlFont:          fontVal(sp.hlFont),
+    hlWeight:        weightVal(sp.hlWeight),
+    hlTextColor:     colorVal(sp.hlTextColor),
+    hlTimeColor:     colorVal(sp.hlTimeColor),
   embedId:       embedId,  // already extracted + sanitised above
     widgetId:      (sp._wid ?? '').replace(/[^\w-]/g, '').substring(0, 64) || '',
     appUrl:        '',  // will set below

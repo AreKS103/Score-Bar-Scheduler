@@ -39,6 +39,15 @@ function schedule_shortcode_render($atts) {
         'embed_id'        => '',
         'cat_labels'      => '',
         'seo'             => '0',
+        // Per-section styling (empty = inherit defaults)
+        'normal_font'        => '',
+        'normal_font_weight' => '',
+        'normal_text_color'  => '',
+        'normal_time_color'  => '',
+        'highlight_font'        => '',
+        'highlight_font_weight' => '',
+        'highlight_text_color'  => '',
+        'highlight_time_color'  => '',
     ], $atts, 'schedule');
 
     $query_args = [
@@ -90,6 +99,15 @@ function schedule_shortcode_render($atts) {
     if (!empty($atts['text_color'])) {
         $query_args['textColor'] = ltrim(sanitize_hex_color('#' . ltrim($atts['text_color'], '#')), '#');
     }
+    // Per-section styling — only appended when set (backward compatible)
+    if (!empty($atts['normal_font']))        { $query_args['normalFont']   = sanitize_text_field($atts['normal_font']); }
+    if (!empty($atts['normal_font_weight'])) { $query_args['normalWeight'] = sanitize_text_field($atts['normal_font_weight']); }
+    if (!empty($atts['normal_text_color']))  { $query_args['normalTextColor'] = ltrim(sanitize_hex_color('#' . ltrim($atts['normal_text_color'], '#')), '#'); }
+    if (!empty($atts['normal_time_color']))  { $query_args['normalTimeColor'] = ltrim(sanitize_hex_color('#' . ltrim($atts['normal_time_color'], '#')), '#'); }
+    if (!empty($atts['highlight_font']))        { $query_args['hlFont']   = sanitize_text_field($atts['highlight_font']); }
+    if (!empty($atts['highlight_font_weight'])) { $query_args['hlWeight'] = sanitize_text_field($atts['highlight_font_weight']); }
+    if (!empty($atts['highlight_text_color']))  { $query_args['hlTextColor'] = ltrim(sanitize_hex_color('#' . ltrim($atts['highlight_text_color'], '#')), '#'); }
+    if (!empty($atts['highlight_time_color']))  { $query_args['hlTimeColor'] = ltrim(sanitize_hex_color('#' . ltrim($atts['highlight_time_color'], '#')), '#'); }
 
     // Deterministic UID — must NOT use rand() because Elementor re-renders the
     // shortcode with a new PHP execution, and if the UID changes the MutationObserver

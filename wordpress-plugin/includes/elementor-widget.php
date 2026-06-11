@@ -59,6 +59,22 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
         $this->add_control('no_copy',     ['label' => 'Block Right-Click & Copy', 'type' => \Elementor\Controls_Manager::SWITCHER, 'label_on' => 'On', 'label_off' => 'Off', 'return_value' => '1', 'default' => '', 'description' => 'Prevents visitors from right-clicking or copying widget content (pairs with WP Content Copy Protection plugin)']);
         $this->add_control('padding',     ['label' => 'Content Padding (px)', 'type' => \Elementor\Controls_Manager::NUMBER, 'default' => 12, 'min' => 0, 'max' => 80, 'step' => 1, 'render_type' => 'template', 'description' => 'Inner padding in pixels']);
         $this->add_control('tab_style',   ['label' => 'Tab Style',        'type' => \Elementor\Controls_Manager::SELECT,  'default' => 'pill', 'options' => ['pill' => 'Pill', 'underline' => 'Underline', 'square' => 'Square']]);
+
+        // ── Per-section styling: Normal schedule vs Highlight section ───────
+        $font_options   = ['' => 'Default (inherit)', 'system' => 'System', 'serif' => 'Serif', 'mono' => 'Monospace'];
+        $weight_options = ['' => 'Default (Normal)', '300' => 'Light (300)', '400' => 'Normal (400)', '500' => 'Medium (500)', '600' => 'Semi-Bold (600)', '700' => 'Bold (700)', '800' => 'Extra-Bold (800)'];
+        $this->add_control('section_styles_heading', ['label' => 'Section Styles', 'type' => \Elementor\Controls_Manager::HEADING, 'separator' => 'before']);
+        $this->add_control('style_target', ['label' => 'Customize Section', 'type' => \Elementor\Controls_Manager::SELECT, 'default' => 'normal', 'options' => ['normal' => 'Normal Schedule', 'highlight' => 'Highlight Section'], 'description' => 'Choose which section to style below. Settings for both sections are saved.']);
+        // Normal schedule section
+        $this->add_control('normal_font',        ['label' => 'Font Family',  'type' => \Elementor\Controls_Manager::SELECT, 'default' => '', 'options' => $font_options,   'condition' => ['style_target' => 'normal']]);
+        $this->add_control('normal_font_weight', ['label' => 'Font Weight',  'type' => \Elementor\Controls_Manager::SELECT, 'default' => '', 'options' => $weight_options, 'condition' => ['style_target' => 'normal']]);
+        $this->add_control('normal_text_color',  ['label' => 'Text Color',   'type' => \Elementor\Controls_Manager::COLOR,  'default' => '', 'description' => 'Leave empty for theme default', 'condition' => ['style_target' => 'normal']]);
+        $this->add_control('normal_time_color',  ['label' => 'Time Color',   'type' => \Elementor\Controls_Manager::COLOR,  'default' => '', 'description' => 'Leave empty for default (white on dark theme)', 'condition' => ['style_target' => 'normal']]);
+        // Highlight section
+        $this->add_control('hl_font',        ['label' => 'Font Family',  'type' => \Elementor\Controls_Manager::SELECT, 'default' => '', 'options' => $font_options,   'condition' => ['style_target' => 'highlight']]);
+        $this->add_control('hl_font_weight', ['label' => 'Font Weight',  'type' => \Elementor\Controls_Manager::SELECT, 'default' => '', 'options' => $weight_options, 'condition' => ['style_target' => 'highlight']]);
+        $this->add_control('hl_text_color',  ['label' => 'Text Color',   'type' => \Elementor\Controls_Manager::COLOR,  'default' => '', 'description' => 'Leave empty for theme default', 'condition' => ['style_target' => 'highlight']]);
+        $this->add_control('hl_time_color',  ['label' => 'Time Color',   'type' => \Elementor\Controls_Manager::COLOR,  'default' => '', 'description' => 'Leave empty for default (white on dark theme)', 'condition' => ['style_target' => 'highlight']]);
         $this->end_controls_section();
     }
     
@@ -120,6 +136,22 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
         }
         if (!empty($text_hex)) {
             $query_args['textColor'] = sanitize_text_field($text_hex);
+        }
+        // Per-section styling (only sent when set, keeps URLs backward compatible)
+        $section_styles = [
+            'normalFont'      => $settings['normal_font']        ?? '',
+            'normalWeight'    => $settings['normal_font_weight'] ?? '',
+            'normalTextColor' => ltrim($settings['normal_text_color'] ?? '', '#'),
+            'normalTimeColor' => ltrim($settings['normal_time_color'] ?? '', '#'),
+            'hlFont'          => $settings['hl_font']            ?? '',
+            'hlWeight'        => $settings['hl_font_weight']     ?? '',
+            'hlTextColor'     => ltrim($settings['hl_text_color'] ?? '', '#'),
+            'hlTimeColor'     => ltrim($settings['hl_time_color'] ?? '', '#'),
+        ];
+        foreach ($section_styles as $param => $value) {
+            if (!empty($value)) {
+                $query_args[$param] = sanitize_text_field($value);
+            }
         }
         $app_domain = schedule_get_app_domain();
         $iframe_url = $app_domain . '/embed/' . sanitize_text_field($iframe_key) . '?' . http_build_query($query_args);

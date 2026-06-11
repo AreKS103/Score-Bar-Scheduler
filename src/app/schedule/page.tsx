@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, type DragEvent as ReactDragEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import {
@@ -24,6 +24,7 @@ import {
   Printer,
   Clipboard,
   ClipboardPaste,
+  GripVertical,
 } from 'lucide-react';
 import { useScheduleStore } from '@/lib/store';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
@@ -957,6 +958,9 @@ export default function SchedulePage() {
     router.push('/login');
   }
   const [activeSortLeague, setActiveSortLeague] = useState<string | null>(null);
+  // Drag-to-reorder state for the selected-leagues sidebar (preview panel)
+  const [draggingLeague, setDraggingLeague] = useState<string | null>(null);
+  const [dragOverLeague, setDragOverLeague] = useState<string | null>(null);
   const [headerHeight, setHeaderHeight] = useState(116);
   const hasFetchedRef = useRef(false);
   const worldCupLoadingRef = useRef(false);
@@ -1797,6 +1801,56 @@ export default function SchedulePage() {
       return arr;
     });
   }, [markSelectionDirty]);
+
+  /**
+   * Drag-and-drop reorder: move `sourceLeague` to `targetLeague`'s visible slot.
+   * Same semantics as moveLeague — only visible (selected) leagues are
+   * re-threaded; non-visible IDs keep their slots for undo/redo stability.
+   */
+  const reorderLeague = useCallback((sourceLeague: string, targetLeague: string) => {
+    if (!sourceLeague || !targetLeague || sourceLeague === targetLeague) return;
+    markSelectionDirty();
+    setActiveSortLeague(sourceLeague);
+    setLeagueOrder((prev) => {
+      const visible = (l: string) => selectedByLeagueRef.current.has(l);
+      const visibleOrder = prev.filter(visible);
+      const fromIdx = visibleOrder.indexOf(sourceLeague);
+      const toIdx = visibleOrder.indexOf(targetLeague);
+      if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return prev;
+      const nextVisible = [...visibleOrder];
+      const [moved] = nextVisible.splice(fromIdx, 1);
+      nextVisible.splice(toIdx, 0, moved);
+      let vi = 0;
+      return prev.map((l) => (visible(l) ? nextVisible[vi++] : l));
+    });
+  }, [markSelectionDirty]);
+
+  const handleLeagueDragStart = useCallback((e: ReactDragEvent<HTMLDivElement>, sportId: string) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', sportId);
+    // Defer the fold so the browser captures the full-size card as drag image
+    requestAnimationFrame(() => setDraggingLeague(sportId));
+  }, []);
+
+  const handleLeagueDragOver = useCallback((e: ReactDragEvent<HTMLDivElement>, sportId: string) => {
+    if (!draggingLeague) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverLeague !== sportId) setDragOverLeague(sportId);
+  }, [draggingLeague, dragOverLeague]);
+
+  const handleLeagueDrop = useCallback((e: ReactDragEvent<HTMLDivElement>, targetId: string) => {
+    e.preventDefault();
+    const source = e.dataTransfer.getData('text/plain') || draggingLeague || '';
+    reorderLeague(source, targetId);
+    setDraggingLeague(null);
+    setDragOverLeague(null);
+  }, [draggingLeague, reorderLeague]);
+
+  const handleLeagueDragEnd = useCallback(() => {
+    setDraggingLeague(null);
+    setDragOverLeague(null);
+  }, []);
 
   const toggleFeaturedLeague = useCallback((sportId: string) => {
     markSelectionDirty();
@@ -2917,18 +2971,32 @@ export default function SchedulePage() {
                   </div>
                 ))}
 
-                {orderedSelectedByLeague.map(([sportId, matches], leagueIdx) => (
+                {orderedSelectedByLeague.map(([sportId, matches], leagueIdx) => {
+                  // While this card is being dragged it folds into a small chip
+                  // showing only the league name (+ ★ when featured).
+                  const isDragSource = draggingLeague === sportId;
+                  const isDragTarget = draggingLeague !== null && !isDragSource && dragOverLeague === sportId;
+                  return (
                   <div
                     key={sportId}
                     data-has-context-menu="true"
                     ref={(el) => { if (el) leagueItemRefs.current.set(sportId, el); else leagueItemRefs.current.delete(sportId); }}
+                    draggable
+                    onDragStart={(e) => handleLeagueDragStart(e, sportId)}
+                    onDragOver={(e) => handleLeagueDragOver(e, sportId)}
+                    onDrop={(e) => handleLeagueDrop(e, sportId)}
+                    onDragEnd={handleLeagueDragEnd}
                     className={cn(
                       'border rounded-lg p-2 transition-colors',
-                      activeSortLeague === sportId
-                        ? 'border-blue-500 ring-1 ring-blue-500/30 bg-blue-500/5'
-                        : featuredLeagues.has(sportId)
-                          ? 'border-yellow-500/40 bg-yellow-500/5'
-                          : 'border-border/50'
+                      isDragSource
+                        ? 'opacity-60 border-dashed border-blue-400/70 bg-blue-500/5'
+                        : isDragTarget
+                          ? 'border-blue-500 ring-2 ring-blue-500/40 bg-blue-500/10'
+                          : activeSortLeague === sportId
+                            ? 'border-blue-500 ring-1 ring-blue-500/30 bg-blue-500/5'
+                            : featuredLeagues.has(sportId)
+                              ? 'border-yellow-500/40 bg-yellow-500/5'
+                              : 'border-border/50'
                     )}
                     onContextMenu={(event) => {
                       event.preventDefault();
@@ -2945,11 +3013,15 @@ export default function SchedulePage() {
                       });
                     }}
                   >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide truncate pr-1">
-                        {matches[0]?.leagueLabel ?? sportId}
-                        {featuredLeagues.has(sportId) && <span className="ml-1 text-yellow-400">★</span>}
-                      </p>
+                    <div className={cn('flex items-center justify-between', !isDragSource && 'mb-1.5')}>
+                      <div className="flex items-center gap-1 min-w-0 pr-1">
+                        <GripVertical className="w-3 h-3 shrink-0 text-muted-foreground/40 cursor-grab" />
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide truncate">
+                          {matches[0]?.leagueLabel ?? sportId}
+                          {featuredLeagues.has(sportId) && <span className="ml-1 text-yellow-400">★</span>}
+                        </p>
+                      </div>
+                      {!isDragSource && (
                       <div className="flex items-center gap-0.5 shrink-0" data-no-league-menu="true">
                         <button
                           onClick={() => moveLeague(sportId, -1)}
@@ -2966,7 +3038,9 @@ export default function SchedulePage() {
                           <ArrowDown className="w-3 h-3" />
                         </button>
                       </div>
+                      )}
                     </div>
+                    {!isDragSource && (
                     <div className="space-y-1">
                       {matches.map((m) => {
                         const checked = previewCheckedIds.has(m.id);
@@ -3037,8 +3111,10 @@ export default function SchedulePage() {
                         );
                       })}
                     </div>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
                 </>
               )}
             </div>
