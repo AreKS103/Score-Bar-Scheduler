@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { memo, useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronRight, Globe, Star } from 'lucide-react';
 import { getCategories, getLeaguesByCategory, CATEGORY_LOGOS, SPORTS_CONFIG } from '@/lib/config';
@@ -35,7 +35,7 @@ function CategoryIcon({ category }: { category: string }) {
   return <span className="w-4 h-4 shrink-0 rounded-full bg-muted-foreground/20 inline-block" />;
 }
 
-export default function SportFilter({
+function SportFilter({
   activeFilter,
   onFilterChange,
   onLeagueSelect,
@@ -578,3 +578,7 @@ export default function SportFilter({
     </div>
   );
 }
+
+// Memoized: the schedule page re-renders on every keystroke / drag frame and
+// this sidebar only depends on its props.
+export default memo(SportFilter);

@@ -4,6 +4,10 @@ import { useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { getClientId, loadSelectionFromSupabase, type SavedSelectionState } from '@/lib/clientCache';
 
+// Sync diagnostics are noisy on every remote change — dev builds only.
+const debugLog: typeof console.log =
+  process.env.NODE_ENV !== 'production' ? console.log.bind(console) : () => {};
+
 /**
  * Payload delivered to the consumer when another device updates a row in
  * `user_selections` for the current user. `embedTarget` indicates which embed
@@ -69,7 +73,7 @@ export function useSelectionsRealtime({
         savedAt,
       };
       const selectedCount = Object.values(nextState.selections).filter((s) => s.isSelected || s.isFeatured || s.tags.length > 0).length;
-      console.log(
+      debugLog(
         `[SelectionSync] broadcast embed=${embedTarget || '(default)'} selected=${selectedCount}`,
         { fromClient: clientId, deleted },
       );
@@ -106,7 +110,7 @@ export function useSelectionsRealtime({
 
           const selections = row.selections ?? {};
           const selectedCount = Object.values(selections).filter((s) => s.isSelected || s.isFeatured || s.tags.length > 0).length;
-          console.log(
+          debugLog(
             `[SelectionSync] remote ${isDelete ? 'DELETE' : payload.eventType} embed=${row.embed_target || '(default)'} selected=${selectedCount}`,
             { updatedAt: row.updated_at, fromClient: row.client_id ?? null },
           );

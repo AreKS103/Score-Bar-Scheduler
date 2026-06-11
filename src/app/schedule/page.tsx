@@ -27,6 +27,7 @@ import {
   GripVertical,
 } from 'lucide-react';
 import { useScheduleStore } from '@/lib/store';
+import { useShallow } from 'zustand/react/shallow';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { useFavoritesStore } from '@/lib/favoritesStore';
 import { getCachedEvents, setCachedEvents, appendCachedEvent, removeCachedEvent, saveLocalCustomEvent, loadLocalCustomEvents, removeLocalCustomEvent, syncLocalCustomEventsToSupabase, saveSelectionToSupabase, loadSelectionFromSupabase, loadSelectionState, saveSelectionState, setLastRemoteSnapshot, pruneStaleSelectionKeys, loadCustomLeagueLogo, type SavedSelectionState } from '@/lib/clientCache';
@@ -219,11 +220,16 @@ function buildHistorySignature(
 }
 
 export default function SchedulePage() {
+  // Per-field selectors: subscribing to the whole store re-rendered this
+  // (very large) component on ANY store change. State fields are selected
+  // individually; actions are stable references in zustand, so the
+  // useShallow object below never triggers a re-render.
+  const events = useScheduleStore((s) => s.events);
+  const fetchStatuses = useScheduleStore((s) => s.fetchStatuses);
+  const dateRange = useScheduleStore((s) => s.dateRange);
+  const activeSportFilter = useScheduleStore((s) => s.activeSportFilter);
+  const customTags = useScheduleStore((s) => s.customTags);
   const {
-    events,
-    fetchStatuses,
-    dateRange,
-    activeSportFilter,
     setEvents,
     addEvents,
     removeEvent,
@@ -232,7 +238,6 @@ export default function SchedulePage() {
     setNote,
     toggleTag,
     batchToggleTag,
-    customTags,
     setCustomTags,
     addCustomTag,
     removeCustomTag,
@@ -245,7 +250,30 @@ export default function SchedulePage() {
     setFetchStatuses,
     setDateRange,
     setActiveSportFilter,
-  } = useScheduleStore();
+  } = useScheduleStore(
+    useShallow((s) => ({
+      setEvents: s.setEvents,
+      addEvents: s.addEvents,
+      removeEvent: s.removeEvent,
+      toggleSelected: s.toggleSelected,
+      toggleFeatured: s.toggleFeatured,
+      setNote: s.setNote,
+      toggleTag: s.toggleTag,
+      batchToggleTag: s.batchToggleTag,
+      setCustomTags: s.setCustomTags,
+      addCustomTag: s.addCustomTag,
+      removeCustomTag: s.removeCustomTag,
+      stripTagFromAllEvents: s.stripTagFromAllEvents,
+      updateEvent: s.updateEvent,
+      selectAll: s.selectAll,
+      deselectAll: s.deselectAll,
+      batchSetSelected: s.batchSetSelected,
+      batchClearAll: s.batchClearAll,
+      setFetchStatuses: s.setFetchStatuses,
+      setDateRange: s.setDateRange,
+      setActiveSportFilter: s.setActiveSportFilter,
+    })),
+  );
   const selectedTimezone = useTimezoneStore((state) => state.timezone);
 
   const [scrollToMatch, setScrollToMatch] = useState<{ id: string; ts: number } | null>(null);
@@ -360,6 +388,13 @@ export default function SchedulePage() {
   }, [batchClearAll, markSelectionDirty]);
 
   const [flashKey, setFlashKey] = useState(0);
+  // Stable callbacks for the memoized SportFilter sidebar — inline arrows
+  // would defeat React.memo on every parent render.
+  const handleSportFilterChange = useCallback((f: string) => {
+    setActiveSportFilter(f);
+    setFlashKey((k) => k + 1);
+  }, [setActiveSportFilter]);
+  const handleSidebarLeagueSelect = useCallback(() => setSidebarOpen(false), []);
   const [embedInstances, setEmbedInstances] = useState<EmbedInstanceState[]>([]);
   const [publishTarget, setPublishTarget] = useState<string>('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -2419,8 +2454,8 @@ export default function SchedulePage() {
           <div className="px-2 pt-2">
             <SportFilter
               activeFilter={activeSportFilter}
-              onFilterChange={(f) => { setActiveSportFilter(f); setFlashKey(k => k + 1); }}
-              onLeagueSelect={() => setSidebarOpen(false)}
+              onFilterChange={handleSportFilterChange}
+              onLeagueSelect={handleSidebarLeagueSelect}
               events={events}
               businessName={businessName}
               businessLogoUrl={businessLogoUrl}

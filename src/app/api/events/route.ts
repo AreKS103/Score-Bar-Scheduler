@@ -60,6 +60,59 @@ function gcStaleFetchLocks() {
   }
 }
 
+// ── Durable events cache (Supabase) ─────────────────────────────────────────
+// The in-memory CACHE above dies on every cold start / new serverless
+// instance, which made a fresh boot wait 20-60s for the full ESPN+SportsDB
+// fan-out. Persisting each completed fetch lets a cold instance serve the
+// last good payload in one DB round-trip and refresh in the background.
+// Reuses the existing `sportsdb_events_cache` table (endpoint TEXT key,
+// response_data JSONB, fetched_at, expires_at) under a namespaced key —
+// no migration required.
+const EVENTS_DB_CACHE_PREFIX = 'events-api|';
+
+async function readEventsDbCache(cacheKey: string): Promise<CacheEntry | null> {
+  const db = getSdbCacheDb();
+  if (!db) return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: row } = await (db as any)
+      .from('sportsdb_events_cache')
+      .select('response_data, fetched_at')
+      .eq('endpoint', `${EVENTS_DB_CACHE_PREFIX}${cacheKey}`)
+      .gt('expires_at', new Date().toISOString())
+      .maybeSingle();
+    if (!row) return null;
+    const data = (row as { response_data: MatchEvent[] }).response_data;
+    const ts = new Date((row as { fetched_at?: string }).fetched_at ?? 0).getTime();
+    if (!Array.isArray(data) || data.length === 0 || Number.isNaN(ts)) return null;
+    return { data, timestamp: ts };
+  } catch {
+    return null;
+  }
+}
+
+function writeEventsDbCache(cacheKey: string, events: MatchEvent[]): void {
+  if (events.length === 0) return; // never persist empty payloads
+  const db = getSdbCacheDb();
+  if (!db) return;
+  const now = Date.now();
+  // NOTE: supabase-js builders only execute when awaited/.then()-ed — a bare
+  // `void builder` silently never fires the request.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (db as any)
+    .from('sportsdb_events_cache')
+    .upsert({
+      endpoint: `${EVENTS_DB_CACHE_PREFIX}${cacheKey}`,
+      response_data: events,
+      fetched_at: new Date(now).toISOString(),
+      expires_at: new Date(now + STALE_OK_TTL).toISOString(),
+    })
+    .then(
+      () => {},
+      (err: unknown) => console.warn('[Events API] DB cache write failed:', err),
+    );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // ESPN API
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1177,9 +1230,15 @@ async function sdbFetch(endpoint: string, responseKey: 'events' | 'results' = 'e
     SDB_ENDPOINT_CACHE.set(ck, { data, ts: Date.now() });
     if (db) {
       const expiresAt = new Date(Date.now() + SDB_DB_CACHE_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      // supabase-js builders are lazy thenables — without .then() the upsert
+      // never executes, which silently disabled this persistent cache layer.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      void (db as any).from('sportsdb_events_cache')
-        .upsert({ endpoint: ck, response_data: data, fetched_at: new Date().toISOString(), expires_at: expiresAt });
+      (db as any).from('sportsdb_events_cache')
+        .upsert({ endpoint: ck, response_data: data, fetched_at: new Date().toISOString(), expires_at: expiresAt })
+        .then(
+          () => {},
+          (err: unknown) => console.warn(`[SportsDB] cache write failed for ${ck}:`, err),
+        );
     }
 
     return data;
@@ -2167,6 +2226,7 @@ export async function GET(req: NextRequest) {
     // Start background refresh
     const bgPromise = fetchAllEvents(startDate, endDate, timeZone).then(events => {
       CACHE.set(cacheKey, { data: events, timestamp: Date.now() });
+      writeEventsDbCache(cacheKey, events);
       fetchPromises.delete(cacheKey);
       return events;
     }).catch(err => {
@@ -2184,6 +2244,38 @@ export async function GET(req: NextRequest) {
       timeZone,
       age: Math.round((now - cached.timestamp) / 1000),
     }, { headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=300' } });
+  }
+
+  // ── Cold start: serve the durable Supabase copy before paying for the full
+  //    20-60s upstream fan-out. Refresh in the background if it's older than
+  //    the fresh-cache window.
+  if (!cached) {
+    const dbCached = await readEventsDbCache(cacheKey);
+    if (dbCached && now - dbCached.timestamp < STALE_OK_TTL) {
+      CACHE.set(cacheKey, dbCached); // backfill L1 with the original timestamp
+      if (now - dbCached.timestamp >= CACHE_TTL && !fetchPromises.has(cacheKey)) {
+        const bgPromise = fetchAllEvents(startDate, endDate, timeZone).then(events => {
+          CACHE.set(cacheKey, { data: events, timestamp: Date.now() });
+          writeEventsDbCache(cacheKey, events);
+          fetchPromises.delete(cacheKey);
+          return events;
+        }).catch(err => {
+          console.error('[Events API] Background refresh failed:', err);
+          fetchPromises.delete(cacheKey);
+          return dbCached.data;
+        });
+        fetchPromises.set(cacheKey, { promise: bgPromise, startedAt: Date.now() });
+      }
+      const customEvents = await getCustomEvents();
+      console.log(`[Events API] Cold start served from durable cache (age: ${Math.round((now - dbCached.timestamp) / 1000)}s)`);
+      return NextResponse.json({
+        events: [...dbCached.data, ...customEvents],
+        cached: true,
+        persisted: true,
+        timeZone,
+        age: Math.round((now - dbCached.timestamp) / 1000),
+      }, { headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=300' } });
+    }
   }
 
   // Need fresh data
@@ -2204,6 +2296,7 @@ export async function GET(req: NextRequest) {
     const [events, customEvents] = await Promise.all([p, getCustomEvents()]);
 
     CACHE.set(cacheKey, { data: events, timestamp: Date.now() });
+    writeEventsDbCache(cacheKey, events);
     fetchPromises.delete(cacheKey);
 
     return NextResponse.json({ events: [...events, ...customEvents], cached: false, timeZone }, {

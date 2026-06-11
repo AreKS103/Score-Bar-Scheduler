@@ -302,18 +302,26 @@ async function refreshEspnTeamSnapshotEvents(events: MatchEvent[], timeZone: str
     bySport.get(event.sportId)!.push(event);
   }
 
-  const latestEvents: MatchEvent[] = [];
-  for (const [sportId, sportEvents] of bySport) {
-    const config = getSportConfig(sportId);
-    if (!supportsTeamRefresh(config)) continue;
-    const range = getRefreshRange(sportEvents);
-    if (!range) continue;
-    try {
-      latestEvents.push(...await fetchEspnTeamEvents(config, range.start, range.end, timeZone));
-    } catch (error) {
-      console.warn(`[SnapshotRefresh] ESPN refresh failed for ${sportId}:`, error);
-    }
-  }
+  // Fetch all sports in parallel — the old sequential loop took up to
+  // 5s per sport on a cold instance, which could exceed the serverless
+  // function timeout and break embeds entirely.
+  const settled = await Promise.allSettled(
+    Array.from(bySport.entries()).map(async ([sportId, sportEvents]) => {
+      const config = getSportConfig(sportId);
+      if (!supportsTeamRefresh(config)) return [] as MatchEvent[];
+      const range = getRefreshRange(sportEvents);
+      if (!range) return [] as MatchEvent[];
+      try {
+        return await fetchEspnTeamEvents(config, range.start, range.end, timeZone);
+      } catch (error) {
+        console.warn(`[SnapshotRefresh] ESPN refresh failed for ${sportId}:`, error);
+        return [] as MatchEvent[];
+      }
+    }),
+  );
+  const latestEvents: MatchEvent[] = settled.flatMap(
+    (outcome) => (outcome.status === 'fulfilled' ? outcome.value : []),
+  );
 
   if (latestEvents.length === 0) return events;
 
@@ -336,10 +344,34 @@ async function refreshEspnTeamSnapshotEvents(events: MatchEvent[], timeZone: str
   });
 }
 
+// Hard ceiling for the whole refresh pass. The published snapshot is already
+// complete, renderable data — refreshing times/teams against ESPN is a
+// nice-to-have. Without a budget, a slow upstream on a cold serverless
+// instance stalled (or timed out) the embed for tens of seconds.
+const REFRESH_TOTAL_BUDGET_MS = 4_000;
+
 export async function refreshSnapshotEvents(events: MatchEvent[], timeZone?: string | null): Promise<MatchEvent[]> {
   if (!hasRefreshableSnapshotEvents(events)) return events;
 
   const safeTimeZone = normalizeTimeZone(timeZone);
-  const worldCupRefreshed = await refreshWorldCupSnapshotEvents(events, safeTimeZone);
-  return refreshEspnTeamSnapshotEvents(worldCupRefreshed, safeTimeZone);
+  const refreshPass = (async () => {
+    const worldCupRefreshed = await refreshWorldCupSnapshotEvents(events, safeTimeZone);
+    return refreshEspnTeamSnapshotEvents(worldCupRefreshed, safeTimeZone);
+  })();
+
+  const budget = new Promise<MatchEvent[] | null>((resolve) => {
+    const timer = setTimeout(() => resolve(null), REFRESH_TOTAL_BUDGET_MS);
+    // Don't keep the event loop alive just for the budget timer.
+    if (typeof timer === 'object' && 'unref' in timer) timer.unref();
+  });
+
+  const result = await Promise.race([refreshPass, budget]);
+  if (result === null) {
+    console.warn('[SnapshotRefresh] refresh exceeded time budget; serving snapshot as-is');
+    // Let the in-flight fetches finish in the background so their results
+    // land in the module cache for the next request.
+    refreshPass.catch(() => {});
+    return events;
+  }
+  return result;
 }

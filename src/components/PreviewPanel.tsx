@@ -1,5 +1,5 @@
 'use client';
-import { useRef, useEffect, useMemo } from 'react';
+import { memo, useRef, useEffect, useMemo } from 'react';
 import { Copy, CheckCircle } from 'lucide-react';
 import type DOMPurifyType from 'dompurify';
 import type { MouseEvent } from 'react';
@@ -35,7 +35,7 @@ interface PreviewPanelProps {
   onPreviewClearSelection?: () => void;
 }
 
-export default function PreviewPanel({
+function PreviewPanel({
   html,
   matchCount,
   leagueCount,
@@ -266,3 +266,7 @@ export default function PreviewPanel({
     </div>
   );
 }
+
+// Memoized: parent re-renders frequently (drag, typing, selection state) and
+// re-rendering this panel re-applies a large dangerouslySetInnerHTML subtree.
+export default memo(PreviewPanel);
