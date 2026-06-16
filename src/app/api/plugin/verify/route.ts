@@ -76,11 +76,12 @@ export async function POST(req: NextRequest) {
     // ── Step 1: Try to find user by the resolved hash ─────────────────────
     const { data: keyData } = await supabase
       .from('user_api_keys')
-      .select('user_id')
+      .select('user_id, key_hash')
       .eq('key_hash', hash)
       .maybeSingle();
 
     let userId: string | null = keyData?.user_id ?? null;
+    let storedKeyHash: string | null = keyData?.key_hash ?? null;
     const foundByHash = userId !== null;
 
     // ── Step 2: Key not found by hash — try by siteUrl (handles key
@@ -89,10 +90,11 @@ export async function POST(req: NextRequest) {
     if (!userId && siteUrl) {
       const { data: siteData } = await supabase
         .from('user_api_keys')
-        .select('user_id')
+        .select('user_id, key_hash')
         .eq('connected_site', siteUrl)
         .maybeSingle();
       userId = siteData?.user_id ?? null;
+      storedKeyHash = siteData?.key_hash ?? null;
     }
 
     if (!userId) {
@@ -119,9 +121,22 @@ export async function POST(req: NextRequest) {
       // Non-fatal: still return success so WordPress can save the token.
     }
 
+    // Return the key_hash that the public embed endpoint will actually accept.
+    // If the request was authenticated by siteUrl fallback, `hash` may be the
+    // submitted/stale WP value, so returning it would make WordPress save an
+    // embed token that does not exist in user_api_keys and the iframe would show
+    // "Invalid embed token." In that case return the stored DB key_hash instead.
+    const embedToken = foundByHash ? hash : storedKeyHash;
+    if (!embedToken || !/^[0-9a-f]{64}$/.test(embedToken)) {
+      return NextResponse.json(
+        { error: 'Connection found, but no valid embed token is stored. Reconnect WordPress from the Scorebar setup wizard.' },
+        { status: 409, headers: corsHeaders }
+      );
+    }
+
     // Return the key_hash as embedToken — this is safe to expose in iframe URLs
     // because a SHA-256 hash cannot be reversed to recover the original API key.
-    return NextResponse.json({ ok: true, message: 'Connected successfully', embedToken: hash }, { headers: corsHeaders });
+    return NextResponse.json({ ok: true, message: 'Connected successfully', embedToken }, { headers: corsHeaders });
   } catch (error) {
     console.error('[plugin/verify] error:', error);
     return NextResponse.json(
