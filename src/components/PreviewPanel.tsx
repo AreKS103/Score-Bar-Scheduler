@@ -221,43 +221,12 @@ function PreviewPanel({
       {/* HTML preview — adapts to current theme */}
       <div
         ref={previewRef}
-        className="bg-card border border-border rounded-lg p-8 overflow-y-auto prose prose-sm max-w-none
-          dark:prose-invert
-          [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mt-6 [&_h2]:mb-2
-          [&_h2]:text-zinc-800 dark:[&_h2]:text-white
-          [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-0 [&_h3]:mb-0
-          [&_h3]:text-zinc-700 dark:[&_h3]:text-zinc-200
-          [&_hr]:border-border [&_hr]:my-6
-          [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1.5
-          [&_li]:leading-relaxed [&_li]:text-zinc-600 dark:[&_li]:text-zinc-300
-          [&_p]:leading-relaxed [&_p]:my-1 [&_p]:text-zinc-600 dark:[&_p]:text-zinc-300
-          [&_p_strong]:block [&_p_strong]:text-[0.73em] [&_p_strong]:font-semibold
-          [&_p_strong]:uppercase [&_p_strong]:tracking-widest
-          [&_p_strong]:!text-zinc-500 dark:[&_p_strong]:!text-zinc-400
-          [&_p_strong]:mt-3 [&_p_strong]:mb-1
-          [&_em]:not-italic [&_em]:text-xs [&_em]:px-1.5 [&_em]:py-0.5 [&_em]:rounded
-          [&_em]:bg-primary/10 [&_em]:text-primary
-          [&_img]:inline [&_img]:h-8 [&_img]:w-auto [&_img]:my-0
-          [&_.match-group]:my-0 [&_.match-group]:mb-2
-          [&_.match-row]:flex [&_.match-row]:items-center [&_.match-row]:gap-1.5 [&_.match-row]:py-0.5
-          [&_.ml-time]:text-[0.8em] [&_.ml-time]:font-normal [&_.ml-time]:text-zinc-800 dark:[&_.ml-time]:text-white [&_.ml-time]:shrink-0 [&_.ml-time]:min-w-[38px]
-          [&_.ml-match]:flex [&_.ml-match]:items-center [&_.ml-match]:gap-1 [&_.ml-match]:flex-1 [&_.ml-match]:flex-wrap [&_.ml-match]:text-zinc-800 dark:[&_.ml-match]:text-zinc-200
-          [&_.mc-team]:inline-flex [&_.mc-team]:items-center [&_.mc-team]:gap-0.5
-          [&_.vs-sep]:italic [&_.vs-sep]:text-[0.82em] [&_.vs-sep]:opacity-50 [&_.vs-sep]:mx-1.5
-          [&_.mc-round]:text-[0.82em] [&_.mc-round]:opacity-50
-          [&_.hl-section]:mb-5
-          [&_.hl-title]:!text-base [&_.hl-title]:!font-extrabold [&_.hl-title]:uppercase [&_.hl-title]:tracking-wide [&_.hl-title]:!mb-2.5
-          [&_.hl-date-group]:mt-3
-          [&_.hl-date-header]:!text-[0.72em] [&_.hl-date-header]:!font-extrabold [&_.hl-date-header]:uppercase [&_.hl-date-header]:tracking-widest [&_.hl-date-header]:pb-1.5 [&_.hl-date-header]:border-b [&_.hl-date-header]:border-border
-          [&_.hl-event]:py-2 [&_.hl-event]:border-b [&_.hl-event]:border-border/70 [&_.hl-event:last-child]:border-b-0
-          [&_.hl-event-main]:grid [&_.hl-event-main]:grid-cols-[minmax(42px,max-content)_minmax(0,1fr)] [&_.hl-event-main]:items-center [&_.hl-event-main]:gap-x-2.5 [&_.hl-event-main]:gap-y-0.5
-          [&_.hl-time]:col-start-1 [&_.hl-time]:row-start-2 [&_.hl-time]:!text-[0.78em] [&_.hl-time]:!font-normal [&_.hl-time]:text-zinc-800 dark:[&_.hl-time]:text-white [&_.hl-time]:leading-none [&_.hl-time]:whitespace-nowrap
-          [&_.hl-teams]:col-start-2 [&_.hl-teams]:row-start-2 [&_.hl-teams]:!flex [&_.hl-teams]:items-center [&_.hl-teams]:gap-1.5 [&_.hl-teams]:min-w-0 [&_.hl-teams]:!font-normal [&_.hl-teams]:leading-tight [&_.hl-teams]:text-zinc-800 dark:[&_.hl-teams]:text-zinc-100
-          [&_.hl-team]:inline-flex [&_.hl-team]:items-center [&_.hl-team]:gap-1 [&_.hl-team]:!font-normal [&_.hl-team-name]:min-w-0 [&_.hl-team-name]:break-words [&_.hl-team]:min-w-0
-          [&_.hl-team-logo]:!h-[22px] [&_.hl-team-logo]:max-w-7 [&_.hl-team-logo]:object-contain [&_.hl-team-logo]:shrink-0
-          [&_.hl-vs]:italic [&_.hl-vs]:text-[0.78em] [&_.hl-vs]:opacity-50 [&_.hl-vs]:mx-0.5 [&_.hl-vs]:shrink-0
-          [&_.hl-event-detail]:col-start-2 [&_.hl-event-detail]:row-start-1 [&_.hl-event-detail]:!text-[0.72em] [&_.hl-event-detail]:font-semibold [&_.hl-event-detail]:uppercase [&_.hl-event-detail]:tracking-wider [&_.hl-event-detail]:text-muted-foreground
-          max-[520px]:[&_.hl-event-main]:grid-cols-[minmax(38px,max-content)_minmax(0,1fr)] max-[520px]:[&_.hl-teams-h2h]:!grid max-[520px]:[&_.hl-teams-h2h]:grid-cols-1 max-[520px]:[&_.hl-vs]:hidden max-[520px]:[&_.hl-team-logo]:!h-[18px]
+        className="bg-white border border-border rounded-lg p-6 overflow-y-auto max-w-none
+          [&_.sb-schedule]:text-zinc-900
+          [&_[data-preview-match]]:cursor-pointer
+          [&_[data-preview-match].sb-preview-selected]:outline
+          [&_[data-preview-match].sb-preview-selected]:outline-2
+          [&_[data-preview-match].sb-preview-selected]:outline-amber-400/60
         "
         onContextMenu={handlePreviewContextMenu}
         onClick={handlePreviewClick}

@@ -3,6 +3,11 @@ import crypto from 'crypto';
 import { type NextRequest } from 'next/server';
 import type { MatchEvent } from '@/types';
 import { renderEmbedContent } from '@/lib/renderEmbed';
+import {
+  SCHEDULE_LAYOUT_CSS,
+  SCHEDULE_FILTER_TAB_JS,
+  buildFilterTabsHTML,
+} from '@/lib/scheduleLayout';
 import { renderCalendarContent, getCalendarCSS, getCalendarNavJS } from '@/lib/renderCalendar';
 import { buildScheduleSeoPayload } from '@/lib/seoSchedule';
 import { getOrgMemberIds } from '@/lib/supabase/org';
@@ -157,19 +162,7 @@ function buildEmbedPage(
   const paddingVal = Math.max(0, Math.min(80, parseInt(opts.padding) || 12));
   const bodyPad = `${paddingVal}px`;
 
-  const hasTabs = opts.showSportTabs && foundCategories.length > 1;
-
-  const tabBorder = opts.tabStyle === 'underline'
-    ? 'border-bottom:2px solid transparent;border-radius:0'
-    : opts.tabStyle === 'square'
-    ? 'border-radius:4px'
-    : 'border-radius:999px';
-  const tabActiveBorder = opts.tabStyle === 'underline'
-    ? 'border-bottom-color:var(--tab-active);background:transparent;color:var(--tab-active)'
-    : 'background:var(--tab-active);color:var(--tab-active-text);border-color:var(--tab-active)';
-
-  const escCatLabel = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  const tabsHTML = hasTabs ? `\n<div id="sport-tabs" role="tablist">\n  <button class="tab active" data-cat="all" role="tab" aria-selected="true">All</button>\n  ${foundCategories.map((c) => `<button class="tab" data-cat="${c.toLowerCase().replace(/\s+/g, '-')}" role="tab">${escCatLabel(opts.catLabels?.[c] || c)}</button>`).join('\n  ')}\n</div>` : '';
+  const tabsHTML = buildFilterTabsHTML();
 
   const bgOverride   = opts.bgColor || '';
   const textOverride = opts.textColor || '';
@@ -180,87 +173,24 @@ function buildEmbedPage(
 :root{${isAuto ? lightVars : isDark ? darkVars : lightVars};--sb-match-size:${matchSize};--sb-date-size:${dateSize};--sb-h3-size:${h3Size};--sb-logo-height:${logoHeight};--sb-hl-size:${hlFontSize};--sb-time-size:${timeSize};--sb-normal-font:${normalFontCss};--sb-normal-weight:${normalWeight};--sb-normal-text:${normalTextCss};--sb-normal-time-color:${normalTimeCss};--sb-hl-font:${hlFontCss};--sb-hl-weight:${hlWeight};--sb-hl-text:${hlTextCss};--sb-hl-time-color:${hlTimeCss}}
 ${isAuto ? `@media(prefers-color-scheme:dark){:root{${darkVars}}}` : ''}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body{background:var(--bg);color:var(--text);font-family:${fontStack};font-size:15px;line-height:${lineH};-webkit-font-smoothing:antialiased;width:100%}
+html,body{background:var(--bg);color:var(--text);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;line-height:${lineH};-webkit-font-smoothing:antialiased;width:100%}
 body{padding:${bodyPad}}
-#sport-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
-.tab{background:var(--tab-bg);border:1px solid var(--border);color:var(--tab-text);padding:4px 14px;${tabBorder};cursor:pointer;font-size:12px;font-family:inherit;font-weight:500;white-space:nowrap;transition:background .15s,color .15s,border-color .15s}
-.tab:hover{color:var(--text);border-color:var(--accent)}
-.tab.active{${tabActiveBorder}}
-.cat-gap{height:${(lineH * 0.5).toFixed(2)}em;display:block}
-.schedule-content h2{font-size:0.78em;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);padding:6px 0 5px;margin:8px 0 13px;border-bottom:1px solid var(--border)}
-.schedule-content h2:first-child{margin-top:8px}
+#sport-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
+.tab{background:#fff;border:1px solid var(--border,#e5e7eb);color:var(--muted,#6b7280);padding:5px 14px;border-radius:999px;cursor:pointer;font-size:12px;font-family:inherit;font-weight:500;white-space:nowrap}
+.tab.active{background:var(--heading,#1e3a5f);color:#fff;border-color:var(--heading,#1e3a5f)}
 #schedule-root,.schedule-content{width:100%}
-.schedule-content{font-family:var(--sb-normal-font,inherit)}
-.schedule-content h3{font-size:var(--sb-h3-size)!important;font-weight:700;color:var(--heading);margin:${leagueGap} 0 3px;display:flex;align-items:center;gap:8px}
-.schedule-content img[data-preview-league]{height:var(--sb-logo-height)!important;width:auto!important;display:block;margin-top:${leagueGap}}
-.schedule-content img[data-preview-league]+h3{margin-top:4px}
-.schedule-content p>strong{display:block;font-size:var(--sb-date-size)!important;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:${dateMargin}}
-.schedule-content p{margin:0;padding:0;line-height:${lineH}}
-.match-group{margin:2px 0 ${Math.round(lineH * 8)}px}
-.schedule-content span[data-preview-match]{display:flex;align-items:center;gap:6px;padding:5px 0;color:var(--sb-normal-text,var(--text));font-weight:var(--sb-normal-weight,400);font-size:var(--sb-match-size)!important}
-.schedule-content>br,.sport-section>br{display:none}
-.schedule-content ul{list-style:none;padding:0;margin:0 0 10px}
-.schedule-content ul li{padding:4px 0;border-bottom:1px solid var(--border);font-size:.9em}
-.schedule-content ul li:last-child{border-bottom:none}
-.schedule-content ul li strong{color:var(--accent)}
-${isCard ? `.league-block{background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px}\n.league-block:last-child{margin-bottom:0}\n.league-block img[data-preview-league]{margin-top:0!important}\n.league-block h3{margin-top:6px}` : ''}
-.schedule-content p:empty{display:none}
-.team-logo{height:16px;width:auto;flex-shrink:0}
-.vs-sep{font-style:italic;font-size:.82em;color:var(--muted,#888);margin:0 3px}
-.ml-time{font-size:var(--sb-time-size,11px);font-weight:var(--sb-normal-weight,400);color:var(--sb-normal-time-color,var(--time-default,var(--text)));flex-shrink:0;min-width:38px}
-.ml-match{display:flex;align-items:center;gap:3px;flex:1;flex-wrap:wrap}
-.mc-team{display:inline-flex;align-items:center;gap:3px}
-.mc-round{font-size:.82em;color:var(--muted,#888)}
-.hl-section{margin-bottom:24px;font-family:var(--sb-hl-font,inherit)}
-.hl-title{font-size:var(--sb-h3-size)!important;font-weight:800;color:var(--hl-title-color,#000);margin:0 0 10px;text-transform:uppercase;letter-spacing:.04em}
+.schedule-content{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
 .hl-updated{font-size:12px;color:#6b7280;margin:0 0 12px;display:flex;align-items:center;gap:6px}
 .hl-updated-dot{width:8px;height:8px;border-radius:50%;background:#ef4444;flex-shrink:0;display:inline-block}
-.hl-date-group{margin:12px 0 0;padding-top:0}
-.hl-section .hl-date-group:first-of-type{margin-top:0}
-.hl-date-header{font-size:var(--sb-date-size)!important;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--heading,var(--text));padding:0 0 7px;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:1px}
-.hl-event{padding:9px 0;border-bottom:1px solid rgba(128,128,128,.18)}
-.hl-event:last-child{border-bottom:0}
-.hl-event-main{display:grid;grid-template-columns:minmax(42px,max-content) minmax(0,1fr);align-items:center;column-gap:10px;row-gap:3px}
-.hl-time{grid-column:1;grid-row:2;font-size:var(--sb-date-size)!important;font-weight:var(--sb-hl-weight,400);color:var(--sb-hl-time-color,var(--time-default,var(--accent,#3b82f6)));line-height:1;white-space:nowrap}
-.hl-time-empty{visibility:hidden}
-.hl-teams{grid-column:2;grid-row:2;display:flex;align-items:center;min-width:0;gap:6px;font-size:var(--sb-hl-size)!important;font-weight:var(--sb-hl-weight,400);color:var(--sb-hl-text,var(--heading,#111827));line-height:1.25}
-.hl-teams-h2h{flex-wrap:nowrap}
-.hl-teams-single{flex-wrap:wrap}
-.hl-team{display:inline-flex;align-items:center;gap:5px;min-width:0;font-weight:var(--sb-hl-weight,400)}
-.hl-team-name{min-width:0;overflow-wrap:anywhere}
-.hl-team-logo{height:22px;max-width:28px;width:auto;object-fit:contain;flex-shrink:0;border-radius:2px}
-.hl-flag{display:inline-flex;align-items:center;line-height:1;font-size:1.05em;flex-shrink:0}
-.hl-vs{font-style:italic;font-size:.78em;color:var(--muted,#888);margin:0 2px;flex-shrink:0}
-.hl-event-detail{grid-column:2;grid-row:1;font-size:var(--sb-date-size)!important;font-weight:600;line-height:1.2;color:var(--muted,#888);letter-spacing:.05em;text-transform:uppercase}
-.hl-round{font-size:.72em;color:var(--muted,#888);margin-top:2px;font-style:italic}
-.hl-league-spotlight{padding:6px 0;font-weight:600;font-size:var(--sb-hl-size)!important;color:var(--heading,var(--text));display:flex;align-items:center;gap:8px}
-@media (max-width:520px){.hl-event{padding:10px 0}.hl-event-main{grid-template-columns:minmax(38px,max-content) minmax(0,1fr);column-gap:9px}.hl-teams-h2h{display:grid;grid-template-columns:minmax(0,1fr);gap:3px}.hl-teams-h2h .hl-vs{display:none}.hl-team{align-items:flex-start}.hl-team-logo{height:18px;max-width:24px;margin-top:1px}.hl-event-detail{font-size:var(--sb-date-size)!important}}
 .vt-bar{display:flex;justify-content:flex-end;gap:4px;margin-bottom:10px}
-.vt-btn{padding:4px 12px;border-radius:999px;border:1px solid var(--border,#e5e7eb);background:var(--tab-bg,#f3f4f6);color:var(--tab-text,#6b7280);cursor:pointer;font-size:12px;font-family:inherit;font-weight:500;white-space:nowrap;transition:all .15s}
-.vt-btn:hover{color:var(--text);border-color:var(--accent,#3b82f6)}
+.vt-btn{padding:4px 12px;border-radius:999px;border:1px solid var(--border,#e5e7eb);background:var(--tab-bg,#f3f4f6);color:var(--tab-text,#6b7280);cursor:pointer;font-size:12px;font-family:inherit;font-weight:500;white-space:nowrap}
 .vt-active{background:var(--accent,#3b82f6)!important;color:#fff!important;border-color:var(--accent,#3b82f6)!important}
+${SCHEDULE_LAYOUT_CSS}
 `;
 
-  const tabJS = opts.showSportTabs ? `\n<script>\n(function(){\n  document.addEventListener('click',function(e){\n    var t=e.target&&e.target.closest&&e.target.closest('#sport-tabs .tab');if(!t)return;\n    var c=t.getAttribute('data-cat');\n    document.querySelectorAll('#sport-tabs .tab').forEach(function(x){x.classList.remove('active');x.setAttribute('aria-selected','false');});\n    t.classList.add('active');t.setAttribute('aria-selected','true');\n    document.querySelectorAll('.sport-section[data-cat]').forEach(function(s){s.style.display=(c==='all'||s.getAttribute('data-cat')===c)?'':'none';});\n  });\n})();\n</script>` : '';
+  const tabJS = `\n<script>\n${SCHEDULE_FILTER_TAB_JS}\n</script>`;
 
-  const cardJS = isCard ? `<script>
-window._sbWrapCards=function(c){
-    var f=document.createDocumentFragment(),b=null;
-    while(c.firstChild){
-      var n=c.firstChild;c.removeChild(n);
-      var isImg=n.nodeType===1&&n.tagName==='IMG'&&n.getAttribute&&n.getAttribute('data-preview-league');
-      if(isImg){if(b)f.appendChild(b);b=document.createElement('div');b.className='league-block';b.appendChild(n);}
-      else if(b){b.appendChild(n);}
-      else{f.appendChild(n);}
-    }
-    if(b)f.appendChild(b);c.appendChild(f);
-  };
-(function(){
-  var s=document.querySelectorAll('.sport-section,.sport-always');
-  if(s.length>0){s.forEach(window._sbWrapCards);}else{var sc=document.querySelector('.schedule-content');if(sc)window._sbWrapCards(sc);}
-  try{if(window._sbSendHeight){window._sbSendHeight();}else{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}}catch(e){}
-})();
-</script>` : '';
+  const cardJS = '';
 
   const resizeJS = buildResizeScript();
   const styleJS = `\n<script>\n(function(){\n  var CSS_SIZE=/^\\d+(\\.\\d+)?(px|em|rem|%)$/;\n  window.addEventListener('message',function(e){\n    if(!e.data||!e.data.sbStyle)return;\n    var r=document.documentElement;var s=e.data.sbStyle;\n    if(s.matchFontSize&&CSS_SIZE.test(s.matchFontSize))r.style.setProperty('--sb-match-size',s.matchFontSize);\n    if(s.dateFontSize&&CSS_SIZE.test(s.dateFontSize))r.style.setProperty('--sb-date-size',s.dateFontSize);\n    if(s.headerSize&&CSS_SIZE.test(s.headerSize))r.style.setProperty('--sb-h3-size',s.headerSize);\n    if(s.logoHeight&&CSS_SIZE.test(s.logoHeight))r.style.setProperty('--sb-logo-height',s.logoHeight);\n    if(s.hlFontSize&&CSS_SIZE.test(s.hlFontSize))r.style.setProperty('--sb-hl-size',s.hlFontSize);\n  });\n})();\n</script>`;
@@ -269,7 +199,7 @@ window._sbWrapCards=function(c){
 
   const beaconJS = buildBeaconScript(opts);
 
-  const _ic = isCard ? 'true' : 'false';
+  const _ic = 'false';
   const pollJS = buildEmbedPollScript(`    var isCard=${_ic};\n    if(d.empty){\n      var sc=root.querySelector('.schedule-content');\n      if(sc)sc.innerHTML='<div style="display:inline-flex;align-items:center;gap:8px;font-size:13px;border:1px dashed #d1d5db;border-radius:8px;padding:10px 16px;background:#f9fafb;color:#9ca3af">No schedule published yet.</div>';\n      var ot=document.getElementById('sport-tabs');if(ot)ot.remove();\n      root.setAttribute('data-serial','none');serial='none';\n      try{if(window._sbSendHeight){window._sbSendHeight();}else{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}}catch(e){}\n      return;\n    }\n    var oldT=document.getElementById('sport-tabs');\n    if(d.tabsHtml){\n      var tmp=document.createElement('div');tmp.innerHTML=d.tabsHtml;\n      var newT=tmp.firstElementChild;\n      if(oldT){oldT.replaceWith(newT);}else{root.insertBefore(newT,root.firstChild);}\n    }else if(oldT){oldT.remove();}\n    var sc=root.querySelector('.schedule-content');\n    if(sc){\n      sc.innerHTML=d.html;\n      if(isCard&&window._sbWrapCards){\n        var s=sc.querySelectorAll('.sport-section,.sport-always');\n        if(s.length>0){s.forEach(window._sbWrapCards);}else{window._sbWrapCards(sc);}\n      }\n    }\n    root.setAttribute('data-serial',d.serial);serial=d.serial;\n    try{if(window._sbSendHeight){window._sbSendHeight();}else{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}}catch(e){}`);
 
   const toggleBar = !opts.hideViewToggle && !opts.noInlineToggle ? `<div class="vt-bar" style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:10px"><button class="vt-btn vt-active" data-layout="list" style="padding:4px 14px;border-radius:999px;border:1px solid var(--accent,#3b82f6);background:var(--accent,#3b82f6);color:#fff;cursor:pointer;font-size:12px;font-family:inherit;font-weight:600">List</button><button class="vt-btn" data-layout="calendar" style="padding:4px 14px;border-radius:999px;border:1px solid var(--border,#e5e7eb);background:var(--tab-bg,#f3f4f6);color:var(--tab-text,#6b7280);cursor:pointer;font-size:12px;font-family:inherit;font-weight:500">Calendar</button></div>` : '';
@@ -622,12 +552,14 @@ export async function GET(
   );
 
   if (isPoll) {
-    const hasTabs = opts.showSportTabs && categories.length > 1;
-    const tabsHtml = hasTabs
-      ? `<div id="sport-tabs" role="tablist"><button class="tab active" data-cat="all" role="tab" aria-selected="true">All</button>${categories.map((c) => `<button class="tab" data-cat="${c.toLowerCase().replace(/\s+/g, '-')}" role="tab">${(opts.catLabels?.[c] || c).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}</button>`).join('')}</div>`
-      : '';
     return Response.json(
-      { serial: scheduleSerial, html: scheduleContent, tabsHtml, hasTabs, empty: false },
+      {
+        serial: scheduleSerial,
+        html: scheduleContent,
+        tabsHtml: buildFilterTabsHTML(),
+        hasTabs: true,
+        empty: false,
+      },
       { headers: { 'Cache-Control': 'no-store' } },
     );
   }
