@@ -545,7 +545,7 @@ export const SCHEDULE_LAYOUT_CSS = `
 .sb-vs{font-style:normal;font-weight:400;font-size:.78em;color:var(--muted,#9ca3af);margin:0 5px}
 .sb-empty{color:var(--muted,#6b7280);font-size:.9em}
 @media (max-width:768px){
-.sb-schedule{--sb-time-size:1.1em;--sb-date-size:10px}
+.sb-schedule{--sb-time-size:15px;--sb-date-size:10px}
 .sb-section-header{gap:8px;margin-bottom:12px}
 .sb-section-title{font-size:1.25em}
 .sb-fl-header,.sb-lg-header{padding:9px 10px;gap:8px}
@@ -555,7 +555,7 @@ export const SCHEDULE_LAYOUT_CSS = `
 .sb-logo-team{height:20px;max-width:32px}
 }
 @media (max-width:480px){
-.sb-schedule{--sb-time-size:1.05em;--sb-date-size:9px}
+.sb-schedule{--sb-time-size:14px;--sb-date-size:9px}
 .sb-section-title{font-size:1.15em}
 .sb-section-subtitle{font-size:.68em}
 .sb-fl-header,.sb-lg-header{flex-wrap:wrap}
