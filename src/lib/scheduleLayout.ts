@@ -82,15 +82,6 @@ export function getTimezoneLabel(): string {
   }
 }
 
-function cleanCombatLabel(e: MatchEvent): string {
-  if (!['boxing', 'ufc', 'bellator'].includes(e.sportId) || !e.away) return e.leagueLabel;
-  const colon = e.leagueLabel.indexOf(':');
-  if (colon > 0 && /vs\.?\s/i.test(e.leagueLabel.slice(colon))) {
-    return e.leagueLabel.slice(0, colon).trim();
-  }
-  return e.leagueLabel;
-}
-
 function getSportBadge(event: MatchEvent): string {
   if (event.sportId === 'afl') return 'AFL';
   if (event.sportId === 'nrl') return 'NRL';

@@ -1373,9 +1373,9 @@ if (!function_exists('schedule_banner_render_admin_page')) {
 if (!function_exists('schedule_banner_should_render')) {
     function schedule_banner_should_render() {
         if (is_admin()) return false;
-        if (function_exists('schedule_page_has_widget') && schedule_page_has_widget()
-            && !apply_filters('schedule_banner_render_on_schedule_pages', false)) {
-            return false;
+        if (function_exists('schedule_page_has_widget') && schedule_page_has_widget()) {
+            $render_on_schedule_pages = apply_filters('schedule_banner_render_on_schedule_pages', true);
+            if (!$render_on_schedule_pages) return false;
         }
         $s = schedule_banner_get_settings();
         if (empty($s['enabled'])) return false;

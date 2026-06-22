@@ -228,6 +228,22 @@ function schedule_allowed_seo_html() {
 }
 }
 
+if (!function_exists('schedule_output_seo_visibility_guard')) {
+function schedule_output_seo_visibility_guard() {
+    if (schedule_is_editor_context()) return;
+    if (function_exists('schedule_page_has_widget') && !schedule_page_has_widget()) return;
+    ?>
+    <style id="scorebar-seo-visibility-guard">
+    .scorebar-seo-content,
+    .scorebar-seo-category,
+    .scorebar-seo-league,
+    [data-scorebar-seo]{position:absolute!important;width:1px!important;height:1px!important;margin:-1px!important;padding:0!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important;border:0!important}
+    </style>
+    <?php
+}
+}
+add_action('wp_head', 'schedule_output_seo_visibility_guard', 3);
+
 if (!function_exists('schedule_compose_seo_title')) {
 function schedule_compose_seo_title($payload_title) {
     $parts = [];
