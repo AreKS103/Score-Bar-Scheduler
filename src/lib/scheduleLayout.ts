@@ -61,10 +61,6 @@ function formatShortDate(dateStr: string): string {
   return format(parseISO(dateStr), 'EEE d').toUpperCase();
 }
 
-function formatCardDate(dateStr: string): string {
-  return format(parseISO(dateStr), 'EEE d MMMM');
-}
-
 function formatDateRange(dates: string[]): string {
   if (!dates.length) return '';
   const sorted = [...dates].sort();
@@ -126,16 +122,16 @@ function getLeagueMeta(leagueKey: string, firstEvent?: MatchEvent) {
 
 function leagueLogoHtml(logo: string, hideLogos: boolean, alt: string): string {
   if (hideLogos || !logo) {
-    return '<span class="sb-league-ph" aria-hidden="true"></span>';
+    return '';
   }
-  return `<img class="sb-league-img" src="${esc(logo)}" alt="${esc(alt)}" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='${LOGO_PLACEHOLDER_REMOTE}';" />`;
+  return `<img class="sb-logo-img sb-logo-league" src="${esc(logo)}" alt="${esc(alt)}" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='${LOGO_PLACEHOLDER_REMOTE}';" />`;
 }
 
-function crestHtml(logo: string | undefined, hideLogos: boolean): string {
+function teamLogoHtml(logo: string | undefined, hideLogos: boolean): string {
   if (hideLogos || !logo) {
-    return '<span class="sb-crest-ph" aria-hidden="true"></span>';
+    return '';
   }
-  return `<img class="sb-crest-img" src="${esc(logo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />`;
+  return `<img class="sb-logo-img sb-logo-team" src="${esc(logo)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.style.display='none'" />`;
 }
 
 function venueText(event: MatchEvent): string {
@@ -163,8 +159,48 @@ function hasBigScreenBadge(event: MatchEvent): boolean {
   return event.isFeatured || event.tags.some((t) => t.toLowerCase() === 'big screen');
 }
 
-const CALENDAR_SVG =
-  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>';
+function buildFeaturedTagsHtml(event: MatchEvent): string {
+  const parts: string[] = [];
+  if (hasBigScreenBadge(event)) {
+    parts.push('<span class="sb-fl-badge sb-fl-badge-screen">Big Screen</span>');
+  }
+  for (const tag of event.tags) {
+    if (tag.toLowerCase() === 'big screen') continue;
+    parts.push(`<span class="sb-fl-badge sb-fl-badge-tag">${esc(tag)}</span>`);
+  }
+  return parts.join('');
+}
+
+function collectFeaturedEvents(
+  featured: MatchEvent[],
+  featuredLeagues: Map<string, string>,
+  allEvents: MatchEvent[],
+): MatchEvent[] {
+  const result: MatchEvent[] = [];
+  const seenIds = new Set<string>();
+
+  for (const e of [...featured].sort(
+    (a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time),
+  )) {
+    if (!seenIds.has(e.id)) {
+      seenIds.add(e.id);
+      result.push(e);
+    }
+  }
+
+  for (const [sportId] of featuredLeagues) {
+    if (result.some((e) => e.sportId === sportId)) continue;
+    const teamEvent =
+      allEvents.find((e) => e.sportId === sportId && e.isFeatured && eventHasHeadToHead(e)) ||
+      allEvents.find((e) => e.sportId === sportId && eventHasHeadToHead(e));
+    if (teamEvent && !seenIds.has(teamEvent.id)) {
+      seenIds.add(teamEvent.id);
+      result.push(teamEvent);
+    }
+  }
+
+  return result;
+}
 
 function groupByLeagueFlat(events: MatchEvent[]): Map<string, MatchEvent[]> {
   const grouped = new Map<string, MatchEvent[]>();
@@ -236,93 +272,100 @@ function buildOrderedLeagues(
   return ordered;
 }
 
-// ─── Featured card ────────────────────────────────────────────────────────────
+// ─── Featured league group (grouped by league, rows like full schedule) ───────
 
-function buildFeaturedCard(event: MatchEvent, opts: ScheduleLayoutOpts, labelOverride?: string): string {
+function buildFeaturedMatchRow(event: MatchEvent, opts: ScheduleLayoutOpts): string {
   const hideLogos = opts.hideLogos ?? false;
   const showTime = opts.showTime !== false;
-  const tz = opts.timezoneLabel ?? getTimezoneLabel();
   const display = getEventDisplay(event, { stripLeaguePrefix: true });
-  const { label: leagueLabel, logo: leagueLogo } = getLeagueMeta(event.sportId, event);
-  const leagueName = labelOverride ?? (cleanCombatLabel(event) || leagueLabel);
-
-  const subtitleParts = [event.round, formatCardDate(event.date)].filter(Boolean);
-  const subtitle = subtitleParts.map((p) => esc(p)).join(' · ');
   const venue = venueText(event);
+  const stageLabel = event.round ? esc(event.round.toUpperCase()) : '';
+  const tagsHtml = buildFeaturedTagsHtml(event);
+  const rowFilter = filterDataAttrs(event);
+  const { label: leagueLabel } = getLeagueMeta(event.sportId, event);
 
-  const attrs = filterDataAttrs(event);
-  const previewAttrs = `data-preview-match="1" data-preview-match-id="${esc(event.id)}" data-preview-sport-id="${esc(event.sportId)}" data-preview-league-label="${esc(leagueLabel)}"`;
-
-  let teamRows: string;
+  let matchContent: string;
 
   if (display.isHeadToHead) {
-    teamRows = `
-      <div class="sb-fc-team-row">
-        ${crestHtml(event.homeLogo, hideLogos)}
-        <span class="sb-fc-team-name">${esc(display.primary)}</span>
-        ${showTime ? `<div class="sb-fc-time-col"><span class="sb-fc-time">${esc(event.time)}</span><span class="sb-fc-tz">${esc(tz)}</span></div>` : ''}
-      </div>
-      <div class="sb-fc-team-row sb-fc-team-row-last">
-        ${crestHtml(event.awayLogo, hideLogos)}
-        <span class="sb-fc-team-name">${esc(display.secondary)}</span>
-        ${hasBigScreenBadge(event) ? '<span class="sb-fc-badge">Big Screen</span>' : ''}
+    matchContent = `
+      ${venue ? `<div class="sb-fl-venue">${esc(venue)}</div>` : ''}
+      ${stageLabel ? `<div class="sb-fl-stage-label">${stageLabel}</div>` : ''}
+      <div class="sb-fl-teams-box">
+        <div class="sb-fl-team-line">${teamLogoHtml(event.homeLogo, hideLogos)}<span class="sb-fl-team-name">${esc(display.primary)}</span></div>
+        <div class="sb-fl-team-line">${teamLogoHtml(event.awayLogo, hideLogos)}<span class="sb-fl-team-name">${esc(display.secondary)}</span></div>
       </div>`;
   } else {
-    teamRows = `
-      <div class="sb-fc-team-row">
-        ${crestHtml(event.homeLogo, hideLogos) || leagueLogoHtml(leagueLogo, hideLogos, leagueLabel)}
-        <span class="sb-fc-team-name">${esc(display.title)}</span>
-        ${showTime ? `<div class="sb-fc-time-col"><span class="sb-fc-time">${esc(event.time)}</span><span class="sb-fc-tz">${esc(tz)}</span></div>` : ''}
-      </div>
-      <div class="sb-fc-team-row sb-fc-team-row-last">
-        <span class="sb-crest-ph sb-crest-ph-hidden" aria-hidden="true"></span>
-        <span class="sb-fc-team-name sb-fc-team-muted">${display.secondary ? esc(display.secondary) : '&nbsp;'}</span>
-        ${hasBigScreenBadge(event) ? '<span class="sb-fc-badge">Big Screen</span>' : ''}
+    matchContent = `
+      ${venue ? `<div class="sb-fl-venue">${esc(venue)}</div>` : ''}
+      ${stageLabel ? `<div class="sb-fl-stage-label">${stageLabel}</div>` : ''}
+      <div class="sb-fl-single-line">
+        <span class="sb-fl-event-title">${esc(display.title)}</span>
+        ${tagsHtml ? `<span class="sb-fl-tags-inline">${tagsHtml}</span>` : ''}
       </div>`;
   }
 
+  const tagsCol = display.isHeadToHead && tagsHtml
+    ? `<div class="sb-fl-tags-col">${tagsHtml}</div>`
+    : '';
+
   return `
-<article class="sb-fc-card" ${attrs} ${previewAttrs}>
-  <div class="sb-fc-header">
-    ${leagueLogoHtml(leagueLogo, hideLogos, leagueName)}
-    <div class="sb-fc-league-info">
-      <div class="sb-fc-league-name">${esc(leagueName)}</div>
-      ${subtitle ? `<div class="sb-fc-league-sub">${subtitle}</div>` : ''}
+  <div class="sb-fl-row" ${rowFilter} data-preview-match="1" data-preview-match-id="${esc(event.id)}" data-preview-sport-id="${esc(event.sportId)}" data-preview-league-label="${esc(leagueLabel)}">
+    <div class="sb-fl-time-col">
+      ${showTime ? `<span class="sb-fl-time">${esc(event.time)}</span>` : ''}
+      <span class="sb-fl-date">${esc(formatShortDate(event.date))}</span>
     </div>
-    <button type="button" class="sb-fc-cal-btn" aria-label="Add to calendar">${CALENDAR_SVG}</button>
+    <div class="sb-fl-match-col">${matchContent}</div>
+    ${tagsCol}
+  </div>`;
+}
+
+function buildFeaturedLeagueGroup(
+  leagueKey: string,
+  events: MatchEvent[],
+  opts: ScheduleLayoutOpts,
+  labelOverride?: string,
+): string {
+  const hideLogos = opts.hideLogos ?? false;
+  const sorted = sortLeagueEvents(leagueKey, events);
+  const { label: leagueLabel, logo: leagueLogo } = getLeagueMeta(leagueKey, sorted[0]);
+  const displayLabel = labelOverride ?? leagueLabel;
+  const stage = leagueStageLabel(sorted);
+  const filterAttrs = filterDataAttrs(sorted[0]);
+  const rows = sorted.map((e) => buildFeaturedMatchRow(e, opts));
+
+  return `
+<div class="sb-fl-group" ${filterAttrs}>
+  <div class="sb-fl-header">
+    ${leagueLogoHtml(leagueLogo, hideLogos, displayLabel)}
+    <span class="sb-fl-name">${esc(displayLabel)}</span>
+    ${stage ? `<span class="sb-fl-stage">${esc(stage)}</span>` : ''}
   </div>
-  ${venue ? `<div class="sb-fc-venue">${esc(venue)}</div>` : ''}
-  <div class="sb-fc-teams">${teamRows}</div>
-</article>`;
+  ${rows.join('\n')}
+</div>`;
 }
 
 function buildFeaturedSection(
   featured: MatchEvent[],
   featuredLeagues: Map<string, string>,
   allEvents: MatchEvent[],
+  leagueOrder: string[] | undefined,
   opts: ScheduleLayoutOpts,
 ): string {
-  const cards: string[] = [];
+  const featuredEvents = collectFeaturedEvents(featured, featuredLeagues, allEvents);
+  if (!featuredEvents.length) return '';
 
-  const starred = [...featured].sort(
-    (a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time),
-  );
-  for (const e of starred) {
-    cards.push(buildFeaturedCard(e, opts));
-  }
+  const byLeague = groupByLeagueFlat(featuredEvents);
+  const ordered = buildOrderedLeagues(byLeague, featuredEvents, leagueOrder);
 
-  for (const [sportId, customLabel] of featuredLeagues) {
-    if (starred.some((e) => e.sportId === sportId)) continue;
-    const teamEvent =
-      allEvents.find((e) => e.sportId === sportId && e.isFeatured && eventHasHeadToHead(e)) ||
-      allEvents.find((e) => e.sportId === sportId && eventHasHeadToHead(e));
-    if (teamEvent) {
-      const label = (customLabel || '').trim() || getLeagueMeta(sportId).label;
-      cards.push(buildFeaturedCard(teamEvent, opts, label));
-    }
-  }
-
-  if (!cards.length) return '';
+  const groups = ordered.map((key) => {
+    const labelOverride = featuredLeagues.get(key);
+    return buildFeaturedLeagueGroup(
+      key,
+      byLeague.get(key)!,
+      opts,
+      labelOverride?.trim() || undefined,
+    );
+  });
 
   return `
 <section class="sb-featured-section">
@@ -333,7 +376,7 @@ function buildFeaturedSection(
     </div>
     <div class="sb-section-header-line" aria-hidden="true"></div>
   </div>
-  <div class="sb-featured-cards">${cards.join('\n')}</div>
+  <div class="sb-featured-groups">${groups.join('\n')}</div>
 </section>`;
 }
 
@@ -432,16 +475,13 @@ export function renderScheduleLayout(
   const selected = events;
   const featured = events.filter((e) => e.isFeatured);
 
-  const featuredHTML = buildFeaturedSection(featured, featuredLeagues, selected, opts);
+  const featuredHTML = buildFeaturedSection(featured, featuredLeagues, selected, leagueOrder, opts);
   const fullHTML = buildFullScheduleSection(selected, leagueOrder, opts);
 
   const parts: string[] = ['<div class="sb-schedule">'];
 
   if (featuredHTML) {
     parts.push(featuredHTML);
-    if (fullHTML) {
-      parts.push('<div class="sb-section-divider"><span>Full Schedule</span></div>');
-    }
   }
 
   if (fullHTML) {
@@ -476,31 +516,34 @@ export const SCHEDULE_LAYOUT_CSS = `
 .sb-section-title{font-family:'Barlow Condensed',sans-serif;font-size:1.35em;font-weight:700;color:var(--heading,#1e3a5f);margin:0;line-height:1.1;letter-spacing:.01em}
 .sb-section-subtitle{font-size:.72em;color:var(--muted,#6b7280);margin:2px 0 0;font-weight:400}
 .sb-section-header-line{flex:1;height:1px;background:var(--border,#e5e7eb);margin-bottom:4px}
-.sb-featured-section{margin-bottom:20px}
-.sb-featured-cards{display:flex;flex-direction:column;gap:10px}
-.sb-fc-card{border:1px solid var(--border,#e5e7eb);border-radius:8px;overflow:hidden;background:#fff}
-.sb-fc-header{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f3f4f6;border-bottom:1px solid var(--border,#e5e7eb)}
-.sb-fc-league-info{flex:1;min-width:0}
-.sb-fc-league-name{font-weight:700;font-size:.88em;color:var(--heading,#111827);line-height:1.2}
-.sb-fc-league-sub{font-size:.7em;color:var(--muted,#6b7280);margin-top:1px}
-.sb-fc-cal-btn{flex-shrink:0;display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:1px solid var(--border,#e5e7eb);border-radius:6px;background:#fff;color:var(--muted,#6b7280);cursor:default;padding:0}
-.sb-fc-venue{padding:6px 12px;font-size:.68em;color:var(--muted,#6b7280);border-bottom:1px solid var(--border,#e5e7eb)}
-.sb-fc-teams{display:flex;flex-direction:column}
-.sb-fc-team-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border,#e5e7eb)}
-.sb-fc-team-row-last{border-bottom:none}
-.sb-fc-team-name{flex:1;font-weight:600;font-size:.88em;color:var(--heading,#111827);min-width:0;overflow-wrap:anywhere}
-.sb-fc-team-muted{color:var(--muted,#6b7280);font-weight:500}
-.sb-fc-time-col{text-align:right;flex-shrink:0}
-.sb-fc-time{font-family:'Barlow Condensed',sans-serif;font-size:1.5em;font-weight:700;color:var(--heading,#111827);line-height:1}
-.sb-fc-tz{font-size:.55em;text-transform:uppercase;color:var(--muted,#6b7280);letter-spacing:.04em}
-.sb-fc-badge{flex-shrink:0;background:#3b82f6;color:#fff;font-size:.6em;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:4px 10px;border-radius:999px}
-.sb-league-ph,.sb-crest-ph{display:inline-block;width:24px;height:24px;border-radius:50%;background:#e5e7eb;flex-shrink:0}
-.sb-crest-ph-hidden{visibility:hidden}
-.sb-league-img,.sb-crest-img{width:24px;height:24px;object-fit:contain;flex-shrink:0;border-radius:50%}
-.sb-section-divider{display:flex;align-items:center;margin:22px 0;text-align:center}
-.sb-section-divider::before,.sb-section-divider::after{content:'';flex:1;height:1px;background:var(--border,#e5e7eb)}
-.sb-section-divider span{font-family:'Barlow Condensed',sans-serif;font-size:.68em;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--muted,#9ca3af);background:var(--bg,#fff);padding:2px 14px;border:1px solid var(--border,#e5e7eb);border-radius:999px;white-space:nowrap}
-.sb-full-section{margin-bottom:8px}
+.sb-featured-section{margin-bottom:24px}
+.sb-featured-groups{display:flex;flex-direction:column;gap:10px}
+.sb-fl-group{border:1px solid var(--border,#e5e7eb);border-radius:8px;overflow:hidden;background:#fff}
+.sb-fl-header{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f3f4f6;border-bottom:1px solid var(--border,#e5e7eb)}
+.sb-fl-name{flex:1;font-weight:700;font-size:.88em;color:var(--heading,#111827)}
+.sb-fl-stage{font-size:.72em;color:var(--muted,#6b7280);flex-shrink:0}
+.sb-fl-row{display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--border,#e5e7eb)}
+.sb-fl-row:last-child{border-bottom:none}
+.sb-fl-time-col{flex-shrink:0;min-width:48px}
+.sb-fl-time{font-family:'Barlow Condensed',sans-serif;font-size:1.1em;font-weight:700;color:var(--heading,#111827);display:block;line-height:1.1}
+.sb-fl-date{font-size:.55em;text-transform:uppercase;color:var(--muted,#6b7280);letter-spacing:.04em;display:block;margin-top:2px}
+.sb-fl-match-col{flex:1;min-width:0}
+.sb-fl-venue{font-size:.65em;color:var(--muted,#6b7280);margin-bottom:3px}
+.sb-fl-stage-label{font-size:.58em;text-transform:uppercase;color:var(--muted,#6b7280);letter-spacing:.06em;margin-bottom:3px}
+.sb-fl-teams-box{display:flex;flex-direction:column;gap:4px}
+.sb-fl-team-line{display:flex;align-items:center;gap:8px}
+.sb-fl-team-name{font-weight:600;font-size:.86em;color:var(--heading,#111827);overflow-wrap:anywhere}
+.sb-fl-single-line{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.sb-fl-event-title{font-weight:600;font-size:.86em;color:var(--heading,#111827);overflow-wrap:anywhere;flex:1;min-width:0}
+.sb-fl-tags-inline{display:inline-flex;align-items:center;flex-wrap:wrap;gap:6px;flex-shrink:0}
+.sb-fl-tags-col{display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:4px;flex-shrink:0}
+.sb-fl-badge{font-size:.58em;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:3px 8px;border-radius:999px;white-space:nowrap}
+.sb-fl-badge-screen{background:#dc2626;color:#fff}
+.sb-fl-badge-tag{background:#fff;color:var(--muted,#6b7280);border:1px solid var(--border,#e5e7eb);font-weight:600}
+.sb-logo-img{object-fit:contain;flex-shrink:0;display:block}
+.sb-logo-league{height:28px;width:auto;max-width:80px}
+.sb-logo-team{height:22px;width:auto;max-width:36px}
+.sb-full-section{margin-bottom:8px;margin-top:8px}
 .sb-league-groups{display:flex;flex-direction:column;gap:10px}
 .sb-league-group{border:1px solid var(--border,#e5e7eb);border-radius:8px;overflow:hidden;background:#fff}
 .sb-lg-header{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f3f4f6;border-bottom:1px solid var(--border,#e5e7eb)}
