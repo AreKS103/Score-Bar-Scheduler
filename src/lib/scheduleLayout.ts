@@ -495,7 +495,7 @@ export function renderScheduleLayout(
 
 export const SCHEDULE_LAYOUT_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&display=swap');
-.sb-schedule{--sb-time-size:1.2em;--sb-date-size:10px;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--text,#111827);background:var(--bg,#fff)}
+.sb-schedule{--sb-time-size:16px;--sb-date-size:10px;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--text,#111827);background:var(--bg,#fff)}
 .sb-section-header{display:flex;align-items:flex-end;gap:12px;margin-bottom:14px}
 .sb-section-header-text{flex-shrink:0}
 .sb-section-title{font-family:'Barlow Condensed',sans-serif;font-size:1.35em;font-weight:700;color:var(--heading,#1e3a5f);margin:0;line-height:1.1;letter-spacing:.01em}
