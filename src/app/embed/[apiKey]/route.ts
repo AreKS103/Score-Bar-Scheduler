@@ -178,6 +178,7 @@ body{padding:${bodyPad}}
 #sport-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
 .tab{background:#fff;border:1px solid var(--border,#e5e7eb);color:var(--muted,#6b7280);padding:5px 14px;border-radius:999px;cursor:pointer;font-size:12px;font-family:inherit;font-weight:500;white-space:nowrap}
 .tab.active{background:var(--heading,#1e3a5f);color:#fff;border-color:var(--heading,#1e3a5f)}
+@media (max-width:480px){#sport-tabs{gap:5px;margin-bottom:12px}.tab{padding:4px 11px;font-size:11px}}
 #schedule-root,.schedule-content{width:100%}
 .schedule-content{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
 .hl-updated{font-size:12px;color:#6b7280;margin:0 0 12px;display:flex;align-items:center;gap:6px}
