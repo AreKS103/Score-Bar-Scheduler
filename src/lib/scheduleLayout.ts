@@ -82,14 +82,6 @@ export function getTimezoneLabel(): string {
   }
 }
 
-function getSportBadge(event: MatchEvent): string {
-  if (event.sportId === 'afl') return 'AFL';
-  if (event.sportId === 'nrl') return 'NRL';
-  if (event.sportId === 'f1') return 'F1';
-  if (event.sportId === 'motogp') return 'MotoGP';
-  return event.category;
-}
-
 function filterDataAttrs(event: MatchEvent): string {
   const attrs: string[] = ['data-filter-item="1"'];
   if (event.category === 'Football') attrs.push('data-filter-football="1"');
@@ -157,7 +149,11 @@ function buildFeaturedTagsHtml(event: MatchEvent): string {
   }
   for (const tag of event.tags) {
     if (tag.toLowerCase() === 'big screen') continue;
-    parts.push(`<span class="sb-fl-badge sb-fl-badge-tag">${esc(tag)}</span>`);
+    const lower = tag.toLowerCase();
+    const cls = lower === 'live'
+      ? 'sb-fl-badge sb-fl-badge-live'
+      : 'sb-fl-badge sb-fl-badge-tag';
+    parts.push(`<span class="${cls}">${esc(tag)}</span>`);
   }
   return parts.join('');
 }
@@ -388,7 +384,6 @@ function buildLeagueGroup(
   const rows = sorted.map((event, idx) => {
     const display = getEventDisplay(event, { stripLeaguePrefix: true });
     const isLast = idx === sorted.length - 1;
-    const sportBadge = getSportBadge(event);
     const stageLabel = event.round ? esc(event.round.toUpperCase()) : '';
 
     const matchup = display.isHeadToHead
@@ -413,7 +408,6 @@ function buildLeagueGroup(
       ${stageLabel ? `<div class="sb-lg-stage-label">${stageLabel}</div>` : ''}
       <div class="sb-lg-matchup">${matchup}</div>
     </div>
-    <span class="sb-lg-sport-badge">${esc(sportBadge)}</span>
   </div>`;
   });
 
@@ -501,7 +495,7 @@ export function renderScheduleLayout(
 
 export const SCHEDULE_LAYOUT_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&display=swap');
-.sb-schedule{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--text,#111827);background:var(--bg,#fff)}
+.sb-schedule{--sb-time-size:1.2em;--sb-date-size:1.05em;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--text,#111827);background:var(--bg,#fff)}
 .sb-section-header{display:flex;align-items:flex-end;gap:12px;margin-bottom:14px}
 .sb-section-header-text{flex-shrink:0}
 .sb-section-title{font-family:'Barlow Condensed',sans-serif;font-size:1.35em;font-weight:700;color:var(--heading,#1e3a5f);margin:0;line-height:1.1;letter-spacing:.01em}
@@ -511,13 +505,13 @@ export const SCHEDULE_LAYOUT_CSS = `
 .sb-featured-groups{display:flex;flex-direction:column;gap:10px}
 .sb-fl-group{border:1px solid var(--border,#e5e7eb);border-radius:8px;overflow:hidden;background:#fff}
 .sb-fl-header{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f3f4f6;border-bottom:1px solid var(--border,#e5e7eb)}
-.sb-fl-name{flex:1;font-weight:700;font-size:.88em;color:var(--heading,#111827)}
-.sb-fl-stage{font-size:.72em;color:var(--muted,#6b7280);flex-shrink:0}
-.sb-fl-row{display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--border,#e5e7eb)}
+.sb-fl-name{flex:1;font-weight:700;font-size:.88em;color:var(--heading,#111827);min-width:0}
+.sb-fl-stage{font-size:.72em;color:var(--muted,#6b7280);flex-shrink:0;text-align:right}
+.sb-fl-row{display:flex;align-items:flex-start;gap:12px;padding:10px 12px;border-bottom:1px solid var(--border,#e5e7eb)}
 .sb-fl-row:last-child{border-bottom:none}
-.sb-fl-time-col{flex-shrink:0;min-width:48px}
-.sb-fl-time{font-family:'Barlow Condensed',sans-serif;font-size:1.1em;font-weight:700;color:var(--heading,#111827);display:block;line-height:1.1}
-.sb-fl-date{font-size:.55em;text-transform:uppercase;color:var(--muted,#6b7280);letter-spacing:.04em;display:block;margin-top:2px}
+.sb-fl-time-col{flex-shrink:0;min-width:54px}
+.sb-fl-time,.sb-lg-time{font-family:'Barlow Condensed',sans-serif;font-size:var(--sb-time-size);font-weight:700;color:var(--heading,#111827);display:block;line-height:1.05}
+.sb-fl-date,.sb-lg-date{font-family:'Barlow Condensed',sans-serif;font-size:var(--sb-date-size);font-weight:600;text-transform:uppercase;color:var(--muted,#6b7280);letter-spacing:.03em;display:block;margin-top:3px;line-height:1.05}
 .sb-fl-match-col{flex:1;min-width:0}
 .sb-fl-venue{font-size:.65em;color:var(--muted,#6b7280);margin-bottom:3px}
 .sb-fl-stage-label{font-size:.58em;text-transform:uppercase;color:var(--muted,#6b7280);letter-spacing:.06em;margin-bottom:3px}
@@ -527,9 +521,10 @@ export const SCHEDULE_LAYOUT_CSS = `
 .sb-fl-single-line{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
 .sb-fl-event-title{font-weight:600;font-size:.86em;color:var(--heading,#111827);overflow-wrap:anywhere;flex:1;min-width:0}
 .sb-fl-tags-inline{display:inline-flex;align-items:center;flex-wrap:wrap;gap:6px;flex-shrink:0}
-.sb-fl-tags-col{display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:4px;flex-shrink:0}
+.sb-fl-tags-col{display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:4px;flex-shrink:0;padding-top:2px}
 .sb-fl-badge{font-size:.58em;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:3px 8px;border-radius:999px;white-space:nowrap}
-.sb-fl-badge-screen{background:#dc2626;color:#fff}
+.sb-fl-badge-screen{background:#fff;color:var(--heading,#111827);border:1px solid var(--border,#d1d5db)}
+.sb-fl-badge-live{background:#dc2626;color:#fff;border:1px solid #dc2626}
 .sb-fl-badge-tag{background:#fff;color:var(--muted,#6b7280);border:1px solid var(--border,#e5e7eb);font-weight:600}
 .sb-logo-img{object-fit:contain;flex-shrink:0;display:block}
 .sb-logo-league{height:28px;width:auto;max-width:80px}
@@ -538,20 +533,42 @@ export const SCHEDULE_LAYOUT_CSS = `
 .sb-league-groups{display:flex;flex-direction:column;gap:10px}
 .sb-league-group{border:1px solid var(--border,#e5e7eb);border-radius:8px;overflow:hidden;background:#fff}
 .sb-lg-header{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f3f4f6;border-bottom:1px solid var(--border,#e5e7eb)}
-.sb-lg-name{flex:1;font-weight:700;font-size:.88em;color:var(--heading,#111827)}
-.sb-lg-stage{font-size:.72em;color:var(--muted,#6b7280);flex-shrink:0}
-.sb-lg-row{display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--border,#e5e7eb)}
+.sb-lg-name{flex:1;font-weight:700;font-size:.88em;color:var(--heading,#111827);min-width:0}
+.sb-lg-stage{font-size:.72em;color:var(--muted,#6b7280);flex-shrink:0;text-align:right}
+.sb-lg-row{display:flex;align-items:flex-start;gap:12px;padding:10px 12px;border-bottom:1px solid var(--border,#e5e7eb)}
 .sb-lg-row-last{border-bottom:none}
 .sb-lg-row-indent{padding-left:28px}
-.sb-lg-time-col{flex-shrink:0;min-width:48px}
-.sb-lg-time{font-family:'Barlow Condensed',sans-serif;font-size:1.1em;font-weight:700;color:var(--heading,#111827);display:block;line-height:1.1}
-.sb-lg-date{font-size:.55em;text-transform:uppercase;color:var(--muted,#6b7280);letter-spacing:.04em;display:block;margin-top:2px}
+.sb-lg-time-col{flex-shrink:0;min-width:54px}
 .sb-lg-match-col{flex:1;min-width:0}
 .sb-lg-stage-label{font-size:.58em;text-transform:uppercase;color:var(--muted,#6b7280);letter-spacing:.06em;margin-bottom:2px}
 .sb-lg-matchup{font-weight:600;font-size:.86em;color:var(--heading,#111827);overflow-wrap:anywhere}
 .sb-vs{font-style:normal;font-weight:400;font-size:.78em;color:var(--muted,#9ca3af);margin:0 5px}
-.sb-lg-sport-badge{flex-shrink:0;font-size:.58em;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted,#6b7280);border:1px solid var(--border,#e5e7eb);border-radius:999px;padding:3px 8px;background:#fff;white-space:nowrap}
 .sb-empty{color:var(--muted,#6b7280);font-size:.9em}
+@media (max-width:768px){
+.sb-schedule{--sb-time-size:1.1em;--sb-date-size:.98em}
+.sb-section-header{gap:8px;margin-bottom:12px}
+.sb-section-title{font-size:1.25em}
+.sb-fl-header,.sb-lg-header{padding:9px 10px;gap:8px}
+.sb-fl-row,.sb-lg-row{padding:9px 10px;gap:10px}
+.sb-fl-time-col,.sb-lg-time-col{min-width:50px}
+.sb-logo-league{height:24px;max-width:68px}
+.sb-logo-team{height:20px;max-width:32px}
+}
+@media (max-width:480px){
+.sb-schedule{--sb-time-size:1.05em;--sb-date-size:.92em}
+.sb-section-title{font-size:1.15em}
+.sb-section-subtitle{font-size:.68em}
+.sb-fl-header,.sb-lg-header{flex-wrap:wrap}
+.sb-fl-stage,.sb-lg-stage{width:100%;text-align:left;margin-top:2px}
+.sb-fl-row,.sb-lg-row{gap:8px;padding:8px 10px}
+.sb-fl-time-col,.sb-lg-time-col{min-width:46px}
+.sb-fl-team-name,.sb-fl-event-title,.sb-lg-matchup{font-size:.82em}
+.sb-fl-badge{font-size:.54em;padding:2px 7px}
+.sb-fl-single-line{align-items:flex-start}
+.sb-fl-tags-inline{margin-top:2px}
+.sb-fl-tags-col{align-self:flex-start;padding-top:0}
+.sb-lg-row-indent{padding-left:18px}
+}
 `;
 
 export const SCHEDULE_FILTER_TAB_JS = `
