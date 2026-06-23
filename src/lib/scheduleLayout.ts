@@ -118,44 +118,60 @@ function teamLogoHtml(logo: string | undefined, hideLogos: boolean): string {
 }
 
 function venueText(event: MatchEvent): string {
-  const parts: string[] = [];
-  if (event.round) parts.push(event.round);
-  const loc = [event.venue, event.city].filter(Boolean).join(', ');
-  if (loc) parts.push(loc);
-  return parts.join(' · ');
-}
-
-function leagueStageLabel(events: MatchEvent[]): string {
-  const rounds = events.map((e) => e.round).filter(Boolean);
-  if (!rounds.length) return '';
-  const counts = new Map<string, number>();
-  for (const r of rounds) counts.set(r, (counts.get(r) ?? 0) + 1);
-  let best = '';
-  let bestCount = 0;
-  for (const [r, c] of counts) {
-    if (c > bestCount) { best = r; bestCount = c; }
-  }
-  return best;
+  return [event.venue, event.city].filter(Boolean).join(', ');
 }
 
 function hasBigScreenBadge(event: MatchEvent): boolean {
   return event.isFeatured || event.tags.some((t) => t.toLowerCase() === 'big screen');
 }
 
-function buildFeaturedTagsHtml(event: MatchEvent): string {
+function buildHeaderMetaHtml(events: MatchEvent[]): string {
   const parts: string[] = [];
-  if (hasBigScreenBadge(event)) {
-    parts.push('<span class="sb-fl-badge sb-fl-badge-screen">Big Screen</span>');
+
+  const rounds = [...new Set(events.map((e) => e.round).filter(Boolean))];
+  for (const round of rounds) {
+    parts.push(`<span class="sb-meta-tag sb-meta-round">${esc(round)}</span>`);
   }
-  for (const tag of event.tags) {
-    if (tag.toLowerCase() === 'big screen') continue;
+
+  let showBigScreen = false;
+  const otherTags = new Set<string>();
+  for (const e of events) {
+    if (hasBigScreenBadge(e)) showBigScreen = true;
+    for (const tag of e.tags) {
+      if (tag.toLowerCase() === 'big screen') continue;
+      otherTags.add(tag);
+    }
+  }
+  if (showBigScreen) {
+    parts.push('<span class="sb-meta-tag sb-meta-screen">Big Screen</span>');
+  }
+  for (const tag of otherTags) {
     const lower = tag.toLowerCase();
-    const cls = lower === 'live'
-      ? 'sb-fl-badge sb-fl-badge-live'
-      : 'sb-fl-badge sb-fl-badge-tag';
+    const cls = lower === 'live' ? 'sb-meta-tag sb-meta-live' : 'sb-meta-tag sb-meta-label';
     parts.push(`<span class="${cls}">${esc(tag)}</span>`);
   }
-  return parts.join('');
+
+  return parts.length
+    ? `<span class="sb-header-tags">${parts.join('')}</span>`
+    : '';
+}
+
+function buildLeagueHeaderHtml(
+  leagueLabel: string,
+  leagueLogo: string,
+  hideLogos: boolean,
+  events: MatchEvent[],
+  previewAttrs?: string,
+): string {
+  const metaHtml = buildHeaderMetaHtml(events);
+  return `
+  <div class="sb-league-header">
+    ${leagueLogoHtml(leagueLogo, hideLogos, leagueLabel)}
+    <div class="sb-league-title-wrap">
+      <span class="sb-league-name"${previewAttrs ?? ''}>${esc(leagueLabel)}</span>
+      ${metaHtml}
+    </div>
+  </div>`;
 }
 
 function collectFeaturedEvents(
@@ -266,8 +282,6 @@ function buildFeaturedMatchRow(event: MatchEvent, opts: ScheduleLayoutOpts): str
   const showTime = opts.showTime !== false;
   const display = getEventDisplay(event, { stripLeaguePrefix: true });
   const venue = venueText(event);
-  const stageLabel = event.round ? esc(event.round.toUpperCase()) : '';
-  const tagsHtml = buildFeaturedTagsHtml(event);
   const rowFilter = filterDataAttrs(event);
   const { label: leagueLabel } = getLeagueMeta(event.sportId, event);
 
@@ -276,7 +290,6 @@ function buildFeaturedMatchRow(event: MatchEvent, opts: ScheduleLayoutOpts): str
   if (display.isHeadToHead) {
     matchContent = `
       ${venue ? `<div class="sb-fl-venue">${esc(venue)}</div>` : ''}
-      ${stageLabel ? `<div class="sb-fl-stage-label">${stageLabel}</div>` : ''}
       <div class="sb-fl-teams-box">
         <div class="sb-fl-team-line">${teamLogoHtml(event.homeLogo, hideLogos)}<span class="sb-fl-team-name">${esc(display.primary)}</span></div>
         <div class="sb-fl-team-line">${teamLogoHtml(event.awayLogo, hideLogos)}<span class="sb-fl-team-name">${esc(display.secondary)}</span></div>
@@ -284,16 +297,10 @@ function buildFeaturedMatchRow(event: MatchEvent, opts: ScheduleLayoutOpts): str
   } else {
     matchContent = `
       ${venue ? `<div class="sb-fl-venue">${esc(venue)}</div>` : ''}
-      ${stageLabel ? `<div class="sb-fl-stage-label">${stageLabel}</div>` : ''}
       <div class="sb-fl-single-line">
         <span class="sb-fl-event-title">${esc(display.title)}</span>
-        ${tagsHtml ? `<span class="sb-fl-tags-inline">${tagsHtml}</span>` : ''}
       </div>`;
   }
-
-  const tagsCol = display.isHeadToHead && tagsHtml
-    ? `<div class="sb-fl-tags-col">${tagsHtml}</div>`
-    : '';
 
   return `
   <div class="sb-fl-row" ${rowFilter} data-preview-match="1" data-preview-match-id="${esc(event.id)}" data-preview-sport-id="${esc(event.sportId)}" data-preview-league-label="${esc(leagueLabel)}">
@@ -302,7 +309,6 @@ function buildFeaturedMatchRow(event: MatchEvent, opts: ScheduleLayoutOpts): str
       <span class="sb-fl-date">${esc(formatShortDate(event.date))}</span>
     </div>
     <div class="sb-fl-match-col">${matchContent}</div>
-    ${tagsCol}
   </div>`;
 }
 
@@ -316,17 +322,13 @@ function buildFeaturedLeagueGroup(
   const sorted = sortLeagueEvents(leagueKey, events);
   const { label: leagueLabel, logo: leagueLogo } = getLeagueMeta(leagueKey, sorted[0]);
   const displayLabel = labelOverride ?? leagueLabel;
-  const stage = leagueStageLabel(sorted);
   const filterAttrs = filterDataAttrs(sorted[0]);
   const rows = sorted.map((e) => buildFeaturedMatchRow(e, opts));
+  const previewAttrs = ` data-preview-league="1" data-preview-sport-id="${esc(leagueKey)}" data-preview-league-label="${esc(displayLabel)}"`;
 
   return `
 <div class="sb-fl-group" ${filterAttrs}>
-  <div class="sb-fl-header">
-    ${leagueLogoHtml(leagueLogo, hideLogos, displayLabel)}
-    <span class="sb-fl-name">${esc(displayLabel)}</span>
-    ${stage ? `<span class="sb-fl-stage">${esc(stage)}</span>` : ''}
-  </div>
+  ${buildLeagueHeaderHtml(displayLabel, leagueLogo, hideLogos, sorted, previewAttrs)}
   ${rows.join('\n')}
 </div>`;
 }
@@ -358,7 +360,7 @@ function buildFeaturedSection(
 <section class="sb-featured-section">
   <div class="sb-section-header">
     <div class="sb-section-header-text">
-      <h2 class="sb-section-title">Featured Matches</h2>
+      <h2 class="sb-section-title">This Week's Highlights</h2>
       <p class="sb-section-subtitle">Showing live on the big screen</p>
     </div>
     <div class="sb-section-header-line" aria-hidden="true"></div>
@@ -378,13 +380,12 @@ function buildLeagueGroup(
   const showTime = opts.showTime !== false;
   const sorted = sortLeagueEvents(leagueKey, events);
   const { label: leagueLabel, logo: leagueLogo } = getLeagueMeta(leagueKey, sorted[0]);
-  const stage = leagueStageLabel(sorted);
   const filterAttrs = filterDataAttrs(sorted[0]);
+  const previewAttrs = ` data-preview-league="1" data-preview-sport-id="${esc(leagueKey)}" data-preview-league-label="${esc(leagueLabel)}"`;
 
   const rows = sorted.map((event, idx) => {
     const display = getEventDisplay(event, { stripLeaguePrefix: true });
     const isLast = idx === sorted.length - 1;
-    const stageLabel = event.round ? esc(event.round.toUpperCase()) : '';
 
     const matchup = display.isHeadToHead
       ? `${esc(display.primary)}<span class="sb-vs">vs</span>${esc(display.secondary)}`
@@ -405,7 +406,6 @@ function buildLeagueGroup(
       <span class="sb-lg-date">${esc(formatShortDate(event.date))}</span>
     </div>
     <div class="sb-lg-match-col">
-      ${stageLabel ? `<div class="sb-lg-stage-label">${stageLabel}</div>` : ''}
       <div class="sb-lg-matchup">${matchup}</div>
     </div>
   </div>`;
@@ -413,11 +413,7 @@ function buildLeagueGroup(
 
   return `
 <div class="sb-league-group" ${filterAttrs}>
-  <div class="sb-lg-header">
-    ${leagueLogoHtml(leagueLogo, hideLogos, leagueLabel)}
-    <span class="sb-lg-name" data-preview-league="1" data-preview-sport-id="${esc(leagueKey)}" data-preview-league-label="${esc(leagueLabel)}">${esc(leagueLabel)}</span>
-    ${stage ? `<span class="sb-lg-stage">${esc(stage)}</span>` : ''}
-  </div>
+  ${buildLeagueHeaderHtml(leagueLabel, leagueLogo, hideLogos, sorted, previewAttrs)}
   ${rows.join('\n')}
 </div>`;
 }
@@ -440,7 +436,7 @@ function buildFullScheduleSection(
 <section class="sb-full-section">
   <div class="sb-section-header">
     <div class="sb-section-header-text">
-      <h2 class="sb-section-title">Full Schedule</h2>
+      <h2 class="sb-section-title">Full Sports Schedule</h2>
       <p class="sb-section-subtitle">All matches${dateRange ? ` — ${esc(dateRange)}` : ''}</p>
     </div>
     <div class="sb-section-header-line" aria-hidden="true"></div>
@@ -504,9 +500,15 @@ export const SCHEDULE_LAYOUT_CSS = `
 .sb-featured-section{margin-bottom:24px}
 .sb-featured-groups{display:flex;flex-direction:column;gap:10px}
 .sb-fl-group{border:1px solid var(--border,#e5e7eb);border-radius:8px;overflow:hidden;background:#fff}
-.sb-fl-header{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f3f4f6;border-bottom:1px solid var(--border,#e5e7eb)}
-.sb-fl-name{flex:1;font-weight:700;font-size:.88em;color:var(--heading,#111827);min-width:0}
-.sb-fl-stage{font-size:.72em;color:var(--muted,#6b7280);flex-shrink:0;text-align:right}
+.sb-league-header{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f3f4f6;border-bottom:1px solid var(--border,#e5e7eb)}
+.sb-league-title-wrap{display:flex;align-items:center;flex-wrap:wrap;gap:8px;flex:1;min-width:0}
+.sb-league-name{font-weight:700;font-size:.88em;color:var(--heading,#111827);flex-shrink:0}
+.sb-header-tags{display:inline-flex;align-items:center;flex-wrap:wrap;gap:6px;min-width:0}
+.sb-meta-tag{font-size:.65em;font-weight:600;letter-spacing:.02em;padding:3px 8px;border-radius:999px;white-space:nowrap;line-height:1.2}
+.sb-meta-round{background:#fff;color:var(--heading,#374151);border:1px solid var(--border,#d1d5db);text-transform:none}
+.sb-meta-screen{background:#fff;color:var(--heading,#111827);border:1px solid var(--border,#d1d5db);font-weight:700;text-transform:uppercase;font-size:.58em;letter-spacing:.05em}
+.sb-meta-live{background:#dc2626;color:#fff;border:1px solid #dc2626;font-weight:700;text-transform:uppercase;font-size:.58em;letter-spacing:.05em}
+.sb-meta-label{background:#fff;color:var(--muted,#6b7280);border:1px solid var(--border,#e5e7eb)}
 .sb-fl-row{display:flex;align-items:flex-start;gap:12px;padding:10px 12px;border-bottom:1px solid var(--border,#e5e7eb)}
 .sb-fl-row:last-child{border-bottom:none}
 .sb-fl-time-col{flex-shrink:0;min-width:54px}
@@ -514,33 +516,22 @@ export const SCHEDULE_LAYOUT_CSS = `
 .sb-fl-date,.sb-lg-date{font-family:'Barlow Condensed',sans-serif;font-size:var(--sb-date-size);font-weight:600;text-transform:uppercase;color:var(--muted,#6b7280);letter-spacing:.03em;display:block;margin-top:3px;line-height:1.05}
 .sb-fl-match-col{flex:1;min-width:0}
 .sb-fl-venue{font-size:.65em;color:var(--muted,#6b7280);margin-bottom:3px}
-.sb-fl-stage-label{font-size:.58em;text-transform:uppercase;color:var(--muted,#6b7280);letter-spacing:.06em;margin-bottom:3px}
 .sb-fl-teams-box{display:flex;flex-direction:column;gap:4px}
 .sb-fl-team-line{display:flex;align-items:center;gap:8px}
 .sb-fl-team-name{font-weight:600;font-size:.86em;color:var(--heading,#111827);overflow-wrap:anywhere}
 .sb-fl-single-line{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
 .sb-fl-event-title{font-weight:600;font-size:.86em;color:var(--heading,#111827);overflow-wrap:anywhere;flex:1;min-width:0}
-.sb-fl-tags-inline{display:inline-flex;align-items:center;flex-wrap:wrap;gap:6px;flex-shrink:0}
-.sb-fl-tags-col{display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:4px;flex-shrink:0;padding-top:2px}
-.sb-fl-badge{font-size:.58em;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:3px 8px;border-radius:999px;white-space:nowrap}
-.sb-fl-badge-screen{background:#fff;color:var(--heading,#111827);border:1px solid var(--border,#d1d5db)}
-.sb-fl-badge-live{background:#dc2626;color:#fff;border:1px solid #dc2626}
-.sb-fl-badge-tag{background:#fff;color:var(--muted,#6b7280);border:1px solid var(--border,#e5e7eb);font-weight:600}
 .sb-logo-img{object-fit:contain;flex-shrink:0;display:block}
 .sb-logo-league{height:28px;width:auto;max-width:80px}
 .sb-logo-team{height:22px;width:auto;max-width:36px}
 .sb-full-section{margin-bottom:8px;margin-top:8px}
 .sb-league-groups{display:flex;flex-direction:column;gap:10px}
 .sb-league-group{border:1px solid var(--border,#e5e7eb);border-radius:8px;overflow:hidden;background:#fff}
-.sb-lg-header{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f3f4f6;border-bottom:1px solid var(--border,#e5e7eb)}
-.sb-lg-name{flex:1;font-weight:700;font-size:.88em;color:var(--heading,#111827);min-width:0}
-.sb-lg-stage{font-size:.72em;color:var(--muted,#6b7280);flex-shrink:0;text-align:right}
 .sb-lg-row{display:flex;align-items:flex-start;gap:12px;padding:10px 12px;border-bottom:1px solid var(--border,#e5e7eb)}
 .sb-lg-row-last{border-bottom:none}
 .sb-lg-row-indent{padding-left:28px}
 .sb-lg-time-col{flex-shrink:0;min-width:54px}
 .sb-lg-match-col{flex:1;min-width:0}
-.sb-lg-stage-label{font-size:.58em;text-transform:uppercase;color:var(--muted,#6b7280);letter-spacing:.06em;margin-bottom:2px}
 .sb-lg-matchup{font-weight:600;font-size:.86em;color:var(--heading,#111827);overflow-wrap:anywhere}
 .sb-vs{font-style:normal;font-weight:400;font-size:.78em;color:var(--muted,#9ca3af);margin:0 5px}
 .sb-empty{color:var(--muted,#6b7280);font-size:.9em}
@@ -548,7 +539,7 @@ export const SCHEDULE_LAYOUT_CSS = `
 .sb-schedule{--sb-time-size:15px;--sb-date-size:10px}
 .sb-section-header{gap:8px;margin-bottom:12px}
 .sb-section-title{font-size:1.25em}
-.sb-fl-header,.sb-lg-header{padding:9px 10px;gap:8px}
+.sb-fl-header,.sb-league-header{padding:9px 10px;gap:8px}
 .sb-fl-row,.sb-lg-row{padding:9px 10px;gap:10px}
 .sb-fl-time-col,.sb-lg-time-col{min-width:50px}
 .sb-logo-league{height:24px;max-width:68px}
@@ -558,15 +549,13 @@ export const SCHEDULE_LAYOUT_CSS = `
 .sb-schedule{--sb-time-size:14px;--sb-date-size:9px}
 .sb-section-title{font-size:1.15em}
 .sb-section-subtitle{font-size:.68em}
-.sb-fl-header,.sb-lg-header{flex-wrap:wrap}
-.sb-fl-stage,.sb-lg-stage{width:100%;text-align:left;margin-top:2px}
+.sb-league-header{flex-wrap:wrap}
+.sb-league-title-wrap{width:100%}
+.sb-header-tags{margin-top:2px}
 .sb-fl-row,.sb-lg-row{gap:8px;padding:8px 10px}
 .sb-fl-time-col,.sb-lg-time-col{min-width:46px}
 .sb-fl-team-name,.sb-fl-event-title,.sb-lg-matchup{font-size:.82em}
-.sb-fl-badge{font-size:.54em;padding:2px 7px}
-.sb-fl-single-line{align-items:flex-start}
-.sb-fl-tags-inline{margin-top:2px}
-.sb-fl-tags-col{align-self:flex-start;padding-top:0}
+.sb-meta-tag{font-size:.6em;padding:2px 7px}
 .sb-lg-row-indent{padding-left:18px}
 }
 `;
