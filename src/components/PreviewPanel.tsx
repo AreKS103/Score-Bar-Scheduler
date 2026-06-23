@@ -4,6 +4,8 @@ import { Copy, CheckCircle } from 'lucide-react';
 import type DOMPurifyType from 'dompurify';
 import type { MouseEvent } from 'react';
 import { cn } from '@/lib/utils';
+import { buildFilterTabsHTML } from '@/lib/scheduleLayout';
+import { getSchedulePreviewCss, stripScheduleStyleTags } from '@/lib/scheduleEmbedStyles';
 
 interface PreviewPanelProps {
   html: string;
@@ -35,6 +37,9 @@ interface PreviewPanelProps {
   onPreviewClearSelection?: () => void;
 }
 
+const PREVIEW_CSS = getSchedulePreviewCss();
+const FILTER_TABS_HTML = buildFilterTabsHTML();
+
 function PreviewPanel({
   html,
   matchCount,
@@ -49,7 +54,7 @@ function PreviewPanel({
   onPreviewClearSelection,
 }: PreviewPanelProps) {
   const previewRef = useRef<HTMLDivElement>(null);
-  // DOMPurify requires a real DOM — initialize lazily on the client only.
+
   const purify = useMemo<typeof DOMPurifyType | null>(() => {
     if (typeof window === 'undefined') return null;
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -57,31 +62,62 @@ function PreviewPanel({
     return (mod.default ?? mod) as typeof DOMPurifyType;
   }, []);
 
-  // Sanitizing the full preview HTML is expensive — only redo it when the
-  // HTML actually changes, not on every unrelated re-render.
-  const sanitizedHtml = useMemo(
-    () => (purify ? purify.sanitize(html, { USE_PROFILES: { html: true } }) : html),
-    [purify, html],
+  const contentHtml = useMemo(() => {
+    const stripped = stripScheduleStyleTags(html);
+    return purify ? purify.sanitize(stripped, { USE_PROFILES: { html: true } }) : stripped;
+  }, [purify, html]);
+
+  const sanitizedTabsHtml = useMemo(
+    () => (purify ? purify.sanitize(FILTER_TABS_HTML, { USE_PROFILES: { html: true } }) : FILTER_TABS_HTML),
+    [purify],
   );
+
+  // Filter pill clicks — same behaviour as the WordPress embed widget
+  useEffect(() => {
+    const root = previewRef.current;
+    if (!root) return;
+
+    const onTabClick = (event: Event) => {
+      const target = (event.target as HTMLElement).closest?.('#sport-tabs .tab');
+      if (!target || !root.contains(target)) return;
+
+      const filter = target.getAttribute('data-filter');
+      root.querySelectorAll('#sport-tabs .tab').forEach((tab) => {
+        tab.classList.remove('active');
+        tab.setAttribute('aria-selected', 'false');
+      });
+      target.classList.add('active');
+      target.setAttribute('aria-selected', 'true');
+
+      root.querySelectorAll('[data-filter-item]').forEach((el) => {
+        const item = el as HTMLElement;
+        if (filter === 'all') {
+          item.style.display = '';
+          return;
+        }
+        item.style.display = item.getAttribute(`data-filter-${filter}`) ? '' : 'none';
+      });
+    };
+
+    root.addEventListener('click', onTabClick);
+    return () => root.removeEventListener('click', onTabClick);
+  }, [contentHtml]);
 
   useEffect(() => {
     if (!scrollToMatchId || !previewRef.current) return;
-    
-    // We delay slightly to ensure dangerouslySetInnerHTML has painted the new nodes
+
     const timer = setTimeout(() => {
       const el = previewRef.current?.querySelector(`[data-preview-match-id="${scrollToMatchId}"]`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        
-        // Add a temporary highlight effect by directly modifying the DOM element
+
         const htmlElement = el as HTMLElement;
         const originalBg = htmlElement.style.backgroundColor;
         htmlElement.style.transition = 'background-color 0.5s ease-out';
-        htmlElement.style.backgroundColor = 'rgba(234, 179, 8, 0.3)'; // Highlight color (amber-500 with opacity)
-        
+        htmlElement.style.backgroundColor = 'rgba(234, 179, 8, 0.3)';
+
         setTimeout(() => {
           htmlElement.style.backgroundColor = originalBg;
-          // Clear transition after fading out
           setTimeout(() => {
             htmlElement.style.transition = '';
           }, 500);
@@ -92,7 +128,6 @@ function PreviewPanel({
     return () => clearTimeout(timer);
   }, [scrollToMatchId, html]);
 
-  // Apply/remove selection highlight on preview-selected match spans
   useEffect(() => {
     if (!previewRef.current) return;
     const nodes = previewRef.current.querySelectorAll('[data-preview-match="1"]');
@@ -112,14 +147,14 @@ function PreviewPanel({
   }, [previewSelectedIds, html]);
 
   const handlePreviewClick = (event: MouseEvent<HTMLDivElement>) => {
-    // Only respond to left-click (button 0)
     if (event.button !== 0) return;
     const target = event.target as HTMLElement;
+    if (target.closest('#sport-tabs .tab')) return;
+
     const matchNode = target.closest('[data-preview-match="1"]') as HTMLElement | null;
     if (matchNode) {
       const eventId = matchNode.getAttribute('data-preview-match-id') || '';
       if (eventId && onPreviewMatchClick) {
-        // Ctrl (Win/Linux) or Cmd (Mac) = add to / toggle from existing selection
         const multi = event.ctrlKey || event.metaKey;
         onPreviewMatchClick(eventId, multi);
       }
@@ -129,9 +164,7 @@ function PreviewPanel({
   };
 
   const handlePreviewContextMenu = (event: MouseEvent<HTMLDivElement>) => {
-    // In preview, always suppress the browser context menu.
     event.preventDefault();
-
     if (!onPreviewContextMenu) return;
 
     const target = event.target as HTMLElement;
@@ -156,11 +189,9 @@ function PreviewPanel({
 
     let leagueNode = target.closest('[data-preview-league="1"]') as HTMLElement | null;
 
-    // If user right-clicked a match line under the header, resolve to the
-    // nearest preceding league header/logo block.
     if (!leagueNode) {
       const tagged = Array.from(
-        root.querySelectorAll('[data-preview-league="1"]')
+        root.querySelectorAll('[data-preview-league="1"]'),
       ) as HTMLElement[];
       for (const node of tagged) {
         const relation = node.compareDocumentPosition(target);
@@ -186,56 +217,55 @@ function PreviewPanel({
 
   return (
     <div className="space-y-5">
-      {/* Summary bar */}
       <div className="flex items-center justify-between bg-secondary/50 border border-border rounded-lg px-4 py-3">
-          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            <span>
-              <strong className="text-foreground">{matchCount}</strong> matches selected
-            </span>
-            <span className="text-border">|</span>
-            <span>
-              across <strong className="text-foreground">{leagueCount}</strong> leagues
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            {lastPushed && (
-              <span className="text-xs text-muted-foreground">Last pushed: {lastPushed}</span>
-            )}
-            {onCopy && (
-              <button
-                onClick={onCopy}
-                className={cn(
-                  'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border transition-all font-medium',
-                  copied
-                    ? 'text-emerald-400 border-emerald-400/30 bg-emerald-400/10'
-                    : 'text-muted-foreground border-border hover:text-foreground hover:bg-secondary'
-                )}
-              >
-                {copied ? <CheckCircle className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                {copied ? 'Copied!' : 'Copy HTML'}
-              </button>
-            )}
-          </div>
+        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+          <span>
+            <strong className="text-foreground">{matchCount}</strong> matches selected
+          </span>
+          <span className="text-border">|</span>
+          <span>
+            across <strong className="text-foreground">{leagueCount}</strong> leagues
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          {lastPushed && (
+            <span className="text-xs text-muted-foreground">Last pushed: {lastPushed}</span>
+          )}
+          {onCopy && (
+            <button
+              onClick={onCopy}
+              className={cn(
+                'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border transition-all font-medium',
+                copied
+                  ? 'text-emerald-400 border-emerald-400/30 bg-emerald-400/10'
+                  : 'text-muted-foreground border-border hover:text-foreground hover:bg-secondary',
+              )}
+            >
+              {copied ? <CheckCircle className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              {copied ? 'Copied!' : 'Copy HTML'}
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* HTML preview — adapts to current theme */}
+      {/* Mirrors WordPress embed: #schedule-root > tabs + .schedule-content */}
       <div
         ref={previewRef}
-        className="bg-white border border-border rounded-lg p-6 overflow-y-auto max-w-none
-          [&_.sb-schedule]:text-zinc-900
-          [&_[data-preview-match]]:cursor-pointer
-          [&_[data-preview-match].sb-preview-selected]:outline
-          [&_[data-preview-match].sb-preview-selected]:outline-2
-          [&_[data-preview-match].sb-preview-selected]:outline-amber-400/60
-        "
+        className="sb-schedule-preview-root bg-white border border-border rounded-lg p-3 overflow-y-auto max-w-none"
         onContextMenu={handlePreviewContextMenu}
         onClick={handlePreviewClick}
-        dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
-      />
+      >
+        <style dangerouslySetInnerHTML={{ __html: PREVIEW_CSS }} />
+        <div id="schedule-root">
+          <div dangerouslySetInnerHTML={{ __html: sanitizedTabsHtml }} />
+          <div
+            className="schedule-content"
+            dangerouslySetInnerHTML={{ __html: contentHtml }}
+          />
+        </div>
+      </div>
     </div>
   );
 }
 
-// Memoized: parent re-renders frequently (drag, typing, selection state) and
-// re-rendering this panel re-applies a large dangerouslySetInnerHTML subtree.
 export default memo(PreviewPanel);

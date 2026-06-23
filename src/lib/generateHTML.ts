@@ -1,15 +1,15 @@
 import type { MatchEvent } from '@/types';
 import {
   renderScheduleLayout,
-  SCHEDULE_LAYOUT_CSS,
   type ScheduleLayoutOpts,
 } from '@/lib/scheduleLayout';
+import { getSchedulePreviewCss, stripScheduleStyleTags } from '@/lib/scheduleEmbedStyles';
 
 /**
  * Main HTML generation function.
  * Converts selected MatchEvents to the WordPress-ready HTML format.
  */
-export function generateHTML(
+export function generateScheduleContent(
   events: MatchEvent[],
   leagueOrder?: string[],
   featuredLeagues?: Map<string, string>,
@@ -26,5 +26,16 @@ export function generateHTML(
     layoutOpts,
   );
 
-  return `<style>${SCHEDULE_LAYOUT_CSS}</style>\n${html}`;
+  return html;
 }
+
+export function generateHTML(
+  events: MatchEvent[],
+  leagueOrder?: string[],
+  featuredLeagues?: Map<string, string>,
+): string {
+  const content = generateScheduleContent(events, leagueOrder, featuredLeagues);
+  return `<style>${getSchedulePreviewCss()}</style>\n${content}`;
+}
+
+export { stripScheduleStyleTags };
