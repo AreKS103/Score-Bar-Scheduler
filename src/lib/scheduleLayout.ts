@@ -154,7 +154,8 @@ function buildScreenTagsHtml(events: MatchEvent[]): string {
 function buildLeagueTitleHtml(leagueLabel: string, events: MatchEvent[]): string {
   const rounds = [...new Set(events.map((e) => e.round).filter(Boolean))];
   if (!rounds.length) return esc(leagueLabel);
-  return `${esc(leagueLabel)} - ${rounds.map((r) => esc(r)).join(', ')}`;
+  const stageText = rounds.map((r) => esc(r)).join(', ');
+  return `${esc(leagueLabel)}<span class="sb-league-stage"> - ${stageText}</span>`;
 }
 
 function buildLeagueHeaderHtml(
@@ -506,7 +507,6 @@ export const SCHEDULE_LAYOUT_CSS = `
 .sb-league-name{font-weight:700;font-size:.88em;color:var(--heading,#111827);flex-shrink:0}
 .sb-header-tags{display:inline-flex;align-items:center;flex-wrap:wrap;gap:6px;min-width:0}
 .sb-meta-tag{font-size:.65em;font-weight:600;letter-spacing:.02em;padding:3px 8px;border-radius:999px;white-space:nowrap;line-height:1.2}
-.sb-meta-round{background:#fff;color:var(--heading,#374151);border:1px solid var(--border,#d1d5db);text-transform:none}
 .sb-meta-screen{background:#fff;color:var(--heading,#111827);border:1px solid var(--border,#d1d5db);font-weight:700;text-transform:uppercase;font-size:.58em;letter-spacing:.05em}
 .sb-meta-live{background:#dc2626;color:#fff;border:1px solid #dc2626;font-weight:700;text-transform:uppercase;font-size:.58em;letter-spacing:.05em}
 .sb-meta-label{background:#fff;color:var(--muted,#6b7280);border:1px solid var(--border,#e5e7eb)}
