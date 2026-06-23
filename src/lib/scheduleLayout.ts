@@ -125,13 +125,8 @@ function hasBigScreenBadge(event: MatchEvent): boolean {
   return event.isFeatured || event.tags.some((t) => t.toLowerCase() === 'big screen');
 }
 
-function buildHeaderMetaHtml(events: MatchEvent[]): string {
+function buildScreenTagsHtml(events: MatchEvent[]): string {
   const parts: string[] = [];
-
-  const rounds = [...new Set(events.map((e) => e.round).filter(Boolean))];
-  for (const round of rounds) {
-    parts.push(`<span class="sb-meta-tag sb-meta-round">${esc(round)}</span>`);
-  }
 
   let showBigScreen = false;
   const otherTags = new Set<string>();
@@ -156,6 +151,12 @@ function buildHeaderMetaHtml(events: MatchEvent[]): string {
     : '';
 }
 
+function buildLeagueTitleHtml(leagueLabel: string, events: MatchEvent[]): string {
+  const rounds = [...new Set(events.map((e) => e.round).filter(Boolean))];
+  if (!rounds.length) return esc(leagueLabel);
+  return `${esc(leagueLabel)} - ${rounds.map((r) => esc(r)).join(', ')}`;
+}
+
 function buildLeagueHeaderHtml(
   leagueLabel: string,
   leagueLogo: string,
@@ -163,13 +164,13 @@ function buildLeagueHeaderHtml(
   events: MatchEvent[],
   previewAttrs?: string,
 ): string {
-  const metaHtml = buildHeaderMetaHtml(events);
+  const tagsHtml = buildScreenTagsHtml(events);
   return `
   <div class="sb-league-header">
     ${leagueLogoHtml(leagueLogo, hideLogos, leagueLabel)}
     <div class="sb-league-title-wrap">
-      <span class="sb-league-name"${previewAttrs ?? ''}>${esc(leagueLabel)}</span>
-      ${metaHtml}
+      <span class="sb-league-name"${previewAttrs ?? ''}>${buildLeagueTitleHtml(leagueLabel, events)}</span>
+      ${tagsHtml}
     </div>
   </div>`;
 }
