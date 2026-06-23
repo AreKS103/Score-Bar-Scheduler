@@ -33,7 +33,8 @@ function getInitials(email: string | null, username?: string | null): string {
 
 export default function UserProfileMenu({ email, username, onLogout, onBusinessInfo, onSettings, onOrgManage, onSetup, businessLogoUrl, orgName, pendingInviteCount, avatarUrl }: UserProfileMenuProps) {
   const [open, setOpen] = useState(false);
-  const { theme, toggleTheme } = useThemeStore();
+  const theme = useThemeStore((s) => s.theme);
+  const toggleTheme = useThemeStore((s) => s.toggleTheme);
   const isDark = theme === 'dark';
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -186,9 +187,9 @@ export default function UserProfileMenu({ email, username, onLogout, onBusinessI
         aria-label="Open user menu"
         aria-expanded={open}
         className={cn(
-          'w-full flex items-center gap-2 px-2 py-2 rounded-lg transition-all overflow-hidden',
-          'hover:bg-accent',
-          open && 'bg-accent'
+          'w-full flex items-center gap-2 px-2 py-2 rounded-lg transition-colors overflow-hidden',
+          'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+          open && 'bg-sidebar-accent text-sidebar-accent-foreground',
         )}
       >
         {/* Avatar */}

@@ -17,6 +17,7 @@ export const useThemeStore = create<ThemeState>()(
       theme: 'light',
       setTheme: (theme) => {
         if (typeof window !== 'undefined') {
+          // Apply DOM class first so the switch feels instant (no React cascade).
           document.documentElement.classList.toggle('dark', theme === 'dark');
           document.documentElement.style.colorScheme = theme;
         }

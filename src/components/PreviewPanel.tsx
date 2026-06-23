@@ -251,7 +251,7 @@ function PreviewPanel({
       {/* Mirrors WordPress embed: #schedule-root > tabs + .schedule-content */}
       <div
         ref={previewRef}
-        className="sb-schedule-preview-root bg-white border border-border rounded-lg p-3 overflow-y-auto max-w-none"
+        className="sb-schedule-preview-root bg-white border border-border/40 rounded-lg p-3 overflow-y-auto max-w-none dark:border-border/30"
         onContextMenu={handlePreviewContextMenu}
         onClick={handlePreviewClick}
       >

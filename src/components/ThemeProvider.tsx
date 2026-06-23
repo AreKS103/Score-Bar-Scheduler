@@ -1,16 +1,30 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useThemeStore } from '@/lib/themeStore';
 
+/**
+ * Syncs theme across browser tabs without subscribing to the Zustand store.
+ * Subscribing here previously re-rendered the entire app tree on every toggle,
+ * which made dark mode feel very slow.
+ *
+ * DOM updates happen immediately in themeStore.setTheme / toggleTheme.
+ */
 export default function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const theme = useThemeStore((s) => s.theme);
-
-  // Keep DOM in sync if the store changes (e.g. from another tab)
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-    document.documentElement.style.colorScheme = theme;
-  }, [theme]);
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== 'score-theme' || !event.newValue) return;
+      try {
+        const theme = JSON.parse(event.newValue)?.state?.theme ?? 'light';
+        document.documentElement.classList.toggle('dark', theme === 'dark');
+        document.documentElement.style.colorScheme = theme;
+      } catch {
+        // ignore malformed persisted state
+      }
+    };
+
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   return <>{children}</>;
 }
