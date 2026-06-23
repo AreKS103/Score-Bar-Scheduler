@@ -151,11 +151,11 @@ function buildScreenTagsHtml(events: MatchEvent[]): string {
     : '';
 }
 
-function buildLeagueTitleHtml(leagueLabel: string, events: MatchEvent[]): string {
+function buildLeagueTitleParts(leagueLabel: string, events: MatchEvent[]): { name: string; stage: string } {
   const rounds = [...new Set(events.map((e) => e.round).filter(Boolean))];
-  if (!rounds.length) return esc(leagueLabel);
+  if (!rounds.length) return { name: esc(leagueLabel), stage: '' };
   const stageText = rounds.map((r) => esc(r)).join(', ');
-  return `${esc(leagueLabel)}<span class="sb-league-stage"> - ${stageText}</span>`;
+  return { name: esc(leagueLabel), stage: ` - ${stageText}` };
 }
 
 function buildLeagueHeaderHtml(
@@ -166,11 +166,12 @@ function buildLeagueHeaderHtml(
   previewAttrs?: string,
 ): string {
   const tagsHtml = buildScreenTagsHtml(events);
+  const { name, stage } = buildLeagueTitleParts(leagueLabel, events);
   return `
   <div class="sb-league-header">
     ${leagueLogoHtml(leagueLogo, hideLogos, leagueLabel)}
     <div class="sb-league-title-wrap">
-      <span class="sb-league-name"${previewAttrs ?? ''}>${buildLeagueTitleHtml(leagueLabel, events)}</span>
+      <span class="sb-league-name"${previewAttrs ?? ''}>${name}</span>${stage ? `<span class="sb-league-stage">${stage}</span>` : ''}
       ${tagsHtml}
     </div>
   </div>`;
@@ -505,6 +506,7 @@ export const SCHEDULE_LAYOUT_CSS = `
 .sb-league-header{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f3f4f6;border-bottom:1px solid var(--border,#e5e7eb)}
 .sb-league-title-wrap{display:flex;align-items:center;flex-wrap:wrap;gap:8px;flex:1;min-width:0}
 .sb-league-name{font-weight:700;font-size:.88em;color:var(--heading,#111827);flex-shrink:0}
+.sb-league-stage{font-weight:500;color:var(--muted,#6b7280)}
 .sb-header-tags{display:inline-flex;align-items:center;flex-wrap:wrap;gap:6px;min-width:0}
 .sb-meta-tag{font-size:.65em;font-weight:600;letter-spacing:.02em;padding:3px 8px;border-radius:999px;white-space:nowrap;line-height:1.2}
 .sb-meta-screen{background:#fff;color:var(--heading,#111827);border:1px solid var(--border,#d1d5db);font-weight:700;text-transform:uppercase;font-size:.58em;letter-spacing:.05em}
