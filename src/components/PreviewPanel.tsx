@@ -4,7 +4,6 @@ import { Copy, CheckCircle } from 'lucide-react';
 import type DOMPurifyType from 'dompurify';
 import type { MouseEvent } from 'react';
 import { cn } from '@/lib/utils';
-import { buildFilterTabsHTML } from '@/lib/scheduleLayout';
 import { getSchedulePreviewCss, stripScheduleStyleTags } from '@/lib/scheduleEmbedStyles';
 
 interface PreviewPanelProps {
@@ -38,7 +37,6 @@ interface PreviewPanelProps {
 }
 
 const PREVIEW_CSS = getSchedulePreviewCss();
-const FILTER_TABS_HTML = buildFilterTabsHTML();
 
 function PreviewPanel({
   html,
@@ -66,42 +64,6 @@ function PreviewPanel({
     const stripped = stripScheduleStyleTags(html);
     return purify ? purify.sanitize(stripped, { USE_PROFILES: { html: true } }) : stripped;
   }, [purify, html]);
-
-  const sanitizedTabsHtml = useMemo(
-    () => (purify ? purify.sanitize(FILTER_TABS_HTML, { USE_PROFILES: { html: true } }) : FILTER_TABS_HTML),
-    [purify],
-  );
-
-  // Filter pill clicks — same behaviour as the WordPress embed widget
-  useEffect(() => {
-    const root = previewRef.current;
-    if (!root) return;
-
-    const onTabClick = (event: Event) => {
-      const target = (event.target as HTMLElement).closest?.('#sport-tabs .tab');
-      if (!target || !root.contains(target)) return;
-
-      const filter = target.getAttribute('data-filter');
-      root.querySelectorAll('#sport-tabs .tab').forEach((tab) => {
-        tab.classList.remove('active');
-        tab.setAttribute('aria-selected', 'false');
-      });
-      target.classList.add('active');
-      target.setAttribute('aria-selected', 'true');
-
-      root.querySelectorAll('[data-filter-item]').forEach((el) => {
-        const item = el as HTMLElement;
-        if (filter === 'all') {
-          item.style.display = '';
-          return;
-        }
-        item.style.display = item.getAttribute(`data-filter-${filter}`) ? '' : 'none';
-      });
-    };
-
-    root.addEventListener('click', onTabClick);
-    return () => root.removeEventListener('click', onTabClick);
-  }, [contentHtml]);
 
   useEffect(() => {
     if (!scrollToMatchId || !previewRef.current) return;
@@ -149,7 +111,6 @@ function PreviewPanel({
   const handlePreviewClick = (event: MouseEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     const target = event.target as HTMLElement;
-    if (target.closest('#sport-tabs .tab')) return;
 
     const matchNode = target.closest('[data-preview-match="1"]') as HTMLElement | null;
     if (matchNode) {
@@ -165,7 +126,6 @@ function PreviewPanel({
 
   const handlePreviewContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
-    if (!onPreviewContextMenu) return;
 
     const target = event.target as HTMLElement;
     const root = event.currentTarget;
@@ -174,6 +134,14 @@ function PreviewPanel({
     if (matchNode) {
       const eventId = matchNode.getAttribute('data-preview-match-id') || '';
       const sportId = matchNode.getAttribute('data-preview-sport-id') || '';
+
+      // Right-click selects the match so the user sees which row tags will apply to.
+      if (eventId && onPreviewMatchClick) {
+        onPreviewMatchClick(eventId, false);
+      }
+
+      if (!onPreviewContextMenu) return;
+
       if (eventId && sportId) {
         onPreviewContextMenu({
           type: 'match',
@@ -186,6 +154,8 @@ function PreviewPanel({
       }
       return;
     }
+
+    if (!onPreviewContextMenu) return;
 
     let leagueNode = target.closest('[data-preview-league="1"]') as HTMLElement | null;
 
@@ -248,7 +218,7 @@ function PreviewPanel({
         </div>
       </div>
 
-      {/* Mirrors WordPress embed: #schedule-root > tabs + .schedule-content */}
+      {/* Schedule content only — sport filter pills are embed-only (WordPress widget) */}
       <div
         ref={previewRef}
         className="sb-schedule-preview-root bg-white border border-border/40 rounded-lg p-3 overflow-y-auto max-w-none dark:border-border/30"
@@ -256,13 +226,10 @@ function PreviewPanel({
         onClick={handlePreviewClick}
       >
         <style dangerouslySetInnerHTML={{ __html: PREVIEW_CSS }} />
-        <div id="schedule-root">
-          <div dangerouslySetInnerHTML={{ __html: sanitizedTabsHtml }} />
-          <div
-            className="schedule-content"
-            dangerouslySetInnerHTML={{ __html: contentHtml }}
-          />
-        </div>
+        <div
+          className="schedule-content"
+          dangerouslySetInnerHTML={{ __html: contentHtml }}
+        />
       </div>
     </div>
   );

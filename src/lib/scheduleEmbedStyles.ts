@@ -53,17 +53,12 @@ ${EMBED_PAGE_CSS_VARS}
 @media (max-width:480px){#sport-tabs{gap:5px;margin-bottom:12px}.tab{padding:4px 11px;font-size:11px}}
 `;
 
-/** Full stylesheet for in-app preview (matches default embed list layout) */
+/** Full stylesheet for in-app preview (schedule layout only — no filter tabs) */
 export function getSchedulePreviewCss(): string {
   return `${PREVIEW_SCOPED_CSS_VARS}
 .sb-schedule-preview-root,.sb-schedule-preview-root *{box-sizing:border-box}
 .sb-schedule-preview-root{background:var(--bg);color:var(--text);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
-#schedule-root,.schedule-content{width:100%}
-.schedule-content{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
-#sport-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
-.tab{background:#fff;border:1px solid var(--border,#e5e7eb);color:var(--muted,#6b7280);padding:5px 14px;border-radius:999px;cursor:pointer;font-size:12px;font-family:inherit;font-weight:500;white-space:nowrap}
-.tab.active{background:var(--heading,#1e3a5f);color:#fff;border-color:var(--heading,#1e3a5f)}
-@media (max-width:480px){#sport-tabs{gap:5px;margin-bottom:12px}.tab{padding:4px 11px;font-size:11px}}
+.schedule-content{width:100%;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
 ${SCHEDULE_LAYOUT_CSS}`;
 }
 
