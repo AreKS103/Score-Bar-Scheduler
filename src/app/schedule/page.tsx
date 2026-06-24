@@ -1017,6 +1017,7 @@ export default function SchedulePage() {
   const headerRef = useRef<HTMLElement>(null);
   const leagueItemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const sidebarScrollRef = useRef<HTMLDivElement>(null);
+  const lastPreviewCheckAnchorRef = useRef<string | null>(null);
   const htmlPreviewRef = useRef<HTMLDivElement>(null);
   const highlightMenuRef = useRef<HTMLDivElement>(null);
   const undoStackRef = useRef<ScheduleHistoryState[]>([]);
@@ -1804,6 +1805,12 @@ export default function SchedulePage() {
     [leagueOrder, selectedByLeague]
   );
 
+  /** Flat sidebar list order — used for shift+click range selection */
+  const sidebarPreviewMatchOrder = useMemo(
+    () => orderedSelectedByLeague.flatMap(([, matches]) => matches.map((m) => m.id)),
+    [orderedSelectedByLeague],
+  );
+
   // All events the user has starred — shown in the highlights section at the
   // top of the left preview panel (mirrors the "This Week's Highlights" block
   // in the published HTML output).
@@ -2036,25 +2043,58 @@ export default function SchedulePage() {
     return () => obs.disconnect();
   }, []);
 
-  const togglePreviewCheck = useCallback((id: string) => {
+  const togglePreviewCheck = useCallback((id: string, shiftKey?: boolean) => {
+    if (shiftKey && lastPreviewCheckAnchorRef.current) {
+      const ordered = sidebarPreviewMatchOrder;
+      const start = ordered.indexOf(lastPreviewCheckAnchorRef.current);
+      const end = ordered.indexOf(id);
+      if (start !== -1 && end !== -1) {
+        const [lo, hi] = start < end ? [start, end] : [end, start];
+        const rangeIds = ordered.slice(lo, hi + 1);
+        setPreviewCheckedIds((prev) => {
+          const next = new Set(prev);
+          const willCheck = !prev.has(id);
+          for (const rid of rangeIds) {
+            if (willCheck) next.add(rid);
+            else next.delete(rid);
+          }
+          return next;
+        });
+        setScrollToMatch({ id, ts: Date.now() });
+        return;
+      }
+    }
+
     setPreviewCheckedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
+    lastPreviewCheckAnchorRef.current = id;
     setScrollToMatch({ id, ts: Date.now() });
-  }, []);
+  }, [sidebarPreviewMatchOrder]);
 
-  const handlePreviewMatchClick = useCallback((id: string, multi: boolean) => {
+  const handlePreviewMatchClick = useCallback((
+    id: string,
+    opts?: { multi?: boolean; range?: boolean; anchorId?: string; orderedIds?: string[] },
+  ) => {
+    if (opts?.range && opts.anchorId && opts.orderedIds?.length) {
+      const start = opts.orderedIds.indexOf(opts.anchorId);
+      const end = opts.orderedIds.indexOf(id);
+      if (start !== -1 && end !== -1) {
+        const [lo, hi] = start < end ? [start, end] : [end, start];
+        setPreviewSelectedIds(new Set(opts.orderedIds.slice(lo, hi + 1)));
+        return;
+      }
+    }
+
     setPreviewSelectedIds((prev) => {
-      if (multi) {
-        // Ctrl/Cmd+click: toggle this match in/out of the current selection
+      if (opts?.multi) {
         const next = new Set(prev);
         if (next.has(id)) next.delete(id); else next.add(id);
         return next;
       }
-      // Plain click: select only this match (deselect all others)
-      if (prev.size === 1 && prev.has(id)) return new Set(); // clicking the one selected match deselects it
+      if (prev.size === 1 && prev.has(id)) return new Set();
       return new Set([id]);
     });
   }, []);
@@ -3116,7 +3156,7 @@ export default function SchedulePage() {
                               <Star className="w-3 h-3" fill={m.isFeatured ? 'currentColor' : 'none'} />
                             </button>
                             <div
-                              onClick={() => togglePreviewCheck(m.id)}
+                              onClick={(e) => togglePreviewCheck(m.id, e.shiftKey)}
                               className="flex items-start gap-1.5 px-1.5 py-1 cursor-pointer flex-1 min-w-0"
                             >
                               <div className={cn(

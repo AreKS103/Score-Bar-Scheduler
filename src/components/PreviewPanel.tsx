@@ -6,6 +6,13 @@ import type { MouseEvent } from 'react';
 import { cn } from '@/lib/utils';
 import { getSchedulePreviewCss, stripScheduleStyleTags } from '@/lib/scheduleEmbedStyles';
 
+export interface PreviewMatchClickOptions {
+  multi?: boolean;
+  range?: boolean;
+  anchorId?: string;
+  orderedIds?: string[];
+}
+
 interface PreviewPanelProps {
   html: string;
   matchCount: number;
@@ -32,7 +39,7 @@ interface PreviewPanelProps {
   ) => void;
   scrollToMatchId?: string | null;
   previewSelectedIds?: Set<string>;
-  onPreviewMatchClick?: (eventId: string, multi: boolean) => void;
+  onPreviewMatchClick?: (eventId: string, options?: PreviewMatchClickOptions) => void;
   onPreviewClearSelection?: () => void;
 }
 
@@ -52,6 +59,15 @@ function PreviewPanel({
   onPreviewClearSelection,
 }: PreviewPanelProps) {
   const previewRef = useRef<HTMLDivElement>(null);
+  const lastClickAnchorRef = useRef<string | null>(null);
+
+  const getOrderedMatchIds = (): string[] => {
+    const root = previewRef.current;
+    if (!root) return [];
+    return Array.from(root.querySelectorAll('[data-preview-match="1"]'))
+      .map((node) => node.getAttribute('data-preview-match-id'))
+      .filter((id): id is string => Boolean(id));
+  };
 
   const purify = useMemo<typeof DOMPurifyType | null>(() => {
     if (typeof window === 'undefined') return null;
@@ -116,8 +132,19 @@ function PreviewPanel({
     if (matchNode) {
       const eventId = matchNode.getAttribute('data-preview-match-id') || '';
       if (eventId && onPreviewMatchClick) {
-        const multi = event.ctrlKey || event.metaKey;
-        onPreviewMatchClick(eventId, multi);
+        if (event.shiftKey && lastClickAnchorRef.current) {
+          onPreviewMatchClick(eventId, {
+            range: true,
+            anchorId: lastClickAnchorRef.current,
+            orderedIds: getOrderedMatchIds(),
+          });
+        } else if (event.ctrlKey || event.metaKey) {
+          onPreviewMatchClick(eventId, { multi: true });
+          lastClickAnchorRef.current = eventId;
+        } else {
+          onPreviewMatchClick(eventId, { multi: false });
+          lastClickAnchorRef.current = eventId;
+        }
       }
     } else {
       onPreviewClearSelection?.();
@@ -137,7 +164,8 @@ function PreviewPanel({
 
       // Right-click selects the match so the user sees which row tags will apply to.
       if (eventId && onPreviewMatchClick) {
-        onPreviewMatchClick(eventId, false);
+        onPreviewMatchClick(eventId, { multi: false });
+        lastClickAnchorRef.current = eventId;
       }
 
       if (!onPreviewContextMenu) return;

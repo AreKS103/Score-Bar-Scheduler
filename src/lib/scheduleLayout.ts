@@ -128,7 +128,7 @@ function tagClassName(tag: string): string {
   return 'sb-meta-tag sb-meta-label';
 }
 
-/** Inline tag pills appended after the matchup text (per match only). */
+/** Inline tag pills after matchup text (full schedule single-line rows). */
 function buildMatchTagsInline(event: MatchEvent): string {
   const tags = event.tags.map((t) => t.trim()).filter(Boolean);
   if (!tags.length) return '';
@@ -138,6 +138,18 @@ function buildMatchTagsInline(event: MatchEvent): string {
   );
 
   return `<span class="sb-inline-tags"><span class="sb-tag-sep" aria-hidden="true"> - </span>${parts.join('')}</span>`;
+}
+
+/** Vertically centred tag column (featured multi-line rows). */
+function buildMatchTagsColumn(event: MatchEvent): string {
+  const tags = event.tags.map((t) => t.trim()).filter(Boolean);
+  if (!tags.length) return '';
+
+  const parts = tags.map(
+    (tag) => `<span class="${tagClassName(tag)}">${esc(tag)}</span>`,
+  );
+
+  return `<div class="sb-fl-tags-col">${parts.join('')}</div>`;
 }
 
 function buildLeagueTitleParts(leagueLabel: string, events: MatchEvent[]): { name: string; stage: string } {
@@ -283,15 +295,17 @@ function buildFeaturedMatchRow(event: MatchEvent, opts: ScheduleLayoutOpts): str
       ${venue ? `<div class="sb-fl-venue">${esc(venue)}</div>` : ''}
       <div class="sb-fl-teams-box">
         <div class="sb-fl-team-line">${teamLogoHtml(event.homeLogo, hideLogos)}<span class="sb-fl-team-name">${esc(display.primary)}</span></div>
-        <div class="sb-fl-team-line sb-fl-team-line-last">${teamLogoHtml(event.awayLogo, hideLogos)}<span class="sb-fl-team-name">${esc(display.secondary)}</span>${buildMatchTagsInline(event)}</div>
+        <div class="sb-fl-team-line">${teamLogoHtml(event.awayLogo, hideLogos)}<span class="sb-fl-team-name">${esc(display.secondary)}</span></div>
       </div>`;
   } else {
     matchContent = `
       ${venue ? `<div class="sb-fl-venue">${esc(venue)}</div>` : ''}
       <div class="sb-fl-single-line">
-        <span class="sb-fl-event-title">${esc(display.title)}</span>${buildMatchTagsInline(event)}
+        <span class="sb-fl-event-title">${esc(display.title)}</span>
       </div>`;
   }
+
+  const tagsCol = buildMatchTagsColumn(event);
 
   return `
   <div class="sb-fl-row" ${rowFilter} data-preview-match="1" data-preview-match-id="${esc(event.id)}" data-preview-sport-id="${esc(event.sportId)}" data-preview-league-label="${esc(leagueLabel)}">
@@ -299,7 +313,7 @@ function buildFeaturedMatchRow(event: MatchEvent, opts: ScheduleLayoutOpts): str
       ${showTime ? `<span class="sb-fl-time">${esc(event.time)}</span>` : ''}
       <span class="sb-fl-date">${esc(formatShortDate(event.date))}</span>
     </div>
-    <div class="sb-fl-match-col">${matchContent}</div>
+    <div class="sb-fl-match-col">${matchContent}</div>${tagsCol}
   </div>`;
 }
 
@@ -499,9 +513,10 @@ export const SCHEDULE_LAYOUT_CSS = `
 .sb-meta-screen{background:#fff;color:var(--heading,#111827);border:1px solid var(--border,#d1d5db);font-weight:700;text-transform:uppercase;font-size:.58em;letter-spacing:.05em}
 .sb-meta-live{background:#dc2626;color:#fff;border:1px solid #dc2626;font-weight:700;text-transform:uppercase;font-size:.58em;letter-spacing:.05em}
 .sb-meta-label{background:#fff;color:var(--muted,#6b7280);border:1px solid var(--border,#e5e7eb)}
-.sb-fl-row{display:flex;align-items:flex-start;gap:12px;padding:10px 12px;border-bottom:1px solid var(--border,#e5e7eb)}
+.sb-fl-row{display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--border,#e5e7eb)}
 .sb-fl-row:last-child{border-bottom:none}
-.sb-fl-time-col{flex-shrink:0;min-width:54px}
+.sb-fl-time-col{flex-shrink:0;min-width:54px;align-self:center}
+.sb-fl-tags-col{display:flex;align-items:center;flex-wrap:wrap;justify-content:flex-end;gap:6px;align-self:center;flex-shrink:0;margin-left:auto;padding-left:8px}
 .sb-fl-time{font-family:'Barlow Condensed',sans-serif;font-size:var(--sb-time-size);font-weight:700;color:var(--heading,#111827);display:block;line-height:1.05}
 .sb-fl-date{font-family:'Barlow Condensed',sans-serif;font-size:var(--sb-date-size);font-weight:600;text-transform:uppercase;color:var(--muted,#6b7280);letter-spacing:.03em;display:block;margin-top:3px;line-height:1.05}
 .sb-fl-match-col{flex:1;min-width:0}
@@ -511,7 +526,6 @@ export const SCHEDULE_LAYOUT_CSS = `
 .sb-fl-team-name{font-weight:600;font-size:.86em;color:var(--heading,#111827);overflow-wrap:anywhere}
 .sb-fl-single-line{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
 .sb-fl-event-title{font-weight:600;font-size:.86em;color:var(--heading,#111827);overflow-wrap:anywhere}
-.sb-fl-team-line-last{flex-wrap:wrap}
 .sb-logo-img{object-fit:contain;flex-shrink:0;display:block}
 .sb-logo-league{height:28px;width:auto;max-width:80px}
 .sb-logo-team{height:22px;width:auto;max-width:36px}
