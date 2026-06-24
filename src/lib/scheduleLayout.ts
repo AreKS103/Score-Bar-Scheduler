@@ -313,7 +313,9 @@ function buildFeaturedMatchRow(event: MatchEvent, opts: ScheduleLayoutOpts): str
       ${showTime ? `<span class="sb-fl-time">${esc(event.time)}</span>` : ''}
       <span class="sb-fl-date">${esc(formatShortDate(event.date))}</span>
     </div>
-    <div class="sb-fl-match-col">${matchContent}</div>${tagsCol}
+    <div class="sb-fl-body">
+      <div class="sb-fl-match-col">${matchContent}</div>${tagsCol}
+    </div>
   </div>`;
 }
 
@@ -516,10 +518,11 @@ export const SCHEDULE_LAYOUT_CSS = `
 .sb-fl-row{display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--border,#e5e7eb)}
 .sb-fl-row:last-child{border-bottom:none}
 .sb-fl-time-col{flex-shrink:0;min-width:54px;align-self:center}
-.sb-fl-tags-col{display:flex;align-items:center;flex-wrap:wrap;justify-content:flex-end;gap:6px;align-self:center;flex-shrink:0;margin-left:auto;padding-left:8px}
+.sb-fl-body{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
+.sb-fl-tags-col{display:flex;align-items:center;flex-wrap:wrap;gap:6px;flex-shrink:0}
 .sb-fl-time{font-family:'Barlow Condensed',sans-serif;font-size:var(--sb-time-size);font-weight:700;color:var(--heading,#111827);display:block;line-height:1.05}
 .sb-fl-date{font-family:'Barlow Condensed',sans-serif;font-size:var(--sb-date-size);font-weight:600;text-transform:uppercase;color:var(--muted,#6b7280);letter-spacing:.03em;display:block;margin-top:3px;line-height:1.05}
-.sb-fl-match-col{flex:1;min-width:0}
+.sb-fl-match-col{min-width:0}
 .sb-fl-venue{font-size:.65em;color:var(--muted,#6b7280);margin-bottom:3px}
 .sb-fl-teams-box{display:flex;flex-direction:column;gap:4px}
 .sb-fl-team-line{display:flex;align-items:center;gap:8px}
