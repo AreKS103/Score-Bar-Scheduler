@@ -287,35 +287,30 @@ function buildFeaturedMatchRow(event: MatchEvent, opts: ScheduleLayoutOpts): str
   const venue = venueText(event);
   const rowFilter = filterDataAttrs(event);
   const { label: leagueLabel } = getLeagueMeta(event.sportId, event);
+  const tagsCol = buildMatchTagsColumn(event);
 
-  let matchContent: string;
-
+  let teamsRow: string;
   if (display.isHeadToHead) {
-    matchContent = `
-      ${venue ? `<div class="sb-fl-venue">${esc(venue)}</div>` : ''}
+    teamsRow = `
       <div class="sb-fl-teams-box">
         <div class="sb-fl-team-line">${teamLogoHtml(event.homeLogo, hideLogos)}<span class="sb-fl-team-name">${esc(display.primary)}</span></div>
         <div class="sb-fl-team-line">${teamLogoHtml(event.awayLogo, hideLogos)}<span class="sb-fl-team-name">${esc(display.secondary)}</span></div>
-      </div>`;
+      </div>${tagsCol}`;
   } else {
-    matchContent = `
-      ${venue ? `<div class="sb-fl-venue">${esc(venue)}</div>` : ''}
+    teamsRow = `
       <div class="sb-fl-single-line">
         <span class="sb-fl-event-title">${esc(display.title)}</span>
-      </div>`;
+      </div>${tagsCol}`;
   }
 
-  const tagsCol = buildMatchTagsColumn(event);
-
   return `
-  <div class="sb-fl-row" ${rowFilter} data-preview-match="1" data-preview-match-id="${esc(event.id)}" data-preview-sport-id="${esc(event.sportId)}" data-preview-league-label="${esc(leagueLabel)}">
+  <div class="sb-fl-row${venue ? '' : ' sb-fl-row-no-venue'}" ${rowFilter} data-preview-match="1" data-preview-match-id="${esc(event.id)}" data-preview-sport-id="${esc(event.sportId)}" data-preview-league-label="${esc(leagueLabel)}">
     <div class="sb-fl-time-col">
       ${showTime ? `<span class="sb-fl-time">${esc(event.time)}</span>` : ''}
       <span class="sb-fl-date">${esc(formatShortDate(event.date))}</span>
     </div>
-    <div class="sb-fl-body">
-      <div class="sb-fl-match-col">${matchContent}</div>${tagsCol}
-    </div>
+    ${venue ? `<div class="sb-fl-venue">${esc(venue)}</div>` : ''}
+    <div class="sb-fl-teams-row">${teamsRow}</div>
   </div>`;
 }
 
@@ -515,19 +510,19 @@ export const SCHEDULE_LAYOUT_CSS = `
 .sb-meta-screen{background:#fff;color:var(--heading,#111827);border:1px solid var(--border,#d1d5db);font-weight:700;text-transform:uppercase;font-size:.58em;letter-spacing:.05em}
 .sb-meta-live{background:#dc2626;color:#fff;border:1px solid #dc2626;font-weight:700;text-transform:uppercase;font-size:.58em;letter-spacing:.05em}
 .sb-meta-label{background:#fff;color:var(--muted,#6b7280);border:1px solid var(--border,#e5e7eb)}
-.sb-fl-row{display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--border,#e5e7eb)}
+.sb-fl-row{display:grid;grid-template-columns:minmax(54px,auto) 1fr;column-gap:12px;row-gap:3px;padding:10px 12px;border-bottom:1px solid var(--border,#e5e7eb);align-items:center}
 .sb-fl-row:last-child{border-bottom:none}
-.sb-fl-time-col{flex-shrink:0;min-width:54px;align-self:center}
-.sb-fl-body{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
+.sb-fl-time-col{grid-column:1;grid-row:2;align-self:center}
+.sb-fl-venue{grid-column:2;grid-row:1;font-size:.65em;color:var(--muted,#6b7280);align-self:end}
+.sb-fl-teams-row{grid-column:2;grid-row:2;display:flex;align-items:center;gap:14px;min-width:0}
+.sb-fl-row-no-venue .sb-fl-time-col,.sb-fl-row-no-venue .sb-fl-teams-row{grid-row:1}
 .sb-fl-tags-col{display:flex;align-items:center;flex-wrap:wrap;gap:6px;flex-shrink:0}
 .sb-fl-time{font-family:'Barlow Condensed',sans-serif;font-size:var(--sb-time-size);font-weight:700;color:var(--heading,#111827);display:block;line-height:1.05}
 .sb-fl-date{font-family:'Barlow Condensed',sans-serif;font-size:var(--sb-date-size);font-weight:600;text-transform:uppercase;color:var(--muted,#6b7280);letter-spacing:.03em;display:block;margin-top:3px;line-height:1.05}
-.sb-fl-match-col{min-width:0}
-.sb-fl-venue{font-size:.65em;color:var(--muted,#6b7280);margin-bottom:3px}
-.sb-fl-teams-box{display:flex;flex-direction:column;gap:4px}
+.sb-fl-teams-box{display:flex;flex-direction:column;gap:4px;flex:0 0 auto}
 .sb-fl-team-line{display:flex;align-items:center;gap:8px}
 .sb-fl-team-name{font-weight:600;font-size:.86em;color:var(--heading,#111827);overflow-wrap:anywhere}
-.sb-fl-single-line{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.sb-fl-single-line{display:flex;align-items:center;flex-wrap:wrap;gap:6px;flex:0 0 auto}
 .sb-fl-event-title{font-weight:600;font-size:.86em;color:var(--heading,#111827);overflow-wrap:anywhere}
 .sb-logo-img{object-fit:contain;flex-shrink:0;display:block}
 .sb-logo-league{height:28px;width:auto;max-width:80px}
