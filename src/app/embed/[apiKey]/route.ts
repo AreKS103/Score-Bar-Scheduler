@@ -549,6 +549,7 @@ export async function GET(
       hideLogos:     opts.hideLogos,
       showSportTabs: opts.showSportTabs,
       catLabels:     opts.catLabels,
+      embedTarget:   scheduleTarget,
     },
   );
 

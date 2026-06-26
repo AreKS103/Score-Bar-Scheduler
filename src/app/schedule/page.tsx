@@ -646,7 +646,7 @@ export default function SchedulePage() {
             events: evts,
             leagueOrder: lo,
             featuredLeagues: fl,
-            html: generateHTML(evts, lo, fl),
+            html: generateHTML(evts, lo, fl, publishTarget),
             label: schedule.week_label || publishTarget,
           });
           // ── Sync the editor (left panel) to match the published state ──────────────
@@ -2189,9 +2189,9 @@ export default function SchedulePage() {
   // ─── HTML generation — recomputes whenever leagueOrder, events, or sortVersion changes ─
   const html = useMemo(
     () => (selectedCount > 0 || featuredMatches.length > 0 || featuredLeagues.size > 0)
-      ? generateHTML(events, leagueOrder, featuredLeagues)
+      ? generateHTML(events, leagueOrder, featuredLeagues, effectiveTarget)
       : '',
-    [events, leagueOrder, selectedCount, featuredMatches.length, featuredLeagues]
+    [events, leagueOrder, selectedCount, featuredMatches.length, featuredLeagues, effectiveTarget]
   );
 
   // Scroll HTML preview back to top whenever the league order changes so the reorder is visible
@@ -2201,7 +2201,10 @@ export default function SchedulePage() {
   // Keep a ref for publish/copy so it always has the latest
   const htmlRef = useRef('');
   useEffect(() => { if (html) htmlRef.current = html; }, [html]);
-  const getHTML = useCallback(() => htmlRef.current || generateHTML(events, undefined, featuredLeagues), [events, featuredLeagues]);
+  const getHTML = useCallback(
+    () => htmlRef.current || generateHTML(events, undefined, featuredLeagues, effectiveTarget),
+    [events, featuredLeagues, effectiveTarget],
+  );
 
   const handleCopyHTML = useCallback(async () => {
     const content = getHTML();

@@ -9,6 +9,11 @@ import {
   FOOTBALL_LEAGUE_ORDER,
   SPORTS_CONFIG,
 } from '@/lib/config';
+import {
+  groupWorldCupEventsByStage,
+  sortWorldCupStageKeys,
+  WORLD_CUP_SPORT_ID,
+} from '@/lib/worldCup';
 import { LOGO_PLACEHOLDER_REMOTE, resolvePublishLogoUrl } from '@/lib/logo';
 import { getActiveTimezone } from '@/lib/timezoneStore';
 import { eventHasHeadToHead, getEventDisplay } from '@/lib/eventDisplay';
@@ -20,6 +25,8 @@ export interface ScheduleLayoutOpts {
   showTime?: boolean;
   hideLogos?: boolean;
   timezoneLabel?: string;
+  /** Split World Cup matches into separate league-group cards per tournament stage. */
+  groupWorldCupByStage?: boolean;
 }
 
 export interface ScheduleLayoutResult {
@@ -252,6 +259,22 @@ function sortLeagueEvents(leagueKey: string, events: MatchEvent[]): MatchEvent[]
   return result;
 }
 
+function expandLeagueGroups(
+  leagueKey: string,
+  events: MatchEvent[],
+  opts: ScheduleLayoutOpts,
+  buildGroup: (key: string, groupEvents: MatchEvent[]) => string,
+): string[] {
+  if (opts.groupWorldCupByStage && leagueKey === WORLD_CUP_SPORT_ID) {
+    const byStage = groupWorldCupEventsByStage(events);
+    return sortWorldCupStageKeys(byStage.keys())
+      .map((stageKey) => byStage.get(stageKey))
+      .filter((stageEvents): stageEvents is MatchEvent[] => Boolean(stageEvents?.length))
+      .map((stageEvents) => buildGroup(leagueKey, stageEvents));
+  }
+  return [buildGroup(leagueKey, events)];
+}
+
 function buildOrderedLeagues(
   byLeague: Map<string, MatchEvent[]>,
   selected: MatchEvent[],
@@ -348,13 +371,18 @@ function buildFeaturedSection(
   const byLeague = groupByLeagueFlat(featuredEvents);
   const ordered = buildOrderedLeagues(byLeague, featuredEvents, leagueOrder);
 
-  const groups = ordered.map((key) => {
+  const groups = ordered.flatMap((key) => {
     const labelOverride = featuredLeagues.get(key);
-    return buildFeaturedLeagueGroup(
+    return expandLeagueGroups(
       key,
       byLeague.get(key)!,
       opts,
-      labelOverride?.trim() || undefined,
+      (leagueKey, groupEvents) => buildFeaturedLeagueGroup(
+        leagueKey,
+        groupEvents,
+        opts,
+        labelOverride?.trim() || undefined,
+      ),
     );
   });
 
@@ -430,7 +458,12 @@ function buildFullScheduleSection(
   const allDates = selected.map((e) => e.date);
   const dateRange = formatDateRange(allDates);
 
-  const groups = ordered.map((key) => buildLeagueGroup(key, byLeague.get(key)!, opts));
+  const groups = ordered.flatMap((key) => expandLeagueGroups(
+    key,
+    byLeague.get(key)!,
+    opts,
+    (leagueKey, groupEvents) => buildLeagueGroup(leagueKey, groupEvents, opts),
+  ));
 
   return `
 <section class="sb-full-section">

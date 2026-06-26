@@ -6,6 +6,7 @@
  */
 
 import type { MatchEvent } from '@/types';
+import { isWorldCupStageGroupEmbed } from '@/lib/worldCup';
 import { renderScheduleLayout, type ScheduleLayoutOpts } from '@/lib/scheduleLayout';
 
 export interface EmbedRenderOpts {
@@ -15,6 +16,7 @@ export interface EmbedRenderOpts {
   hideLogos: boolean;
   showSportTabs: boolean;
   catLabels?: Record<string, string>;
+  embedTarget?: string;
 }
 
 export interface EmbedRenderResult {
@@ -31,6 +33,7 @@ export function renderEmbedContent(
   const layoutOpts: ScheduleLayoutOpts = {
     showTime: opts.showTime,
     hideLogos: opts.hideLogos,
+    groupWorldCupByStage: isWorldCupStageGroupEmbed(opts.embedTarget),
   };
 
   return renderScheduleLayout(events, leagueOrder, featuredLeagues, layoutOpts);

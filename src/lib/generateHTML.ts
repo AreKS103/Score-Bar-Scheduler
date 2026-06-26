@@ -4,6 +4,7 @@ import {
   type ScheduleLayoutOpts,
 } from '@/lib/scheduleLayout';
 import { getSchedulePreviewCss, stripScheduleStyleTags } from '@/lib/scheduleEmbedStyles';
+import { isWorldCupStageGroupEmbed } from '@/lib/worldCup';
 
 /**
  * Main HTML generation function.
@@ -13,10 +14,12 @@ export function generateScheduleContent(
   events: MatchEvent[],
   leagueOrder?: string[],
   featuredLeagues?: Map<string, string>,
+  embedTarget?: string,
 ): string {
   const layoutOpts: ScheduleLayoutOpts = {
     showTime: true,
     hideLogos: false,
+    groupWorldCupByStage: isWorldCupStageGroupEmbed(embedTarget),
   };
 
   const { html } = renderScheduleLayout(
@@ -33,8 +36,9 @@ export function generateHTML(
   events: MatchEvent[],
   leagueOrder?: string[],
   featuredLeagues?: Map<string, string>,
+  embedTarget?: string,
 ): string {
-  const content = generateScheduleContent(events, leagueOrder, featuredLeagues);
+  const content = generateScheduleContent(events, leagueOrder, featuredLeagues, embedTarget);
   return `<style>${getSchedulePreviewCss()}</style>\n${content}`;
 }
 

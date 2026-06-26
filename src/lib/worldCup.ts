@@ -200,6 +200,26 @@ function formatUtcDateInTimeZone(utcISO: string, timeZone: string): { date: stri
   };
 }
 
+/** Canonical knockout / group stage order for World Cup embed section headers. */
+export const WORLD_CUP_STAGE_ORDER = [
+  'group-stage',
+  'round-of-32',
+  'round-of-16',
+  'quarterfinals',
+  'semifinals',
+  '3rd-place-match',
+  'final',
+] as const;
+
+export type WorldCupStageSlug = (typeof WORLD_CUP_STAGE_ORDER)[number];
+
+/** Embed targets that render World Cup matches split by tournament stage. */
+export const WORLD_CUP_STAGE_GROUP_EMBED_TARGETS = [
+  'World Cup',
+  'WC26',
+  '2026 FIFA World Cup',
+] as const;
+
 export function formatWorldCupStage(slug?: string): string {
   switch (slug) {
     case 'group-stage': return 'Group Stage';
@@ -211,6 +231,50 @@ export function formatWorldCupStage(slug?: string): string {
     case 'final': return 'Final';
     default: return slug ? slug.split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ') : 'Group Stage';
   }
+}
+
+function roundLabelToStageSlug(round: string): string {
+  const normalized = round.trim().toLowerCase();
+  if (!normalized || normalized.includes('group')) return 'group-stage';
+  if (normalized.includes('round of 32') || normalized === 'r32') return 'round-of-32';
+  if (normalized.includes('round of 16') || normalized === 'r16') return 'round-of-16';
+  if (normalized.includes('quarter')) return 'quarterfinals';
+  if (normalized.includes('semi')) return 'semifinals';
+  if (normalized.includes('third')) return '3rd-place-match';
+  if (normalized === 'final' || normalized.includes('final')) return 'final';
+  return normalized.replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'group-stage';
+}
+
+export function getWorldCupStageKey(event: MatchEvent): string {
+  if (event.stageSlug) return event.stageSlug;
+  if (event.round) return roundLabelToStageSlug(event.round);
+  return 'group-stage';
+}
+
+export function sortWorldCupStageKeys(stages: Iterable<string>): string[] {
+  const set = new Set(stages);
+  const ordered = WORLD_CUP_STAGE_ORDER.filter((slug) => set.has(slug));
+  const unknown = [...set]
+    .filter((slug) => !WORLD_CUP_STAGE_ORDER.includes(slug as WorldCupStageSlug))
+    .sort();
+  return [...ordered, ...unknown];
+}
+
+export function groupWorldCupEventsByStage(events: MatchEvent[]): Map<string, MatchEvent[]> {
+  const grouped = new Map<string, MatchEvent[]>();
+  for (const event of events) {
+    const key = getWorldCupStageKey(event);
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(event);
+  }
+  return grouped;
+}
+
+export function isWorldCupStageGroupEmbed(embedTarget: string | null | undefined): boolean {
+  const key = (embedTarget ?? '').trim().toLowerCase();
+  if (!key) return false;
+  if (key.replace(/\s+/g, '') === 'worldcup') return true;
+  return WORLD_CUP_STAGE_GROUP_EMBED_TARGETS.some((target) => target.toLowerCase() === key);
 }
 
 function getCompetitorName(competitor: ESPNCompetitor | undefined): string {
