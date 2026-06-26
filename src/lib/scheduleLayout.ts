@@ -14,6 +14,11 @@ import {
   sortWorldCupStageKeys,
   WORLD_CUP_SPORT_ID,
 } from '@/lib/worldCup';
+import {
+  getEventFilterKey,
+  getActiveScheduleCategories,
+  getScheduleFilterPills,
+} from '@/lib/scheduleFilter';
 import { LOGO_PLACEHOLDER_REMOTE, resolvePublishLogoUrl } from '@/lib/logo';
 import { getActiveTimezone } from '@/lib/timezoneStore';
 import { eventHasHeadToHead, getEventDisplay } from '@/lib/eventDisplay';
@@ -31,18 +36,17 @@ export interface ScheduleLayoutOpts {
 
 export interface ScheduleLayoutResult {
   html: string;
-  /** Legacy — embed route builds its own fixed filter tabs */
+  /** Categories present in the schedule (for embed filter tabs). */
   categories: string[];
 }
 
-export const FILTER_PILLS = [
-  { key: 'all', label: 'All' },
-  { key: 'football', label: 'Football' },
-  { key: 'afl', label: 'AFL' },
-  { key: 'nrl', label: 'NRL' },
-  { key: 'motogp', label: 'MotoGP' },
-  { key: 'f1', label: 'F1' },
-] as const;
+// Re-export filter helpers used by embed route and tests.
+export {
+  categoryToFilterKey,
+  getEventFilterKey,
+  getActiveScheduleCategories,
+  getScheduleFilterPills,
+} from '@/lib/scheduleFilter';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -91,32 +95,9 @@ export function getTimezoneLabel(): string {
 
 function filterDataAttrs(event: MatchEvent): string {
   const attrs: string[] = ['data-filter-item="1"'];
-  for (const key of getEventFilterKeys(event)) {
-    attrs.push(`data-filter-${key}="1"`);
-  }
+  const key = getEventFilterKey(event);
+  if (key) attrs.push(`data-filter-${key}="1"`);
   return attrs.join(' ');
-}
-
-/** Sport filter tab keys present on a single match row. */
-export function getEventFilterKeys(event: MatchEvent): string[] {
-  const keys: string[] = [];
-  if (event.category === 'Football') keys.push('football');
-  if (event.sportId === 'afl') keys.push('afl');
-  if (event.sportId === 'nrl') keys.push('nrl');
-  if (event.sportId === 'motogp') keys.push('motogp');
-  if (event.sportId === 'f1') keys.push('f1');
-  return keys;
-}
-
-/** Distinct sport filter keys across the published schedule, in pill order. */
-export function getActiveScheduleFilterKeys(events: MatchEvent[]): string[] {
-  const keys = new Set<string>();
-  for (const event of events) {
-    for (const key of getEventFilterKeys(event)) keys.add(key);
-  }
-  return FILTER_PILLS
-    .filter((pill) => pill.key !== 'all' && keys.has(pill.key))
-    .map((pill) => pill.key);
 }
 
 function getLeagueMeta(leagueKey: string, firstEvent?: MatchEvent) {
@@ -528,14 +509,7 @@ export function renderScheduleLayout(
     return { html: '<p class="sb-empty">No matches selected for this week.</p>', categories: [] };
   }
 
-  const seenCats = new Set<string>();
-  const categories: string[] = [];
-  for (const e of selected) {
-    if (e.category && e.category !== 'Custom' && !seenCats.has(e.category)) {
-      seenCats.add(e.category);
-      categories.push(e.category);
-    }
-  }
+  const categories = getActiveScheduleCategories(selected);
 
   return { html: parts.join('\n'), categories };
 }
@@ -642,18 +616,8 @@ export function buildFilterTabsHTML(
   events: MatchEvent[] = [],
   catLabels: Record<string, string> = {},
 ): string {
-  const activeKeys = getActiveScheduleFilterKeys(events);
-  if (activeKeys.length <= 1) return '';
-
-  const pills = [
-    { key: 'all', label: 'All' },
-    ...FILTER_PILLS
-      .filter((pill) => pill.key !== 'all' && activeKeys.includes(pill.key))
-      .map((pill) => ({
-        key: pill.key,
-        label: catLabels[pill.key] || pill.label,
-      })),
-  ];
+  const pills = getScheduleFilterPills(events, catLabels);
+  if (!pills.length) return '';
 
   return `<div id="sport-tabs" role="tablist">
   ${pills.map((pill, i) =>
