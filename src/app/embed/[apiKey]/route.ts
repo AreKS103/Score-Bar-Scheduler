@@ -123,6 +123,7 @@ function buildEmbedPage(
   opts: EmbedOpts,
   serial: string,
   publishedAt: string,
+  events: MatchEvent[],
 ): string {
   const isDark = opts.theme === 'dark';
   const isAuto = opts.theme === 'auto';
@@ -162,7 +163,7 @@ function buildEmbedPage(
   const paddingVal = Math.max(0, Math.min(80, parseInt(opts.padding) || 12));
   const bodyPad = `${paddingVal}px`;
 
-  const tabsHTML = buildFilterTabsHTML();
+  const tabsHTML = opts.showSportTabs ? buildFilterTabsHTML(events, opts.catLabels) : '';
 
   const bgOverride   = opts.bgColor || '';
   const textOverride = opts.textColor || '';
@@ -554,19 +555,20 @@ export async function GET(
   );
 
   if (isPoll) {
+    const tabsHtml = opts.showSportTabs ? buildFilterTabsHTML(events, opts.catLabels) : '';
     return Response.json(
       {
         serial: scheduleSerial,
         html: scheduleContent,
-        tabsHtml: buildFilterTabsHTML(),
-        hasTabs: true,
+        tabsHtml,
+        hasTabs: Boolean(tabsHtml),
         empty: false,
       },
       { headers: { 'Cache-Control': 'no-store' } },
     );
   }
 
-  return new Response(buildEmbedPage(scheduleContent, categories, opts, scheduleSerial, scheduleAt), {
+  return new Response(buildEmbedPage(scheduleContent, categories, opts, scheduleSerial, scheduleAt, events), {
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',

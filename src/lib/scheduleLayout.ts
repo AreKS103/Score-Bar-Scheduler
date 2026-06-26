@@ -91,12 +91,32 @@ export function getTimezoneLabel(): string {
 
 function filterDataAttrs(event: MatchEvent): string {
   const attrs: string[] = ['data-filter-item="1"'];
-  if (event.category === 'Football') attrs.push('data-filter-football="1"');
-  if (event.sportId === 'afl') attrs.push('data-filter-afl="1"');
-  if (event.sportId === 'nrl') attrs.push('data-filter-nrl="1"');
-  if (event.sportId === 'motogp') attrs.push('data-filter-motogp="1"');
-  if (event.sportId === 'f1') attrs.push('data-filter-f1="1"');
+  for (const key of getEventFilterKeys(event)) {
+    attrs.push(`data-filter-${key}="1"`);
+  }
   return attrs.join(' ');
+}
+
+/** Sport filter tab keys present on a single match row. */
+export function getEventFilterKeys(event: MatchEvent): string[] {
+  const keys: string[] = [];
+  if (event.category === 'Football') keys.push('football');
+  if (event.sportId === 'afl') keys.push('afl');
+  if (event.sportId === 'nrl') keys.push('nrl');
+  if (event.sportId === 'motogp') keys.push('motogp');
+  if (event.sportId === 'f1') keys.push('f1');
+  return keys;
+}
+
+/** Distinct sport filter keys across the published schedule, in pill order. */
+export function getActiveScheduleFilterKeys(events: MatchEvent[]): string[] {
+  const keys = new Set<string>();
+  for (const event of events) {
+    for (const key of getEventFilterKeys(event)) keys.add(key);
+  }
+  return FILTER_PILLS
+    .filter((pill) => pill.key !== 'all' && keys.has(pill.key))
+    .map((pill) => pill.key);
 }
 
 function getLeagueMeta(leagueKey: string, firstEvent?: MatchEvent) {
@@ -618,10 +638,26 @@ export const SCHEDULE_FILTER_TAB_JS = `
 })();
 `;
 
-export function buildFilterTabsHTML(): string {
+export function buildFilterTabsHTML(
+  events: MatchEvent[] = [],
+  catLabels: Record<string, string> = {},
+): string {
+  const activeKeys = getActiveScheduleFilterKeys(events);
+  if (activeKeys.length <= 1) return '';
+
+  const pills = [
+    { key: 'all', label: 'All' },
+    ...FILTER_PILLS
+      .filter((pill) => pill.key !== 'all' && activeKeys.includes(pill.key))
+      .map((pill) => ({
+        key: pill.key,
+        label: catLabels[pill.key] || pill.label,
+      })),
+  ];
+
   return `<div id="sport-tabs" role="tablist">
-  ${FILTER_PILLS.map((p, i) =>
-    `<button class="tab${i === 0 ? ' active' : ''}" data-filter="${p.key}" role="tab"${i === 0 ? ' aria-selected="true"' : ''}>${p.label}</button>`,
+  ${pills.map((pill, i) =>
+    `<button class="tab${i === 0 ? ' active' : ''}" data-filter="${pill.key}" role="tab"${i === 0 ? ' aria-selected="true"' : ''}>${esc(pill.label)}</button>`,
   ).join('\n  ')}
 </div>`;
 }

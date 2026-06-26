@@ -1,4 +1,4 @@
-import { renderScheduleLayout } from '../src/lib/scheduleLayout';
+import { renderScheduleLayout, buildFilterTabsHTML, getActiveScheduleFilterKeys } from '../src/lib/scheduleLayout';
 import { WORLD_CUP_SPORT_ID } from '../src/lib/worldCup';
 import type { MatchEvent } from '../src/types';
 
@@ -57,3 +57,28 @@ if (!grouped.html.includes('Round of 32')) throw new Error('Missing Round of 32 
 if (!grouped.html.includes('Final')) throw new Error('Missing Final header');
 
 console.log(`layout-ok grouped=${groupedCount} flat=${flatCount}`);
+
+const wcOnly = events.filter((e) => e.sportId === WORLD_CUP_SPORT_ID);
+if (buildFilterTabsHTML(wcOnly) !== '') throw new Error('World Cup-only schedule should hide filter tabs');
+if (getActiveScheduleFilterKeys(wcOnly).length !== 1) {
+  throw new Error('World Cup-only schedule should have one active filter key');
+}
+
+const footballOnly = [...wcOnly, epl];
+if (buildFilterTabsHTML(footballOnly) !== '') {
+  throw new Error('Single-sport football schedule should hide filter tabs');
+}
+
+const multiSport = [
+  ...wcOnly,
+  { ...epl, id: 'afl-1', sportId: 'afl', category: 'Australian Football', leagueLabel: 'AFL' },
+];
+const multiTabs = buildFilterTabsHTML(multiSport);
+if (!multiTabs.includes('Football') || !multiTabs.includes('AFL')) {
+  throw new Error('Expected Football and AFL tabs for multi-sport schedule');
+}
+if (multiTabs.includes('F1') || multiTabs.includes('MotoGP') || multiTabs.includes('NRL')) {
+  throw new Error('Filter tabs should not include sports absent from schedule');
+}
+
+console.log('filter-tabs-ok');
