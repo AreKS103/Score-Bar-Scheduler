@@ -16,10 +16,12 @@ export function generateScheduleContent(
   featuredLeagues?: Map<string, string>,
   embedTarget?: string,
 ): string {
+  const isWcEmbed = isWorldCupStageGroupEmbed(embedTarget);
   const layoutOpts: ScheduleLayoutOpts = {
     showTime: true,
     hideLogos: false,
-    groupWorldCupByStage: isWorldCupStageGroupEmbed(embedTarget),
+    groupWorldCupByStage: isWcEmbed,
+    showDateMonth: isWcEmbed,
   };
 
   const { html } = renderScheduleLayout(

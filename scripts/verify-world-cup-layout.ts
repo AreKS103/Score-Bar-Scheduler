@@ -39,7 +39,10 @@ const events = [
   base({ id: 'epl-1' }),
 ];
 
-const grouped = renderScheduleLayout(events, undefined, new Map(), { groupWorldCupByStage: true });
+const grouped = renderScheduleLayout(events, undefined, new Map(), {
+  groupWorldCupByStage: true,
+  showDateMonth: true,
+});
 const flat = renderScheduleLayout(events, undefined, new Map(), { groupWorldCupByStage: false });
 
 const groupedCount = (grouped.html.match(/class="sb-league-group"/g) ?? []).length;
@@ -47,6 +50,8 @@ const flatCount = (flat.html.match(/class="sb-league-group"/g) ?? []).length;
 
 if (groupedCount !== 4) throw new Error(`Expected 4 grouped league cards, got ${groupedCount}`);
 if (flatCount !== 2) throw new Error(`Expected 2 flat league cards, got ${flatCount}`);
+if (!grouped.html.includes('JUNE')) throw new Error('World Cup embed dates should include month name');
+if (flat.html.includes('JUNE')) throw new Error('Non-World Cup layout should not append month to dates');
 
 console.log(`layout-ok grouped=${groupedCount} flat=${flatCount}`);
 

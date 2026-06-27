@@ -32,6 +32,8 @@ export interface ScheduleLayoutOpts {
   timezoneLabel?: string;
   /** Split World Cup matches into separate league-group cards per tournament stage. */
   groupWorldCupByStage?: boolean;
+  /** Append month name to date labels (World Cup embed only). */
+  showDateMonth?: boolean;
 }
 
 export interface ScheduleLayoutResult {
@@ -68,8 +70,13 @@ function footSort(sportId: string): number {
   return idx === -1 ? 999 : idx;
 }
 
-function formatShortDate(dateStr: string): string {
-  return format(parseISO(dateStr), 'EEE d').toUpperCase();
+function formatShortDate(dateStr: string, includeMonth = false): string {
+  const pattern = includeMonth ? 'EEE d MMMM' : 'EEE d';
+  return format(parseISO(dateStr), pattern).toUpperCase();
+}
+
+function formatRowDate(dateStr: string, opts: ScheduleLayoutOpts): string {
+  return formatShortDate(dateStr, Boolean(opts.showDateMonth));
 }
 
 function formatDateRange(dates: string[]): string {
@@ -331,7 +338,7 @@ function buildFeaturedMatchRow(event: MatchEvent, opts: ScheduleLayoutOpts): str
   <div class="sb-fl-row${venue ? '' : ' sb-fl-row-no-venue'}" ${rowFilter} data-preview-match="1" data-preview-match-id="${esc(event.id)}" data-preview-sport-id="${esc(event.sportId)}" data-preview-league-label="${esc(leagueLabel)}">
     <div class="sb-fl-time-col">
       ${showTime ? `<span class="sb-fl-time">${esc(event.time)}</span>` : ''}
-      <span class="sb-fl-date">${esc(formatShortDate(event.date))}</span>
+      <span class="sb-fl-date">${esc(formatRowDate(event.date, opts))}</span>
     </div>
     ${venue ? `<div class="sb-fl-venue">${esc(venue)}</div>` : ''}
     <div class="sb-fl-teams-row">${teamsRow}</div>
@@ -433,10 +440,8 @@ function buildLeagueGroup(
     return `
   <div class="sb-lg-row${isLast ? ' sb-lg-row-last' : ''}${indent}" ${rowFilter} data-preview-match="1" data-preview-match-id="${esc(event.id)}" data-preview-sport-id="${esc(leagueKey)}" data-preview-league-label="${esc(leagueLabel)}">
     <div class="sb-lg-line">
-      <span class="sb-lg-datetime">
       ${showTime ? `<span class="sb-lg-time">${esc(event.time)}</span>` : ''}
-      <span class="sb-lg-date">${esc(formatShortDate(event.date))}</span>
-      </span>
+      <span class="sb-lg-date">${esc(formatRowDate(event.date, opts))}</span>
       <span class="sb-lg-matchup">${matchup}</span>${buildMatchTagsInline(event)}
     </div>
   </div>`;
@@ -560,8 +565,7 @@ export const SCHEDULE_LAYOUT_CSS = `
 .sb-league-groups{display:flex;flex-direction:column;gap:10px}
 .sb-league-group{border:1px solid var(--border,#e5e7eb);border-radius:8px;overflow:hidden;background:#fff}
 .sb-lg-row{display:flex;align-items:flex-start;padding:10px 12px;border-bottom:1px solid var(--border,#e5e7eb)}
-.sb-lg-line{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;width:100%;min-width:0}
-.sb-lg-datetime{display:inline-flex;align-items:baseline;gap:var(--sb-time-date-gap,12px);margin-right:var(--sb-match-datetime-gap,16px);flex-shrink:0}
+.sb-lg-line{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--sb-line-gap,16px);width:100%;min-width:0}
 .sb-lg-row-last{border-bottom:none}
 .sb-lg-row-indent{padding-left:28px}
 .sb-lg-time,.sb-lg-date{font-family:'Barlow Condensed',sans-serif;display:inline;line-height:1.3}
@@ -583,7 +587,7 @@ export const SCHEDULE_LAYOUT_CSS = `
 .sb-league-title-wrap{width:100%}
 .sb-fl-row,.sb-lg-row{padding:8px 10px}
 .sb-fl-time-col{min-width:46px}
-.sb-lg-line{gap:5px}
+.sb-lg-line{gap:var(--sb-line-gap,16px)}
 .sb-meta-tag{padding:2px 7px}
 .sb-lg-row-indent{padding-left:18px}
 }

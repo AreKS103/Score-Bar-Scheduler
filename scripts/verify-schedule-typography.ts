@@ -29,7 +29,7 @@ assert.match(buildTypographyCssVars(sizes), /--sb-section-heading-size:24px/);
 assert.match(buildTypographyCssVars(sizes), /--sb-venue-size:13px/);
 assert.match(buildTypographyCssVars(sizes), /--sb-time-weight:500/);
 assert.match(buildTypographyCssVars(sizes), /--sb-date-weight:800/);
-assert.match(buildTypographyCssVars(sizes), /--sb-time-date-gap:12px/);
+assert.match(buildTypographyCssVars(sizes), /--sb-line-gap:16px/);
 
 const event: MatchEvent = {
   id: '1',
@@ -51,7 +51,7 @@ const event: MatchEvent = {
 
 const { html } = renderScheduleLayout([event], undefined, new Map(), { showTime: true });
 assert.ok(html.includes('sb-fl-venue'), 'featured venue markup expected');
-assert.ok(html.includes('sb-lg-datetime'), 'datetime wrapper expected for spacing');
+assert.ok(!html.includes('sb-lg-datetime'), 'datetime wrapper should not be used');
 assert.ok(html.includes('sb-section-title') || html.includes('sb-fl-team-name') || html.includes('sb-lg-matchup'), 'schedule content expected');
 
 console.log('schedule-typography-ok');

@@ -107,8 +107,7 @@ export function buildTypographyCssVars(sizes: ScheduleTypographySizes): string {
     `--sb-logo-height:${sizes.logoHeight}`,
     `--sb-time-weight:${sizes.timeWeight}`,
     `--sb-date-weight:${sizes.dateWeight}`,
-    '--sb-time-date-gap:12px',
-    '--sb-match-datetime-gap:16px',
+    '--sb-line-gap:16px',
   ].join(';');
 }
 

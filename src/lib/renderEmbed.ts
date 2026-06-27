@@ -30,10 +30,12 @@ export function renderEmbedContent(
   featuredLeagues: Map<string, string>,
   opts: EmbedRenderOpts,
 ): EmbedRenderResult {
+  const isWcEmbed = isWorldCupStageGroupEmbed(opts.embedTarget);
   const layoutOpts: ScheduleLayoutOpts = {
     showTime: opts.showTime,
     hideLogos: opts.hideLogos,
-    groupWorldCupByStage: isWorldCupStageGroupEmbed(opts.embedTarget),
+    groupWorldCupByStage: isWcEmbed,
+    showDateMonth: isWcEmbed,
   };
 
   return renderScheduleLayout(events, leagueOrder, featuredLeagues, layoutOpts);
