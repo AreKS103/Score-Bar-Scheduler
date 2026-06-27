@@ -54,9 +54,13 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
         $this->add_control('font',        ['label' => 'Font Style',       'type' => \Elementor\Controls_Manager::SELECT,  'default' => 'system', 'options' => ['system' => 'System', 'serif' => 'Serif', 'mono' => 'Monospace']]);
         $this->add_control('match_font_size', ['label' => 'Match Line Size (px)', 'type' => \Elementor\Controls_Manager::NUMBER, 'default' => 14, 'min' => 6, 'max' => 120, 'step' => 1, 'render_type' => 'template', 'description' => 'Kick-off time and team/match names (linked together)']);
         $this->add_control('time_font_size',  ['label' => 'Time Size (px)',   'type' => \Elementor\Controls_Manager::NUMBER, 'default' => 11, 'min' => 6, 'max' => 120, 'step' => 1, 'render_type' => 'template', 'description' => 'Used when match line size is empty; otherwise follows match line size']);
+        $weight_options = ['' => 'Default', '300' => 'Light (300)', '400' => 'Normal (400)', '500' => 'Medium (500)', '600' => 'Semi-Bold (600)', '700' => 'Bold (700)', '800' => 'Extra-Bold (800)'];
+        $this->add_control('time_font_weight', ['label' => 'Time Weight', 'type' => \Elementor\Controls_Manager::SELECT, 'default' => '700', 'options' => $weight_options, 'render_type' => 'template', 'description' => 'Font weight for kick-off time']);
         $this->add_control('date_font_size',  ['label' => 'Date Label Size (px)',  'type' => \Elementor\Controls_Manager::NUMBER, 'default' => 11, 'min' => 6, 'max' => 120, 'step' => 1, 'render_type' => 'template', 'description' => 'Day label beside each match time']);
+        $this->add_control('date_font_weight', ['label' => 'Date Weight', 'type' => \Elementor\Controls_Manager::SELECT, 'default' => '600', 'options' => $weight_options, 'render_type' => 'template', 'description' => 'Font weight for day/date label']);
         $this->add_control('header_size', ['label' => 'League Header Size (px)', 'type' => \Elementor\Controls_Manager::NUMBER, 'default' => 16, 'min' => 6, 'max' => 120, 'step' => 1, 'render_type' => 'template', 'description' => 'League name and stage suffix (e.g. Group Stage)']);
-        $this->add_control('highlight_font_size', ['label' => 'Section & Venue Size (px)', 'type' => \Elementor\Controls_Manager::NUMBER, 'default' => 18, 'min' => 6, 'max' => 120, 'step' => 1, 'render_type' => 'template', 'description' => 'Full Sports Schedule, This Week\'s Highlights, and venue lines']);
+        $this->add_control('highlight_font_size', ['label' => 'Section Title Size (px)', 'type' => \Elementor\Controls_Manager::NUMBER, 'default' => 18, 'min' => 6, 'max' => 120, 'step' => 1, 'render_type' => 'template', 'description' => 'Full Sports Schedule and This Week\'s Highlights headings']);
+        $this->add_control('venue_font_size', ['label' => 'Venue Size (px)', 'type' => \Elementor\Controls_Manager::NUMBER, 'default' => 12, 'min' => 6, 'max' => 120, 'step' => 1, 'render_type' => 'template', 'description' => 'Featured match venue line']);
         $this->add_control('logo_size',   ['label' => 'League Logo Size', 'type' => \Elementor\Controls_Manager::SELECT, 'default' => 'md', 'options' => ['sm' => 'Small', 'md' => 'Medium', 'lg' => 'Large']]);
         $this->add_control('line_height', ['label' => 'Line Spacing', 'type' => \Elementor\Controls_Manager::NUMBER, 'default' => '1.6', 'min' => 0.8, 'max' => 4, 'step' => 0.1, 'render_type' => 'template', 'description' => 'Line height multiplier (e.g. 1.6 = normal, 1.2 = tight, 2.0 = double)']);
         $this->add_control('hide_logos',  ['label' => 'Hide Logos',       'type' => \Elementor\Controls_Manager::SWITCHER,'label_on' => 'Yes', 'label_off' => 'No', 'return_value' => '1', 'default' => '']);
@@ -66,17 +70,17 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
 
         // ── Per-section styling: Normal schedule vs Highlight section ───────
         $font_options   = ['' => 'Default (inherit)', 'system' => 'System', 'serif' => 'Serif', 'mono' => 'Monospace'];
-        $weight_options = ['' => 'Default (Normal)', '300' => 'Light (300)', '400' => 'Normal (400)', '500' => 'Medium (500)', '600' => 'Semi-Bold (600)', '700' => 'Bold (700)', '800' => 'Extra-Bold (800)'];
+        $section_weight_options = ['' => 'Default (Normal)', '300' => 'Light (300)', '400' => 'Normal (400)', '500' => 'Medium (500)', '600' => 'Semi-Bold (600)', '700' => 'Bold (700)', '800' => 'Extra-Bold (800)'];
         $this->add_control('section_styles_heading', ['label' => 'Section Styles', 'type' => \Elementor\Controls_Manager::HEADING, 'separator' => 'before']);
         $this->add_control('style_target', ['label' => 'Customize Section', 'type' => \Elementor\Controls_Manager::SELECT, 'default' => 'normal', 'options' => ['normal' => 'Normal Schedule', 'highlight' => 'Highlight Section'], 'description' => 'Choose which section to style below. Settings for both sections are saved.']);
         // Normal schedule section
         $this->add_control('normal_font',        ['label' => 'Font Family',  'type' => \Elementor\Controls_Manager::SELECT, 'default' => '', 'options' => $font_options,   'condition' => ['style_target' => 'normal']]);
-        $this->add_control('normal_font_weight', ['label' => 'Font Weight',  'type' => \Elementor\Controls_Manager::SELECT, 'default' => '', 'options' => $weight_options, 'condition' => ['style_target' => 'normal']]);
+        $this->add_control('normal_font_weight', ['label' => 'Font Weight',  'type' => \Elementor\Controls_Manager::SELECT, 'default' => '', 'options' => $section_weight_options, 'condition' => ['style_target' => 'normal']]);
         $this->add_control('normal_text_color',  ['label' => 'Text Color',   'type' => \Elementor\Controls_Manager::COLOR,  'default' => '', 'description' => 'Leave empty for theme default', 'condition' => ['style_target' => 'normal']]);
         $this->add_control('normal_time_color',  ['label' => 'Time Color',   'type' => \Elementor\Controls_Manager::COLOR,  'default' => '', 'description' => 'Leave empty for default (white on dark theme)', 'condition' => ['style_target' => 'normal']]);
         // Highlight section
         $this->add_control('hl_font',        ['label' => 'Font Family',  'type' => \Elementor\Controls_Manager::SELECT, 'default' => '', 'options' => $font_options,   'condition' => ['style_target' => 'highlight']]);
-        $this->add_control('hl_font_weight', ['label' => 'Font Weight',  'type' => \Elementor\Controls_Manager::SELECT, 'default' => '', 'options' => $weight_options, 'condition' => ['style_target' => 'highlight']]);
+        $this->add_control('hl_font_weight', ['label' => 'Font Weight',  'type' => \Elementor\Controls_Manager::SELECT, 'default' => '', 'options' => $section_weight_options, 'condition' => ['style_target' => 'highlight']]);
         $this->add_control('hl_text_color',  ['label' => 'Text Color',   'type' => \Elementor\Controls_Manager::COLOR,  'default' => '', 'description' => 'Leave empty for theme default', 'condition' => ['style_target' => 'highlight']]);
         $this->add_control('hl_time_color',  ['label' => 'Time Color',   'type' => \Elementor\Controls_Manager::COLOR,  'default' => '', 'description' => 'Leave empty for default (white on dark theme)', 'condition' => ['style_target' => 'highlight']]);
         $this->end_controls_section();
@@ -115,6 +119,9 @@ class Schedule_Elementor_Widget extends \Elementor\Widget_Base {
             'logoSize'      => sanitize_text_field($settings['logo_size']       ?? 'md'),
             'headerSize'    => sanitize_text_field((string)($settings['header_size']     ?? '16')),
             'highlightFontSize' => sanitize_text_field((string)($settings['highlight_font_size'] ?? '14')),
+            'venueFontSize' => sanitize_text_field((string)($settings['venue_font_size'] ?? '12')),
+            'timeFontWeight' => sanitize_text_field((string)($settings['time_font_weight'] ?? '700')),
+            'dateFontWeight' => sanitize_text_field((string)($settings['date_font_weight'] ?? '600')),
             'lineHeight'    => sanitize_text_field($settings['line_height'] ?? '1.6'),
             'hideLogos'     => !empty($settings['hide_logos']) ? '1' : '0',
             'noCopy'        => !empty($settings['no_copy'])    ? '1' : '0',

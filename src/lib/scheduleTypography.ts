@@ -3,8 +3,9 @@
  * Grouped controls:
  *  - Match line: kick-off time + team/matchup text
  *  - League header: league name + stage suffix
- *  - Section heading: "Full Sports Schedule", "This Week's Highlights", venue
- *  - Date: standalone day label
+ *  - Section heading: "Full Sports Schedule", "This Week's Highlights"
+ *  - Venue: featured match venue line (separate size)
+ *  - Date: standalone day label with its own weight
  */
 
 export interface ScheduleTypographySizes {
@@ -12,7 +13,10 @@ export interface ScheduleTypographySizes {
   dateSize: string;
   leagueHeaderSize: string;
   sectionHeadingSize: string;
+  venueSize: string;
   logoHeight: string;
+  timeWeight: string;
+  dateWeight: string;
 }
 
 const SIZE_DEFAULTS = {
@@ -20,7 +24,13 @@ const SIZE_DEFAULTS = {
   date: '11px',
   leagueHeader: '16px',
   sectionHeading: '18px',
+  venue: '12px',
   logo: '32px',
+} as const;
+
+const WEIGHT_DEFAULTS = {
+  time: '700',
+  date: '600',
 } as const;
 
 function parseSizeToken(
@@ -36,6 +46,12 @@ function parseSizeToken(
   if (!Number.isNaN(n) && n >= 1 && n <= 500) return `${n}px`;
   if (/^\d+(\.\d+)?(px|em|rem|%)$/.test(v)) return v;
   return '';
+}
+
+export function resolveFontWeight(value: string | undefined, fallback: string): string {
+  const n = parseInt((value ?? '').trim(), 10);
+  if (!Number.isNaN(n) && n >= 100 && n <= 900) return String(n);
+  return fallback;
 }
 
 /** Match line size — time and matchup text stay linked (match control wins, then time). */
@@ -56,14 +72,24 @@ export function resolveTypographySizes(opts: {
   dateFontSize?: string;
   headerSize?: string;
   highlightFontSize?: string;
+  venueFontSize?: string;
   logoSize?: string;
+  timeFontWeight?: string;
+  dateFontWeight?: string;
 }): ScheduleTypographySizes {
+  const sectionHeadingSize = parseSizeToken(opts.highlightFontSize, { sm: '14px', md: '18px', lg: '22px' })
+    || SIZE_DEFAULTS.sectionHeading;
+
   return {
     matchLineSize: resolveMatchLineSize(opts.matchFontSize, opts.timeFontSize),
     dateSize: parseSizeToken(opts.dateFontSize, { sm: '10px', md: '11px', lg: '13px' }) || SIZE_DEFAULTS.date,
     leagueHeaderSize: parseSizeToken(opts.headerSize, { sm: '14px', md: '16px', lg: '19px' }) || SIZE_DEFAULTS.leagueHeader,
-    sectionHeadingSize: parseSizeToken(opts.highlightFontSize, { sm: '14px', md: '18px', lg: '22px' }) || SIZE_DEFAULTS.sectionHeading,
+    sectionHeadingSize,
+    venueSize: parseSizeToken(opts.venueFontSize, { sm: '10px', md: '12px', lg: '14px' })
+      || SIZE_DEFAULTS.venue,
     logoHeight: parseSizeToken(opts.logoSize, { sm: '22px', md: '32px', lg: '46px' }) || SIZE_DEFAULTS.logo,
+    timeWeight: resolveFontWeight(opts.timeFontWeight, WEIGHT_DEFAULTS.time),
+    dateWeight: resolveFontWeight(opts.dateFontWeight, WEIGHT_DEFAULTS.date),
   };
 }
 
@@ -77,7 +103,12 @@ export function buildTypographyCssVars(sizes: ScheduleTypographySizes): string {
     `--sb-h3-size:${sizes.leagueHeaderSize}`,
     `--sb-section-heading-size:${sizes.sectionHeadingSize}`,
     `--sb-hl-size:${sizes.sectionHeadingSize}`,
+    `--sb-venue-size:${sizes.venueSize}`,
     `--sb-logo-height:${sizes.logoHeight}`,
+    `--sb-time-weight:${sizes.timeWeight}`,
+    `--sb-date-weight:${sizes.dateWeight}`,
+    '--sb-time-date-gap:12px',
+    '--sb-match-datetime-gap:16px',
   ].join(';');
 }
 
@@ -88,6 +119,7 @@ export const PREVIEW_TYPOGRAPHY_CSS_VARS = buildTypographyCssVars(resolveTypogra
 export const SCHEDULE_TYPOGRAPHY_LIVE_JS = `
 (function(){
   var CSS_SIZE=/^\\d+(\\.\\d+)?(px|em|rem|%)$/;
+  var CSS_WEIGHT=/^[1-9]00$/;
   function setMatchLine(r,size){
     if(!CSS_SIZE.test(size))return;
     r.style.setProperty('--sb-match-size',size);
@@ -108,6 +140,9 @@ export const SCHEDULE_TYPOGRAPHY_LIVE_JS = `
       r.style.setProperty('--sb-section-heading-size',s.hlFontSize);
       r.style.setProperty('--sb-hl-size',s.hlFontSize);
     }
+    if(s.venueFontSize&&CSS_SIZE.test(s.venueFontSize))r.style.setProperty('--sb-venue-size',s.venueFontSize);
+    if(s.timeFontWeight&&CSS_WEIGHT.test(String(s.timeFontWeight)))r.style.setProperty('--sb-time-weight',String(s.timeFontWeight));
+    if(s.dateFontWeight&&CSS_WEIGHT.test(String(s.dateFontWeight)))r.style.setProperty('--sb-date-weight',String(s.dateFontWeight));
     if(s.logoHeight&&CSS_SIZE.test(s.logoHeight))r.style.setProperty('--sb-logo-height',s.logoHeight);
   });
 })();

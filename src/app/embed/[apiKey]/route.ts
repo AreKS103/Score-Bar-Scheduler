@@ -49,7 +49,10 @@ interface EmbedOpts {
   noInlineToggle: boolean;
   noCopy: boolean;
   highlightFontSize: string;
+  venueFontSize: string;
   timeFontSize: string;
+  timeFontWeight: string;
+  dateFontWeight: string;
   // Per-section styling — normal schedule list ("normal") and highlights ("hl").
   // Empty string = inherit existing/global styling (backward compatible).
   normalFont: string;
@@ -141,7 +144,10 @@ function buildEmbedPage(
     dateFontSize: opts.dateFontSize,
     headerSize: opts.headerSize,
     highlightFontSize: opts.highlightFontSize,
+    venueFontSize: opts.venueFontSize,
     logoSize: opts.logoSize,
+    timeFontWeight: opts.timeFontWeight,
+    dateFontWeight: opts.dateFontWeight,
   });
   const typographyVars = buildTypographyCssVars(typography);
   const FONT_STACKS: Record<string, string> = {
@@ -236,7 +242,10 @@ function buildCalendarPage(
     dateFontSize: opts.dateFontSize,
     headerSize: opts.headerSize,
     highlightFontSize: opts.highlightFontSize,
+    venueFontSize: opts.venueFontSize,
     logoSize: opts.logoSize,
+    timeFontWeight: opts.timeFontWeight,
+    dateFontWeight: opts.dateFontWeight,
   });
   const typographyVars = buildTypographyCssVars(typography);
 
@@ -481,7 +490,10 @@ export async function GET(
     noInlineToggle: sp.noInlineToggle === '1',
     noCopy:         sp.noCopy === '1',
     highlightFontSize: (() => { const n = parseInt(sp.highlightFontSize ?? ''); return (!isNaN(n) && n >= 1 && n <= 500) ? sp.highlightFontSize : '18'; })(),
+    venueFontSize: (() => { const n = parseInt(sp.venueFontSize ?? ''); return (!isNaN(n) && n >= 1 && n <= 500) ? sp.venueFontSize : ''; })(),
     timeFontSize: (() => { const n = parseInt(sp.timeFontSize ?? ''); return (!isNaN(n) && n >= 1 && n <= 500) ? sp.timeFontSize : '11'; })(),
+    timeFontWeight: weightVal(sp.timeFontWeight),
+    dateFontWeight: weightVal(sp.dateFontWeight),
     normalFont:      fontVal(sp.normalFont),
     normalWeight:    weightVal(sp.normalWeight),
     normalTextColor: colorVal(sp.normalTextColor),
