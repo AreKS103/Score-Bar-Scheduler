@@ -7,6 +7,14 @@ import { normalizeTournamentGame, MARCH_MADNESS_LOGO, MARCH_MADNESS_WOMEN_LOGO }
 import { fetchWorldCupFixtures, formatWorldCupStage, WORLD_CUP_LABEL, WORLD_CUP_LOGO, WORLD_CUP_SPORT_ID, WORLD_CUP_ESPN_SLUG } from '@/lib/worldCup';
 import { fetchAllGiroEvents } from '@/lib/api/giro';
 import { SPORTS_CONFIG } from '@/lib/config';
+import {
+  NATIONS_CHAMPIONSHIP_SPORT_ID,
+  NATIONS_CHAMPIONSHIP_SPORTSDB_ID,
+  NATIONS_CHAMPIONSHIP_MAX_ROUNDS,
+  stripRugbyTeamSuffix,
+  seasonYearsForRange,
+} from '@/lib/nationsChampionship';
+import { parseSDBFightEvent } from '@/lib/sportsdbCombat';
 
 // ── Supabase service-role client for SportsDB endpoint cache ────────────────
 // Created lazily so we don't throw at module load if env vars are absent.
@@ -243,6 +251,7 @@ const LEAGUE_METADATA: Record<string, { label: string; category: string; logo: s
   'rugby-urc': { label: 'United Rugby Championship', category: 'Rugby', logo: 'https://r2.thesportsdb.com/images/media/league/badge/o6dhfo1716481482.png' },
   'rugby-champscup': { label: 'Champions Cup', category: 'Rugby', logo: 'https://r2.thesportsdb.com/images/media/league/badge/kohne11716546580.png' },
   'rugby-rc': { label: 'The Rugby Championship', category: 'Rugby', logo: 'https://r2.thesportsdb.com/images/media/league/badge/dy0n4c1716684531.png' },
+  [NATIONS_CHAMPIONSHIP_SPORT_ID]: { label: 'Nations Championship', category: 'Rugby', logo: 'https://r2.thesportsdb.com/images/media/league/badge/jifczi1773608397.png' },
   'nrl': { label: 'NRL', category: 'Rugby League', logo: 'https://r2.thesportsdb.com/images/media/league/badge/gsztcj1552071996.png' },
   'afl': { label: 'AFL', category: 'Australian Football', logo: 'https://a.espncdn.com/i/teamlogos/leagues/500/afl.png' },
   'tennis-atp': { label: 'ATP Tour', category: 'Tennis', logo: 'https://r2.thesportsdb.com/images/media/league/badge/q7aej51769857150.png' },
@@ -1114,6 +1123,7 @@ const SPORTSDB_ONLY_LEAGUES = [
   { id: 'boxing', sportsdbId: '4445', label: 'Boxing', category: 'Combat Sports', logo: 'https://r2.thesportsdb.com/images/media/league/badge/6enin21740228549.png' },
   { id: 'cycling-uci', sportsdbId: '4465', label: 'UCI World Tour', category: 'Cycling', logo: 'https://r2.thesportsdb.com/images/media/league/badge/igahc11535183469.png' },
   { id: 'soccer-hun-sen-cup', sportsdbId: '5859', label: 'Cambodian Hun Sen Cup', category: 'Football', logo: 'https://r2.thesportsdb.com/images/media/league/badge/4motr51774278480.png' },
+  { id: NATIONS_CHAMPIONSHIP_SPORT_ID, sportsdbId: NATIONS_CHAMPIONSHIP_SPORTSDB_ID, label: 'Nations Championship', category: 'Rugby', logo: 'https://r2.thesportsdb.com/images/media/league/badge/jifczi1773608397.png' },
 ].map((league) => {
   const meta = getLeagueMetadata(league.id);
   return meta ? { ...league, label: meta.label, category: meta.category, logo: meta.logo } : league;
@@ -1157,8 +1167,10 @@ interface SportsDBEvent {
   strPostponed?: string;
   strLeague?: string;
   strRound?: string;
+  intRound?: string;
   strCountry?: string;
   strVenue?: string;
+  strCity?: string;
 }
 
 // C-League team IDs — all 11 clubs in the 2025-26 season
@@ -1514,71 +1526,6 @@ async function fetchSportsDBTeamFeed(
 const COMBAT_SPORT_IDS = new Set(['4445']);
 
 /**
- * Parse a TheSportsDB fight event name into card name, home fighter, away fighter.
- *
- * UFC examples:
- *   "UFC 326 Holloway vs Oliveira 2"        → card="UFC 326", home="Holloway", away="Oliveira 2"
- *   "UFC Fight Night 269 Emmett vs Vallejos"  → card="UFC Fight Night 269", home="Emmett", away="Vallejos"
- *   "UFC Fight Night: Adesanya vs. Pyfer"     → card="UFC Fight Night", home="Adesanya", away="Pyfer"
- *   "UFC White House"                         → card="UFC White House", home="UFC White House", away=""
- *
- * Boxing examples:
- *   "Teofimo Lopez vs Shakur Stevenson"   → card="", home="Teofimo Lopez", away="Shakur Stevenson"
- *   "Zuffa Boxing 2 Valenzuela vs Torres" → card="Zuffa Boxing 2", home="Valenzuela", away="Torres"
- */
-function parseSDBFightEvent(
-  strEvent: string,
-  sportsdbId: string
-): { cardName: string; home: string; away: string } {
-  // Handle "Card Name: Fighter vs. Fighter" (colon-separated, optional dot after vs).
-  // TheSportsDB often uses this format, e.g. "UFC Fight Night: Adesanya vs. Pyfer".
-  // Must be checked BEFORE the plain-vs path so the colon doesn't end up in home.
-  const colonVsMatch = strEvent.match(/^(.+?):\s*(.+?)\s+vs\.?\s+(.+)$/i);
-  if (colonVsMatch) {
-    return {
-      cardName: colonVsMatch[1].trim(),
-      home:     colonVsMatch[2].trim(),
-      away:     colonVsMatch[3].trim(),
-    };
-  }
-
-  // Standard "Fighter vs[.] Fighter" or "Card# Fighter vs Fighter" format.
-  // Also handles "vs." (with dot) used by ESPN-style names copied into SportsDB.
-  const vsMatch = strEvent.match(/^(.+?)\s+vs\.?\s+(.+)$/i);
-
-  if (!vsMatch) {
-    // No "vs" — special event (e.g. "UFC White House", "Night of Champions XIV")
-    return { cardName: strEvent, home: strEvent, away: '' };
-  }
-
-  const leftPart = vsMatch[1].trim();
-  const away = vsMatch[2].trim();
-
-  if (sportsdbId === '4443') {
-    // UFC: extract numbered card prefix ("UFC 326" or "UFC Fight Night 269")
-    const ufcCardMatch = leftPart.match(
-      /^(UFC\s+(?:Fight Night\s+)?\d+)\s+(.+)$/i
-    );
-    if (ufcCardMatch) {
-      return { cardName: ufcCardMatch[1].trim(), home: ufcCardMatch[2].trim(), away };
-    }
-    // No numbered prefix — use "UFC" as card name, full left part as fighter
-    return { cardName: 'UFC', home: leftPart, away };
-  }
-
-  // Boxing: check for known card-series prefixes (e.g. "Zuffa Boxing 2")
-  const boxingCardMatch = leftPart.match(
-    /^(Zuffa Boxing\s+\d+|Night of Champions\s+[\w]+)\s+(.+)$/i
-  );
-  if (boxingCardMatch) {
-    return { cardName: boxingCardMatch[1].trim(), home: boxingCardMatch[2].trim(), away };
-  }
-
-  // Default for boxing: full left part is fighter name, no card prefix
-  return { cardName: '', home: leftPart, away };
-}
-
-/**
  * Map a TheSportsDB combat-sport event to a MatchEvent.
  * – For UFC: leagueLabel = "UFC 326: Holloway vs Oliveira 2" (getLeagueAbbrev extracts "UFC 326")
  * – For Boxing: leagueLabel = "Boxing" (no card prefix) or "Zuffa Boxing 2: Valenzuela vs Torres"
@@ -1615,7 +1562,9 @@ function mapSDBCombatEvent(
     time,
     home,
     away,
-    round: '',
+    homeLogo: event.strHomeTeamBadge || undefined,
+    awayLogo: event.strAwayTeamBadge || undefined,
+    round: event.strRound || (event.intRound ? `Round ${event.intRound}` : ''),
     tags: [],
     isFeatured: false,
     isSelected: false,
@@ -1624,7 +1573,95 @@ function mapSDBCombatEvent(
     fightOrder: 0,
     sourceEventId: event.idEvent,
     isoDate: isoDate || undefined,
+    venue: event.strVenue || undefined,
   };
+}
+
+function mapNationsChampionshipEvent(
+  event: SportsDBEvent,
+  league: typeof SPORTSDB_ONLY_LEAGUES[0],
+  timeZone: string,
+): MatchEvent {
+  const base = mapSDBEvent(event, league, timeZone);
+  const roundNum = event.intRound || event.strRound || '';
+  return {
+    ...base,
+    home: stripRugbyTeamSuffix(base.home),
+    away: stripRugbyTeamSuffix(base.away),
+    homeLogo: event.strHomeTeamBadge || base.homeLogo,
+    awayLogo: event.strAwayTeamBadge || base.awayLogo,
+    round: roundNum ? `Round ${roundNum}` : '',
+    venue: event.strVenue || undefined,
+  };
+}
+
+/**
+ * Fetch full league schedule via season + next/past + per-round endpoints.
+ * TheSportsDB free tier truncates eventsseason.php (~5 rows); rounds are complete.
+ */
+async function mergeSportsDBRoundSeasonEvents(
+  sportsdbId: string,
+  startDate: string,
+  endDate: string,
+  maxRounds: number,
+): Promise<SportsDBEvent[]> {
+  const years = seasonYearsForRange(startDate, endDate);
+  const seen = new Set<string>();
+  const allEvents: SportsDBEvent[] = [];
+
+  const merge = (events: SportsDBEvent[]) => {
+    for (const event of events) {
+      if (!event?.idEvent || seen.has(event.idEvent)) continue;
+      seen.add(event.idEvent);
+      allEvents.push(event);
+    }
+  };
+
+  for (const year of years) {
+    merge(await sdbFetch(`eventsseason.php?id=${sportsdbId}&s=${year}`));
+    await sleep(200);
+    merge(await sdbFetch(`eventsnextleague.php?id=${sportsdbId}`));
+    await sleep(200);
+    merge(await sdbFetch(`eventspastleague.php?id=${sportsdbId}`));
+    await sleep(200);
+
+    let emptyStreak = 0;
+    for (let round = 1; round <= maxRounds; round++) {
+      const roundEvents = await sdbFetch(`eventsround.php?id=${sportsdbId}&r=${round}&s=${year}`);
+      if (!roundEvents.length) {
+        emptyStreak++;
+        if (emptyStreak >= 3) break;
+        continue;
+      }
+      emptyStreak = 0;
+      merge(roundEvents);
+      await sleep(200);
+    }
+  }
+
+  return allEvents;
+}
+
+async function fetchNationsChampionshipByRounds(
+  league: typeof SPORTSDB_ONLY_LEAGUES[0],
+  startDate: string,
+  endDate: string,
+  timeZone: string,
+): Promise<MatchEvent[]> {
+  const allEvents = await mergeSportsDBRoundSeasonEvents(
+    league.sportsdbId,
+    startDate,
+    endDate,
+    NATIONS_CHAMPIONSHIP_MAX_ROUNDS,
+  );
+
+  const mapped = allEvents
+    .filter((event) => (event.strPostponed ?? 'no').toLowerCase() !== 'yes')
+    .map((event) => mapNationsChampionshipEvent(event, league, timeZone))
+    .filter((event) => event.date >= startDate && event.date <= endDate);
+
+  console.log(`[SportsDB] ✓ ${league.label}: ${mapped.length} events in date range (${allEvents.length} raw from rounds)`);
+  return mapped;
 }
 
 /**
@@ -1714,49 +1751,26 @@ async function fetchSportsDBLeagueByNextPast(
   return mapped;
 }
 
-/** Season-based fetch — only used for combat sports (UFC, Boxing) as ESPN fallback */
+/** Season + round-based fetch for combat sports (Boxing) on TheSportsDB */
 async function fetchSportsDBCombatBySeason(
   league: typeof SPORTSDB_ONLY_LEAGUES[0],
   startDate: string,
   endDate: string,
   timeZone: string
 ): Promise<MatchEvent[]> {
-  const startYear = parseInt(startDate.slice(0, 4), 10);
-  const endYear   = parseInt(endDate.slice(0, 4), 10);
-  const years = new Set<number>();
-  for (let y = startYear; y <= endYear; y++) years.add(y);
-  years.add(startYear - 1);
-
-  const allEvents: SportsDBEvent[] = [];
-  const seen = new Set<string>();
-
-  for (const year of Array.from(years).sort()) {
-    const events = await sdbFetch(`eventsseason.php?id=${league.sportsdbId}&s=${year}`);
-    for (const e of events) {
-      if (!seen.has(e.idEvent)) { seen.add(e.idEvent); allEvents.push(e); }
-    }
-    await sleep(400);
-  }
-
-  // If season fetch returned nothing useful, try eventsnextleague as fallback
-  const inRange = allEvents.filter(e => e.dateEvent >= startDate && e.dateEvent <= endDate);
-  if (inRange.length === 0) {
-    const next = await sdbFetch(`eventsnextleague.php?id=${league.sportsdbId}`);
-    for (const e of next) {
-      if (!seen.has(e.idEvent)) { seen.add(e.idEvent); allEvents.push(e); }
-    }
-    await sleep(300);
-    const past = await sdbFetch(`eventspastleague.php?id=${league.sportsdbId}`);
-    for (const e of past) {
-      if (!seen.has(e.idEvent)) { seen.add(e.idEvent); allEvents.push(e); }
-    }
-  }
+  const allEvents = await mergeSportsDBRoundSeasonEvents(
+    league.sportsdbId,
+    startDate,
+    endDate,
+    40,
+  );
 
   const mapped = allEvents
-    .map(e => mapSDBCombatEvent(e, league, timeZone))
-    .filter(e => e.date >= startDate && e.date <= endDate);
+    .filter((event) => (event.strPostponed ?? 'no').toLowerCase() !== 'yes')
+    .map((event) => mapSDBCombatEvent(event, league, timeZone))
+    .filter((event) => event.date >= startDate && event.date <= endDate);
 
-  console.log(`[SportsDB] ✓ ${league.label}: ${mapped.length} combat events in date range`);
+  console.log(`[SportsDB] ✓ ${league.label}: ${mapped.length} combat events in date range (${allEvents.length} raw)`);
   return mapped;
 }
 
@@ -1825,7 +1839,10 @@ async function fetchSportsDBLeague(
   if (league.id === 'soccer-hun-sen-cup') {
     return fetchHSCFanout(league, startDate, endDate, timeZone);
   }
-  // Combat sports use season-based fetch (ESPN is primary; SportsDB is fallback)
+  if (league.id === NATIONS_CHAMPIONSHIP_SPORT_ID) {
+    return fetchNationsChampionshipByRounds(league, startDate, endDate, timeZone);
+  }
+  // Boxing: round-by-round on TheSportsDB (ESPN has no boxing scoreboard API)
   if (COMBAT_SPORT_IDS.has(league.sportsdbId)) {
     return fetchSportsDBCombatBySeason(league, startDate, endDate, timeZone);
   }

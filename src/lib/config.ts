@@ -148,6 +148,7 @@ export const SPORTS_CONFIG: SportConfig[] = [
   { id: 'rugby-urc',             label: 'United Rugby Championship',          category: 'Rugby',       espnSlug: 'rugby/270557',              logo: 'https://r2.thesportsdb.com/images/media/league/badge/o6dhfo1716481482.png' },
   { id: 'rugby-champscup',       label: 'Champions Cup',                      category: 'Rugby',       espnSlug: 'rugby/271937',              logo: 'https://r2.thesportsdb.com/images/media/league/badge/kohne11716546580.png' },
   { id: 'rugby-rc',              label: 'The Rugby Championship',             category: 'Rugby',       espnSlug: 'rugby/244293',              logo: 'https://r2.thesportsdb.com/images/media/league/badge/dy0n4c1716684531.png' },
+  { id: 'rugby-nations-championship', label: 'Nations Championship',          category: 'Rugby',       espnSlug: null,                        sportsdbId: '5852', logo: 'https://r2.thesportsdb.com/images/media/league/badge/jifczi1773608397.png' },
 
   // ── Rugby League ───────────────────────────────────────────────────────────
   { id: 'nrl',                   label: 'NRL',                                category: 'Rugby League', espnSlug: 'rugby-league/3',           sportsdbId: '4416', logo: 'https://r2.thesportsdb.com/images/media/league/badge/gsztcj1552071996.png' },
