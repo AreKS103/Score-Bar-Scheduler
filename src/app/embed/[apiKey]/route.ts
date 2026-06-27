@@ -11,6 +11,11 @@ import {
 import { renderCalendarContent, getCalendarCSS, getCalendarNavJS } from '@/lib/renderCalendar';
 import { buildScheduleSeoPayload } from '@/lib/seoSchedule';
 import { getOrgMemberIds } from '@/lib/supabase/org';
+import {
+  buildTypographyCssVars,
+  resolveTypographySizes,
+  SCHEDULE_TYPOGRAPHY_LIVE_JS,
+} from '@/lib/scheduleTypography';
 import { hasRefreshableSnapshotEvents, isRefreshableSnapshotEvent, refreshSnapshotEvents } from '@/lib/refreshSnapshotEvents';
 
 export const dynamic = 'force-dynamic';
@@ -129,14 +134,16 @@ function buildEmbedPage(
   const isAuto = opts.theme === 'auto';
   const accent = opts.accentColor || '#3b82f6';
 
-  // Resolve size: supports legacy sm/md/lg tokens OR direct numeric px values
-  const rp = (v: string, sm: string, md: string, lg: string) => { if (v==='sm') return sm; if (v==='lg') return lg; const n=parseInt(v??''); return (!isNaN(n)&&n>=1&&n<=500)?`${n}px`:md; };
-  const logoHeight  = rp(opts.logoSize,             '22px', '32px',  '46px');
-  const h3Size      = rp(opts.headerSize,            '14px', '16px',  '19px');
-  const matchSize   = rp(opts.matchFontSize,         '12px', '14px',  '16px');
-  const dateSize    = rp(opts.dateFontSize,          '10px', '11px',  '13px');
-  const hlFontSize  = rp(opts.highlightFontSize||'18','14px','18px',  '22px');
-  const timeSize    = rp(opts.timeFontSize||'11',     '9px',  '11px',  '13px');
+  // Resolve typography — grouped CSS variables for embed widget controls
+  const typography = resolveTypographySizes({
+    matchFontSize: opts.matchFontSize,
+    timeFontSize: opts.timeFontSize,
+    dateFontSize: opts.dateFontSize,
+    headerSize: opts.headerSize,
+    highlightFontSize: opts.highlightFontSize,
+    logoSize: opts.logoSize,
+  });
+  const typographyVars = buildTypographyCssVars(typography);
   const FONT_STACKS: Record<string, string> = {
     system: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     serif:  "Georgia, 'Times New Roman', Times, serif",
@@ -171,7 +178,7 @@ function buildEmbedPage(
   const darkVars  = `--bg:${bgOverride || '#0f1117'};--text:${textOverride || '#e8eaf0'};--muted:#8b92a8;--heading:${textOverride || '#f0f2f8'};--border:#2d3142;--tab-bg:#1e2130;--tab-text:#8b92a8;--tab-active:${accent};--tab-active-text:#fff;--accent:${accent};--card-bg:#181c28;--hl-title-color:${textOverride || '#f0f2f8'};--time-default:#fff;`;
 
   const css = `
-:root{${isAuto ? lightVars : isDark ? darkVars : lightVars};--sb-match-size:${matchSize};--sb-date-size:${dateSize};--sb-h3-size:${h3Size};--sb-logo-height:${logoHeight};--sb-hl-size:${hlFontSize};--sb-time-size:${timeSize};--sb-normal-font:${normalFontCss};--sb-normal-weight:${normalWeight};--sb-normal-text:${normalTextCss};--sb-normal-time-color:${normalTimeCss};--sb-hl-font:${hlFontCss};--sb-hl-weight:${hlWeight};--sb-hl-text:${hlTextCss};--sb-hl-time-color:${hlTimeCss}}
+:root{${isAuto ? lightVars : isDark ? darkVars : lightVars};${typographyVars};--sb-normal-font:${normalFontCss};--sb-normal-weight:${normalWeight};--sb-normal-text:${normalTextCss};--sb-normal-time-color:${normalTimeCss};--sb-hl-font:${hlFontCss};--sb-hl-weight:${hlWeight};--sb-hl-text:${hlTextCss};--sb-hl-time-color:${hlTimeCss}}
 ${isAuto ? `@media(prefers-color-scheme:dark){:root{${darkVars}}}` : ''}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{background:var(--bg);color:var(--text);font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;line-height:${lineH};-webkit-font-smoothing:antialiased;width:100%}
@@ -195,7 +202,7 @@ ${SCHEDULE_LAYOUT_CSS}
   const cardJS = '';
 
   const resizeJS = buildResizeScript();
-  const styleJS = `\n<script>\n(function(){\n  var CSS_SIZE=/^\\d+(\\.\\d+)?(px|em|rem|%)$/;\n  window.addEventListener('message',function(e){\n    if(!e.data||!e.data.sbStyle)return;\n    var r=document.documentElement;var s=e.data.sbStyle;\n    if(s.matchFontSize&&CSS_SIZE.test(s.matchFontSize))r.style.setProperty('--sb-match-size',s.matchFontSize);\n    if(s.dateFontSize&&CSS_SIZE.test(s.dateFontSize))r.style.setProperty('--sb-date-size',s.dateFontSize);\n    if(s.headerSize&&CSS_SIZE.test(s.headerSize))r.style.setProperty('--sb-h3-size',s.headerSize);\n    if(s.logoHeight&&CSS_SIZE.test(s.logoHeight))r.style.setProperty('--sb-logo-height',s.logoHeight);\n    if(s.hlFontSize&&CSS_SIZE.test(s.hlFontSize))r.style.setProperty('--sb-hl-size',s.hlFontSize);\n  });\n})();\n</script>`;
+  const styleJS = `\n<script>\n${SCHEDULE_TYPOGRAPHY_LIVE_JS}\n</script>`;
 
   const noCopyJS = opts.noCopy ? `\n<script>\n(function(){\n  var s=document.createElement('style');s.textContent='*{-webkit-user-select:none!important;user-select:none!important;-moz-user-select:none!important}';\n  document.head.appendChild(s);\n  function b(e){e.preventDefault();return false;}\n  document.addEventListener('contextmenu',b,false);\n  document.addEventListener('selectstart',b,false);\n  document.addEventListener('copy',b,false);\n  document.addEventListener('cut',b,false);\n  document.addEventListener('keydown',function(e){\n    if((e.ctrlKey||e.metaKey)&&['a','c','u','s','p'].indexOf(e.key.toLowerCase())>=0)b(e);\n  });\n  document.addEventListener('dragstart',b,false);\n})();\n</script>` : '';
 
@@ -223,9 +230,17 @@ function buildCalendarPage(
   const isAuto = opts.theme === 'auto';
   const accent = opts.accentColor || '#3b82f6';
 
+  const typography = resolveTypographySizes({
+    matchFontSize: opts.matchFontSize,
+    timeFontSize: opts.timeFontSize,
+    dateFontSize: opts.dateFontSize,
+    headerSize: opts.headerSize,
+    highlightFontSize: opts.highlightFontSize,
+    logoSize: opts.logoSize,
+  });
+  const typographyVars = buildTypographyCssVars(typography);
+
   const baseFontSize = ({ sm: '13px', md: '15px', lg: '17px' } as Record<string, string>)[opts.fontSize] ?? '15px';
-  const rpc = (v: string, sm: string, md: string, lg: string) => { if (v==='sm') return sm; if (v==='lg') return lg; const n=parseInt(v??''); return (!isNaN(n)&&n>=1&&n<=500)?`${n}px`:md; };
-  const hlFontSizeCal = rpc(opts.highlightFontSize||'18','14px','18px','22px');
   const fontStack = ({
     system: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     serif:  "Georgia, 'Times New Roman', Times, serif",
@@ -238,14 +253,12 @@ function buildCalendarPage(
   const lightVars = `--bg:${bgOverride || '#fff'};--text:${textOverride || '#111827'};--muted:#6b7280;--heading:${textOverride || '#111827'};--border:#e5e7eb;--tab-bg:#f3f4f6;--surface:#f8f9fa;--accent:${accent};--card-bg:#f4f6f9;--hl-title-color:#000;--time-default:${textOverride || '#111827'};`;
   const darkVars  = `--bg:${bgOverride || '#0f1117'};--text:${textOverride || '#e8eaf0'};--muted:#8b92a8;--heading:${textOverride || '#f0f2f8'};--border:#2d3142;--tab-bg:#1e2130;--surface:#1a1d27;--accent:${accent};--card-bg:#181c28;--hl-title-color:${textOverride || '#f0f2f8'};--time-default:#fff;`;
 
-  const h3SizeCal   = rpc(opts.headerSize,       '14px', '16px', '19px');
-  const dateSizeCal  = rpc(opts.dateFontSize,      '10px', '11px', '13px');
   const hlWeightCal  = opts.hlWeight || '400';
   const hlTextCal    = opts.hlTextColor || 'var(--heading,#111827)';
   const hlTimeCal    = opts.hlTimeColor || 'var(--time-default)';
 
   const baseCss = `
-:root{${isAuto ? lightVars : isDark ? darkVars : lightVars};--sb-hl-size:${hlFontSizeCal};--sb-h3-size:${h3SizeCal};--sb-date-size:${dateSizeCal};--sb-hl-weight:${hlWeightCal};--sb-hl-text:${hlTextCal};--sb-hl-time-color:${hlTimeCal}}
+:root{${isAuto ? lightVars : isDark ? darkVars : lightVars};${typographyVars};--sb-hl-weight:${hlWeightCal};--sb-hl-text:${hlTextCal};--sb-hl-time-color:${hlTimeCal}}
 ${isAuto ? `@media(prefers-color-scheme:dark){:root{${darkVars}}}` : ''}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{background:var(--bg);color:var(--text);font-family:${fontStack};font-size:${baseFontSize};line-height:1.5;-webkit-font-smoothing:antialiased;width:100%}
@@ -255,14 +268,14 @@ body{padding:${paddingVal}px}
 .vt-btn{padding:4px 12px;border-radius:999px;border:1px solid var(--border,#e5e7eb);background:var(--tab-bg,#f3f4f6);color:var(--tab-text,#6b7280);cursor:pointer;font-size:12px;font-family:inherit;font-weight:500;white-space:nowrap;transition:all .15s}
 .vt-btn:hover{color:var(--text);border-color:var(--accent,#3b82f6)}
 .vt-active{background:var(--accent,#3b82f6)!important;color:#fff!important;border-color:var(--accent,#3b82f6)!important}
-.hl-teams{font-size:var(--sb-hl-size)!important;font-weight:var(--sb-hl-weight,400);color:var(--sb-hl-text,var(--heading,#111827))}
-.hl-league-spotlight{font-size:var(--sb-hl-size)!important;display:flex;align-items:center;gap:8px}
-.hl-title{font-size:var(--sb-h3-size)!important;font-weight:800;color:var(--hl-title-color,#000);margin:0 0 4px;text-transform:uppercase}
+.hl-teams{font-size:var(--sb-match-size,14px)!important;font-weight:var(--sb-hl-weight,400);color:var(--sb-hl-text,var(--heading,#111827))}
+.hl-league-spotlight{font-size:var(--sb-league-header-size,16px)!important;display:flex;align-items:center;gap:8px}
+.hl-title{font-size:var(--sb-section-heading-size,18px)!important;font-weight:800;color:var(--hl-title-color,#000);margin:0 0 4px;text-transform:uppercase}
 .hl-updated{font-size:12px;color:#6b7280;margin:0 0 12px;display:flex;align-items:center;gap:6px}
 .hl-updated-dot{width:8px;height:8px;border-radius:50%;background:#ef4444;flex-shrink:0;display:inline-block}
-.hl-date-header{font-size:var(--sb-date-size)!important;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--heading,var(--text));padding:6px 0;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:8px}
-.hl-time{font-size:var(--sb-date-size)!important;font-weight:var(--sb-hl-weight,400);color:var(--sb-hl-time-color,var(--time-default,var(--accent,#3b82f6)))}
-.hl-league-name{font-size:var(--sb-date-size)!important;font-weight:700;color:var(--heading,var(--text))}
+.hl-date-header{font-size:var(--sb-date-size,11px)!important;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--heading,var(--text));padding:6px 0;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:8px}
+.hl-time{font-size:var(--sb-match-size,14px)!important;font-weight:var(--sb-hl-weight,400);color:var(--sb-hl-time-color,var(--time-default,var(--accent,#3b82f6)))}
+.hl-league-name{font-size:var(--sb-league-header-size,16px)!important;font-weight:700;color:var(--heading,var(--text))}
 `;
 
   const calendarCss = getCalendarCSS(accent);
@@ -273,7 +286,7 @@ body{padding:${paddingVal}px}
 
   const pollJS = buildEmbedPollScript(`    if(d.empty){\n      root.innerHTML='<div style="display:inline-flex;align-items:center;gap:8px;font-size:13px;border:1px dashed #d1d5db;border-radius:8px;padding:10px 16px;background:#f9fafb;color:#9ca3af">No schedule published yet.</div>';\n      root.setAttribute('data-serial','none');serial='none';\n      try{if(window._sbSendHeight){window._sbSendHeight();}else{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}}catch(e){}\n      return;\n    }\n    root.innerHTML=d.html;\n    root.setAttribute('data-serial',d.serial);serial=d.serial;\n    try{if(window._sbSendHeight){window._sbSendHeight();}else{window.parent.postMessage({sbHeight:document.documentElement.scrollHeight},'*');}}catch(e){}`);
 
-  const styleJSCal = `\n<script>\n(function(){\n  var CSS_SIZE=/^\\d+(\\.\\d+)?(px|em|rem|%)$/;\n  window.addEventListener('message',function(e){\n    if(!e.data||!e.data.sbStyle)return;\n    var r=document.documentElement;var s=e.data.sbStyle;\n    if(s.hlFontSize&&CSS_SIZE.test(s.hlFontSize))r.style.setProperty('--sb-hl-size',s.hlFontSize);\n    if(s.headerSize&&CSS_SIZE.test(s.headerSize))r.style.setProperty('--sb-h3-size',s.headerSize);\n    if(s.dateFontSize&&CSS_SIZE.test(s.dateFontSize))r.style.setProperty('--sb-date-size',s.dateFontSize);\n  });\n})();\n</script>`;
+  const styleJSCal = `\n<script>\n${SCHEDULE_TYPOGRAPHY_LIVE_JS}\n</script>`;
 
   const noCopyJSCal = opts.noCopy ? `\n<script>\n(function(){\n  var s=document.createElement('style');s.textContent='*{-webkit-user-select:none!important;user-select:none!important;-moz-user-select:none!important}';\n  document.head.appendChild(s);\n  function b(e){e.preventDefault();return false;}\n  document.addEventListener('contextmenu',b,false);\n  document.addEventListener('selectstart',b,false);\n  document.addEventListener('copy',b,false);\n  document.addEventListener('cut',b,false);\n  document.addEventListener('keydown',function(e){\n    if((e.ctrlKey||e.metaKey)&&['a','c','u','s','p'].indexOf(e.key.toLowerCase())>=0)b(e);\n  });\n  document.addEventListener('dragstart',b,false);\n})();\n</script>` : '';
 

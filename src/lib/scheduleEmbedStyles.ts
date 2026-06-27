@@ -4,6 +4,7 @@
  */
 
 import { SCHEDULE_LAYOUT_CSS } from '@/lib/scheduleLayout';
+import { PREVIEW_TYPOGRAPHY_CSS_VARS } from '@/lib/scheduleTypography';
 
 /** CSS custom properties for standalone embed pages (:root is fine there) */
 export const EMBED_PAGE_CSS_VARS = `
@@ -27,6 +28,7 @@ export const EMBED_PAGE_CSS_VARS = `
  */
 export const PREVIEW_SCOPED_CSS_VARS = `
 .sb-schedule-preview-root{
+  ${PREVIEW_TYPOGRAPHY_CSS_VARS};
   --bg:#fff;
   --text:#111827;
   --muted:#6b7280;
