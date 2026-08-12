@@ -62,6 +62,99 @@ function resolveKeyHash(apiKey: string): string {
   return hashKey(apiKey);
 }
 
+// ── Abuse protection ─────────────────────────────────────────────────────────
+// The embed token (sha256 key_hash) appears in every embedded page's HTML by
+// design. Without the checks below, anyone who copies the embed snippet onto
+// their own site can register/rename/delete embed_instances rows in the
+// owner's account (this happened with a tch1.com mockup in 2026-07).
+
+// In-memory per-key rate limit: 30 beacons / 60s per key (normal sites send
+// at most a handful per pageview, already debounced client-side).
+const RATE_LIMIT_MAX = 30;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const keyRequests = new Map<string, number[]>();
+
+function isRateLimited(key: string): boolean {
+  const now = Date.now();
+  const timestamps = (keyRequests.get(key) ?? []).filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+  timestamps.push(now);
+  keyRequests.set(key, timestamps);
+  if (keyRequests.size > 5000) {
+    // Prevent unbounded growth under abuse
+    for (const [k, ts] of keyRequests) {
+      if (ts.every(t => now - t >= RATE_LIMIT_WINDOW_MS)) keyRequests.delete(k);
+    }
+  }
+  return timestamps.length > RATE_LIMIT_MAX;
+}
+
+/** Extract a normalized hostname from a URL string (best effort). */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+/** host matches an allowed domain exactly or as a subdomain. */
+function domainAllowed(host: string, allowed: string[]): boolean {
+  if (!host) return false;
+  return allowed.some((d) => {
+    const dom = d.toLowerCase().trim();
+    return dom !== '' && (host === dom || host.endsWith(`.${dom}`));
+  });
+}
+
+interface KeyRecord {
+  user_id: string;
+  allowed_domains: string[] | null;
+}
+
+async function lookupKey(hash: string): Promise<KeyRecord | null> {
+  const { data } = await supabase
+    .from('user_api_keys')
+    .select('user_id, allowed_domains')
+    .eq('key_hash', hash)
+    .single();
+  return data ?? null;
+}
+
+/**
+ * Enforce the per-key domain allowlist for beacon-originated writes.
+ * - Key pinned   → pageUrl host must match the allowlist (exact or subdomain).
+ * - Key unpinned → auto-pin to the beacon's host (first legitimate embed wins).
+ * Returns an error response to short-circuit, or null when allowed.
+ */
+async function enforceDomainAllowlist(
+  keyHash: string,
+  keyData: KeyRecord,
+  pageUrl: string,
+): Promise<NextResponse | null> {
+  const host = hostOf(pageUrl);
+
+  if (Array.isArray(keyData.allowed_domains) && keyData.allowed_domains.length > 0) {
+    // Beacons always carry a pageUrl; reject anything off-domain (or missing).
+    if (!domainAllowed(host, keyData.allowed_domains)) {
+      return NextResponse.json(
+        { error: 'Domain not allowed for this key' },
+        { status: 403, headers: corsHeaders },
+      );
+    }
+    return null;
+  }
+
+  // Unpinned legacy key — pin it to the first host we see a beacon from.
+  if (host) {
+    await supabase
+      .from('user_api_keys')
+      .update({ allowed_domains: [host] })
+      .eq('key_hash', keyHash)
+      .is('allowed_domains', null);
+  }
+  return null;
+}
+
 function sanitizeWidgetId(widgetId: unknown): string {
   return typeof widgetId === 'string' ? widgetId.replace(/[^\w-]/g, '').substring(0, 64) : '';
 }
@@ -112,18 +205,21 @@ export async function POST(req: NextRequest) {
     if (!apiKey) return NextResponse.json({ error: 'Missing apiKey' }, { status: 400, headers: corsHeaders });
 
     const hash = resolveKeyHash(apiKey);
-    const { data: keyData } = await supabase
-      .from('user_api_keys')
-      .select('user_id')
-      .eq('key_hash', hash)
-      .single();
 
+    if (isRateLimited(hash)) {
+      return NextResponse.json({ error: 'Too many requests' }, { status: 429, headers: corsHeaders });
+    }
+
+    const keyData = await lookupKey(hash);
     if (!keyData) return NextResponse.json({ error: 'Invalid key' }, { status: 401, headers: corsHeaders });
+
+    const safeUrl      = (pageUrl  || '').substring(0, 512);
+    const domainReject = await enforceDomainAllowlist(hash, keyData, safeUrl);
+    if (domainReject) return domainReject;
 
     // instanceId = user-assigned embed name, or null if the widget has no name yet
     const instanceId   = (embedId || '').trim() || null;
     const safeWidgetId = sanitizeWidgetId(widgetId);
-    const safeUrl      = (pageUrl  || '').substring(0, 512);
     const now          = new Date().toISOString();
     const uid          = keyData.user_id;
 
@@ -435,15 +531,19 @@ export async function DELETE(req: NextRequest) {
   // API key from wiping all published schedules.
   let userId: string;
   let authedViaApiKey = false;
+  let authedWithRawKey = false;
   const apiKey = req.nextUrl.searchParams.get('apiKey');
   if (apiKey) {
+    // The raw sb_live_* key is only held by the account owner / WP admin panel;
+    // the public embed token (64-hex key_hash) appears in page HTML by design,
+    // so it gets strictly less privilege.
+    authedWithRawKey = apiKey.startsWith('sb_');
     const hash = resolveKeyHash(apiKey);
-    const { data: keyData } = await supabase
-      .from('user_api_keys')
-      .select('user_id')
-      .eq('key_hash', hash)
-      .single();
+    const keyData = await lookupKey(hash);
     if (!keyData) return NextResponse.json({ error: 'Invalid key' }, { status: 401, headers: corsHeaders });
+    if (isRateLimited(`del:${hash}`)) {
+      return NextResponse.json({ error: 'Too many requests' }, { status: 429, headers: corsHeaders });
+    }
     userId = keyData.user_id;
     authedViaApiKey = true;
   } else {
@@ -476,15 +576,20 @@ export async function DELETE(req: NextRequest) {
       .in('user_id', orgMemberIds)
       .eq('id', inst.id);
 
-    const selDeleteQuery = supabase
-      .from('user_selections')
-      .delete()
-      .in('user_id', orgMemberIds);
+    // Selections cascade only for trusted auth (session or raw key). A caller
+    // holding just the public embed token may unregister a widget row — the
+    // beacon recreates it on next pageview — but must not wipe saved picks.
+    if (authedWithRawKey || !authedViaApiKey) {
+      const selDeleteQuery = supabase
+        .from('user_selections')
+        .delete()
+        .in('user_id', orgMemberIds);
 
-    if (inst.embed_id === null) {
-      await selDeleteQuery.is('embed_target', null);
-    } else {
-      await selDeleteQuery.eq('embed_target', inst.embed_id);
+      if (inst.embed_id === null) {
+        await selDeleteQuery.is('embed_target', null);
+      } else {
+        await selDeleteQuery.eq('embed_target', inst.embed_id);
+      }
     }
 
     return NextResponse.json({ ok: true }, { headers: apiKey ? corsHeaders : sessionCors });
@@ -492,6 +597,15 @@ export async function DELETE(req: NextRequest) {
 
   if (rawId === null) {
     return NextResponse.json({ error: 'Missing embedId param' }, { status: 400, headers: apiKey ? corsHeaders : sessionCors });
+  }
+
+  // Deletes by embed name (or the unnamed row) are destructive to account
+  // configuration — the public embed token alone is never enough.
+  if (authedViaApiKey && !authedWithRawKey) {
+    return NextResponse.json(
+      { error: 'This operation requires the account API key or a dashboard session' },
+      { status: 403, headers: corsHeaders },
+    );
   }
 
   const headers = apiKey ? corsHeaders : sessionCors;

@@ -1,19 +1,10 @@
 import type { MatchEvent, SportConfig } from '@/types';
 import { SPORTS_CONFIG } from '@/lib/config';
 import { refreshWorldCupSnapshotEvents, WORLD_CUP_SPORT_ID } from '@/lib/worldCup';
+import { fetchEspnEvents } from '@/lib/api/espnHosts';
 
-const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports';
 const ESPN_REFRESH_CACHE_TTL_MS = 2 * 60 * 1000;
 const DEFAULT_TIME_ZONE = 'Asia/Phnom_Penh';
-
-const ESPN_HEADERS: Record<string, string> = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-  Accept: 'application/json, text/plain, */*',
-  'Accept-Language': 'en-US,en;q=0.9',
-  Referer: 'https://www.espn.com/',
-  Origin: 'https://www.espn.com',
-  'Cache-Control': 'no-cache',
-};
 
 interface ESPNCompetitorRaw {
   homeAway?: string;
@@ -35,10 +26,6 @@ interface ESPNEventRaw {
   date: string;
   competitions?: ESPNCompetitionRaw[];
   status?: { type?: { description?: string } };
-}
-
-interface ESPNScoreboardResponse {
-  events?: ESPNEventRaw[];
 }
 
 interface CachedRefreshEvents {
@@ -106,10 +93,6 @@ function formatUnresolvedOpponent(name: string, logo?: string): string {
   if (!logo && trimmed.includes('/')) return `TBD ${trimmed}`;
   if (/\b(winner|loser|qualifier)\b/i.test(trimmed)) return 'TBD';
   return trimmed;
-}
-
-function espnDateRange(startDate: string, endDate: string): string {
-  return `${startDate.replace(/-/g, '')}-${endDate.replace(/-/g, '')}`;
 }
 
 function supportsTeamRefresh(config: SportConfig | undefined): config is SportConfig & { espnSlug: string } {
@@ -190,23 +173,6 @@ function getRefreshRange(events: MatchEvent[]): { start: string; end: string } |
   };
 }
 
-async function fetchEspnJson(url: string): Promise<ESPNScoreboardResponse | null> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5_000);
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: ESPN_HEADERS,
-      cache: 'no-store',
-    });
-    return response.ok ? (await response.json()) as ESPNScoreboardResponse : null;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 function mapEspnTeamEvent(event: ESPNEventRaw, config: SportConfig, timeZone: string): MatchEvent | null {
   const comp = event.competitions?.[0];
   const competitors = comp?.competitors ?? [];
@@ -255,12 +221,11 @@ async function fetchEspnTeamEvents(config: SportConfig & { espnSlug: string }, s
   const cached = refreshCache.get(cacheKey);
   if (cached && Date.now() - cached.fetchedAt < ESPN_REFRESH_CACHE_TTL_MS) return cached.events;
 
-  const dateRange = espnDateRange(startDate, endDate);
-  const datedUrl = `${ESPN_BASE}/${config.espnSlug}/scoreboard?dates=${dateRange}&limit=1000`;
-  const fallbackUrl = `${ESPN_BASE}/${config.espnSlug}/scoreboard?limit=1000`;
-  const data = await fetchEspnJson(datedUrl) ?? await fetchEspnJson(fallbackUrl);
-  const events = (data?.events ?? [])
-    .map((event) => mapEspnTeamEvent(event, config, timeZone))
+  // Multi-host fetch — site.api is Akamai-blocked from datacenter IPs, so the
+  // shared layer routes through cdn.espn.com / sports.core.api.espn.com first.
+  const fetched = await fetchEspnEvents(config.espnSlug, startDate, endDate);
+  const events = (fetched?.events ?? [])
+    .map((event) => mapEspnTeamEvent(event as unknown as ESPNEventRaw, config, timeZone))
     .filter((event): event is MatchEvent => Boolean(event));
 
   refreshCache.set(cacheKey, { events, fetchedAt: Date.now() });

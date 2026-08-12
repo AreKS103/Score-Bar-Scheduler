@@ -5,21 +5,9 @@ export const WORLD_CUP_LABEL = '2026 FIFA World Cup';
 export const WORLD_CUP_ESPN_SLUG = 'soccer/fifa.world';
 export const WORLD_CUP_LOGO = 'https://r2.thesportsdb.com/images/media/league/badge/e7er5g1696521789.png';
 export const WORLD_CUP_START_DATE = '2026-06-11';
-export const WORLD_CUP_END_DATE = '2026-07-19';
-
-const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports';
-const ESPN_WORLD_CUP_URL = `${ESPN_BASE}/${WORLD_CUP_ESPN_SLUG}/scoreboard?dates=20260611-20260719&limit=1000`;
-const SPORTSDB_WORLD_CUP_URL = 'https://www.thesportsdb.com/api/v1/json/3/eventsseason.php?id=4429&s=2026';
+export const WORLD_CUP_END_DATE = '2026-07-19';const SPORTSDB_WORLD_CUP_URL = 'https://www.thesportsdb.com/api/v1/json/3/eventsseason.php?id=4429&s=2026';
 const DEFAULT_TIME_ZONE = 'Asia/Phnom_Penh';
 const WORLD_CUP_ESPN_ID_PREFIX = `espn-${WORLD_CUP_SPORT_ID}-`;
-
-const ESPN_HEADERS: Record<string, string> = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-  Accept: 'application/json, text/plain, */*',
-  'Accept-Language': 'en-US,en;q=0.9',
-  Referer: 'https://www.espn.com/',
-  Origin: 'https://www.espn.com',
-};
 
 interface ESPNTeam {
   displayName?: string;
@@ -52,10 +40,6 @@ interface ESPNWorldCupEvent {
   season?: { slug?: string };
   status?: { type?: { description?: string } };
   competitions?: ESPNCompetition[];
-}
-
-interface ESPNWorldCupResponse {
-  events?: ESPNWorldCupEvent[];
 }
 
 interface SportsDBWorldCupEvent {
@@ -386,14 +370,13 @@ function mapSportsDBWorldCupEvent(event: SportsDBWorldCupEvent, timeZone: string
 }
 
 async function fetchESPNWorldCup(timeZone: string): Promise<WorldCupFixture[]> {
-  const res = await fetch(ESPN_WORLD_CUP_URL, {
-    headers: ESPN_HEADERS,
-    next: { revalidate: 300 },
-  });
-  if (!res.ok) throw new Error(`ESPN World Cup returned ${res.status}`);
-  const data = (await res.json()) as ESPNWorldCupResponse;
-  return (data.events ?? [])
-    .map((event) => mapESPNWorldCupEvent(event, timeZone))
+  // Route through the multi-host layer — site.api is Akamai-blocked from
+  // datacenter IPs; cdn.espn.com / sports.core.api.espn.com are not.
+  const { fetchEspnEvents } = await import('@/lib/api/espnHosts');
+  const result = await fetchEspnEvents(WORLD_CUP_ESPN_SLUG, WORLD_CUP_START_DATE, WORLD_CUP_END_DATE);
+  if (!result) throw new Error('ESPN World Cup unreachable on all hosts');
+  return result.events
+    .map((event) => mapESPNWorldCupEvent(event as ESPNWorldCupEvent, timeZone))
     .filter((event): event is WorldCupFixture => event !== null)
     .sort((a, b) => a.isoDate.localeCompare(b.isoDate));
 }

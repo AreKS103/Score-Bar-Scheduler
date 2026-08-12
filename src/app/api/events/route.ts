@@ -15,6 +15,7 @@ import {
   seasonYearsForRange,
 } from '@/lib/nationsChampionship';
 import { parseSDBFightEvent } from '@/lib/sportsdbCombat';
+import { fetchEspnEvents, readLeagueStaleCache, writeLeagueStaleCache } from '@/lib/api/espnHosts';
 
 // ── Supabase service-role client for SportsDB endpoint cache ────────────────
 // Created lazily so we don't throw at module load if env vars are absent.
@@ -362,71 +363,6 @@ function utcToLocal(utcDateString: string, timeZone: string): { date: string; ti
   }
 }
 
-/** Build ESPN date range string */
-function espnDateRange(start: string, end: string): string {
-  return `${start.replace(/-/g, '')}-${end.replace(/-/g, '')}`;
-}
-
-/** Enumerate every YYYY-MM-DD between start and end (inclusive) */
-function enumerateDates(start: string, end: string): string[] {
-  const dates: string[] = [];
-  const d = new Date(start + 'T00:00:00Z');
-  const last = new Date(end + 'T00:00:00Z');
-  while (d <= last) {
-    dates.push(d.toISOString().split('T')[0]);
-    d.setUTCDate(d.getUTCDate() + 1);
-  }
-  return dates;
-}
-
-/** NCAA basketball leagues use a whitelist calendar on ESPN — date-range
- *  queries always 404. Instead we must query each date individually and
- *  merge results. Returns null if nothing was fetched (so callers can
- *  still fall through to other fallbacks). */
-async function fetchNCAASingleDayScoreboard(
-  slug: string,
-  startDate: string,
-  endDate: string,
-): Promise<ESPNScoreboardResponse | null> {
-  // Fetch one day before startDate so UTC games that shift forward
-  // via utcToLocal (+7h) into the requested range are not missed.
-  const dayBefore = new Date(startDate + 'T00:00:00Z');
-  dayBefore.setUTCDate(dayBefore.getUTCDate() - 1);
-  const extendedStart = dayBefore.toISOString().split('T')[0];
-  const dates = enumerateDates(extendedStart, endDate);
-  const CONCURRENCY = 3;            // max parallel per NCAA league
-  const seenIds = new Set<string>();
-  const allEvents: ESPNEvent[] = [];
-  let leagues: ESPNScoreboardResponse['leagues'];
-
-  let idx = 0;
-  const workers = Array(Math.min(CONCURRENCY, dates.length)).fill(null).map(async () => {
-    while (idx < dates.length) {
-      const date = dates[idx++];
-      if (!date) break;
-      const dateParam = date.replace(/-/g, '');       // YYYYMMDD (single day)
-      const url = `${ESPN_BASE}/${slug}/scoreboard?dates=${dateParam}&limit=1000`;
-      const data = await espnFetchWithRetry<ESPNScoreboardResponse>(url, 4_000);
-      if (data?.events?.length) {
-        if (!leagues) leagues = data.leagues;
-        for (const ev of data.events) {
-          if (!seenIds.has(ev.id)) {
-            seenIds.add(ev.id);
-            allEvents.push(ev);
-          }
-        }
-      }
-      await sleep(50);                                // gentle spacing between requests
-    }
-  });
-
-  await Promise.allSettled(workers);
-
-  if (allEvents.length === 0) return null;
-  console.log(`[ESPN-NCAA] single-day fetch for ${slug}: ${dates.length} days queried → ${allEvents.length} unique events`);
-  return { events: allEvents, leagues };
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // ESPN FETCHING — Batched with controlled concurrency
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -699,7 +635,9 @@ function mapMotorsportSessions(
         sessionType === 'FP3'   ? 'Practice 3'  :
         sessionType === 'Qual'  ? 'Qualifying'  :
         sessionType === 'SQ'    ? 'Sprint Qualifying' :
+        sessionType === 'SS'    ? 'Sprint Qualifying' :
         sessionType === 'Sprint'? 'Sprint'       :
+        sessionType === 'SR'    ? 'Sprint'       :
         sessionType === 'Race'  ? 'Race'         :
         sessionType || `Session ${i + 1}`;
 
@@ -945,19 +883,20 @@ async function fetchESPNLeague(
     const isMMA = league.slug.startsWith('mma/') || league.slug.startsWith('boxing/');
     const isMotorsport = league.slug.startsWith('racing/');
     const isTennis = league.slug.startsWith('tennis/');
-    const isCricket = league.slug.startsWith('cricket/');
     const isNCAA_BB = league.id === 'basketball-ncaam' || league.id === 'basketball-ncaaw';
-    const dateParam = espnDateRange(startDate, endDate);
 
-    let data: ESPNScoreboardResponse | null = null;
+    // Multi-host fetch (espnHosts): cdn.espn.com → sports.core.api.espn.com →
+    // site.api.espn.com last resort. site.api is Akamai-blocked from Vercel
+    // datacenter IPs (2026-08), so it must never be the only source.
+    const fetched = await fetchEspnEvents(league.slug, startDate, endDate);
+    let data: ESPNScoreboardResponse | null = fetched
+      ? { events: fetched.events as ESPNEvent[] }
+      : null;
 
-    // ── NCAA basketball: ESPN rejects date-range queries (404). Fetch each
-    //    day individually and merge to capture all tournament rounds. ──────────
+    // ── NCAA tournament bracket augmentation (best-effort) ─────────────────
+    // The /schedule endpoint lists future bracket rounds (TBD teams). It lives
+    // on site.api, so this is a no-op while the datacenter block is in place.
     if (isNCAA_BB) {
-      // 1) Try single-day iteration (most reliable)
-      data = await fetchNCAASingleDayScoreboard(league.slug, startDate, endDate);
-
-      // 2) Augment with schedule endpoint (full bracket, if available)
       const refYear = new Date(endDate);
       const ncaaSeasonYear = (refYear.getMonth() + 1) >= 8
         ? refYear.getFullYear() + 1
@@ -972,46 +911,7 @@ async function fetchESPNLeague(
         } else {
           data = { events: schedData.events, leagues: schedData.leagues };
         }
-        console.log(`[ESPN-NCAA] schedule endpoint for ${league.id}: ${schedData.events.length} tournament events, +${extra.length} new`);
-      }
-
-      // 3) Last resort: no-dates scoreboard (returns only near-future games)
-      if (!data) {
-        const fallbackUrl = `${ESPN_BASE}/${league.slug}/scoreboard?limit=1000`;
-        const fallbackData = await espnFetchWithRetry<ESPNScoreboardResponse>(fallbackUrl, 3_500);
-        if (fallbackData?.events?.length) {
-          data = fallbackData;
-          console.log(`[ESPN-NCAA] ${league.id}: single-day + schedule both empty → no-dates fallback returned ${fallbackData.events.length} events`);
-        }
-      }
-    } else if (isCricket || isTennis) {
-      // ── Cricket: ESPN cricket scoreboards 404 with ?dates= parameter.
-      // ── Tennis: ESPN scoreboard's ?dates= filters by tournament START date,
-      //    which drops multi-week Grand Slams (e.g. Roland Garros runs
-      //    May 18 → Jun 8 — a query for dates=20260520+ silently excludes it
-      //    even though hundreds of singles matches are scheduled inside the
-      //    requested window).
-      //    For both sports: fetch the full league scoreboard (no dates) and let
-      //    the downstream per-match date filter trim to the requested window.
-      const url = `${ESPN_BASE}/${league.slug}/scoreboard?limit=1000`;
-      data = await espnFetchWithRetry<ESPNScoreboardResponse>(url, 4_000);
-      if (data?.events?.length) {
-        const tag = isCricket ? 'Cricket' : 'Tennis';
-        console.log(`[ESPN-${tag}] ${league.id}: no-dates fetch returned ${data.events.length} events`);
-      }
-    } else {
-      // ── All other leagues: standard date-range query ───────────────────────
-      const url = `${ESPN_BASE}/${league.slug}/scoreboard?dates=${dateParam}&limit=1000`;
-      data = await espnFetchWithRetry<ESPNScoreboardResponse>(url, 3_500);
-
-      // Fallback: retry without dates if range query failed
-      if (data === null) {
-        const fallbackUrl = `${ESPN_BASE}/${league.slug}/scoreboard?limit=1000`;
-        const fallbackData = await espnFetchWithRetry<ESPNScoreboardResponse>(fallbackUrl, 3_500);
-        if (fallbackData?.events?.length) {
-          data = fallbackData;
-          console.log(`[ESPN] ${league.id}: 404 with date range → fallback without dates returned ${fallbackData.events.length} events`);
-        }
+        if (extra.length) console.log(`[ESPN-NCAA] schedule endpoint for ${league.id}: +${extra.length} bracket events`);
       }
     }
 
@@ -1030,6 +930,14 @@ async function fetchESPNLeague(
       if (stale && Date.now() - stale.fetchedAt < PATH_STALE_MAX_MS) {
         const filtered = stale.events.filter(e => e.date >= startDate && e.date <= endDate);
         console.log(`[ESPN] ${league.id} failed → serving ${filtered.length}/${stale.events.length} stale events in range`);
+        return filtered;
+      }
+      // Last line of defense: last-known-good payload persisted in Supabase
+      // (survives cold starts and full ESPN outages for up to 7 days).
+      const persisted = await readLeagueStaleCache<MatchEvent>(league.id, timeZone);
+      if (persisted) {
+        const filtered = persisted.filter(e => e.date >= startDate && e.date <= endDate);
+        console.log(`[ESPN] ${league.id} failed → serving ${filtered.length} persisted stale events in range`);
         return filtered;
       }
       console.warn(`[ESPN] ${league.id} returned no data`);
@@ -1067,6 +975,7 @@ async function fetchESPNLeague(
 
     if (parsed.length > 0) {
       pathCache.set(league.id, { events: parsed, fetchedAt: Date.now() });
+      writeLeagueStaleCache(league.id, timeZone, parsed);
     }
     return parsed;
   } catch (err) {
@@ -1075,6 +984,10 @@ async function fetchESPNLeague(
       const filtered = stale.events.filter(e => e.date >= startDate && e.date <= endDate);
       console.log(`[ESPN] ${league.id} error → serving ${filtered.length}/${stale.events.length} stale events in range`);
       return filtered;
+    }
+    const persisted = await readLeagueStaleCache<MatchEvent>(league.id, timeZone).catch(() => null);
+    if (persisted) {
+      return persisted.filter(e => e.date >= startDate && e.date <= endDate);
     }
     console.warn(`[ESPN] ${league.id} failed:`, (err as Error).message);
     return [];
@@ -1187,8 +1100,32 @@ interface SdbEndpointEntry { data: SportsDBEvent[]; ts: number }
 const SDB_ENDPOINT_CACHE = new Map<string, SdbEndpointEntry>();
 const SDB_ENDPOINT_TTL = 10 * 60 * 1000; // 10 min in-memory
 const SDB_DB_CACHE_TTL_DAYS = 7;
+/** Min gap between live SportsDB HTTP calls (skipped entirely on cache hits). */
+const SDB_LIVE_MIN_GAP_MS = 180;
+let lastSdbLiveFetchAt = 0;
+
+/** Reject path traversal / absolute URLs before concatenating onto SPORTSDB_BASE. */
+function isSafeSportsDbEndpoint(endpoint: string): boolean {
+  if (!endpoint || endpoint.length > 220) return false;
+  if (endpoint.includes('://') || endpoint.includes('\\') || endpoint.includes('..')) return false;
+  if (endpoint.startsWith('/') || endpoint.startsWith('?') || endpoint.startsWith('#')) return false;
+  return /^[a-z0-9]+\.php(?:\?[A-Za-z0-9_=&%+.\-]+)?$/i.test(endpoint);
+}
+
+async function throttleSdbLiveFetch(): Promise<void> {
+  if (!lastSdbLiveFetchAt) return;
+  const elapsed = Date.now() - lastSdbLiveFetchAt;
+  if (elapsed < SDB_LIVE_MIN_GAP_MS) {
+    await sleep(SDB_LIVE_MIN_GAP_MS - elapsed);
+  }
+}
 
 async function sdbFetch(endpoint: string, responseKey: 'events' | 'results' = 'events'): Promise<SportsDBEvent[]> {
+  if (!isSafeSportsDbEndpoint(endpoint)) {
+    console.warn(`[SportsDB] blocked unsafe endpoint: ${endpoint.slice(0, 80)}`);
+    return [];
+  }
+
   const ck = `${endpoint}|${responseKey}`;
 
   // ── Layer 1: in-process memory ──────────────────────────────────────────
@@ -1214,8 +1151,11 @@ async function sdbFetch(endpoint: string, responseKey: 'events' | 'results' = 'e
     } catch { /* db unavailable — fall through to live fetch */ }
   }
 
-  // ── Layer 3: live SportsDB fetch ─────────────────────────────────────────
+  // ── Layer 3: live SportsDB fetch (throttled only when we actually hit the network)
   try {
+    await throttleSdbLiveFetch();
+    lastSdbLiveFetchAt = Date.now();
+
     const res = await fetch(`${SPORTSDB_BASE}/${endpoint}`, {
       signal: AbortSignal.timeout(8_000),
       headers: {
@@ -1618,12 +1558,10 @@ async function mergeSportsDBRoundSeasonEvents(
   };
 
   for (const year of years) {
+    // Throttling lives inside sdbFetch for live HTTP only — no sleeps on cache hits.
     merge(await sdbFetch(`eventsseason.php?id=${sportsdbId}&s=${year}`));
-    await sleep(200);
     merge(await sdbFetch(`eventsnextleague.php?id=${sportsdbId}`));
-    await sleep(200);
     merge(await sdbFetch(`eventspastleague.php?id=${sportsdbId}`));
-    await sleep(200);
 
     let emptyStreak = 0;
     for (let round = 1; round <= maxRounds; round++) {
@@ -1635,7 +1573,6 @@ async function mergeSportsDBRoundSeasonEvents(
       }
       emptyStreak = 0;
       merge(roundEvents);
-      await sleep(200);
     }
   }
 
@@ -1735,8 +1672,6 @@ async function fetchSportsDBLeagueByNextPast(
   }
   if (next.length > 0) console.log(`[SportsDB] ${league.label} eventsnextleague: ${next.length} events`);
 
-  await sleep(300);
-
   const past = await sdbFetch(`eventspastleague.php?id=${league.sportsdbId}`);
   for (const e of past) {
     if (!seen.has(e.idEvent)) { seen.add(e.idEvent); allEvents.push(e); }
@@ -1762,7 +1697,7 @@ async function fetchSportsDBCombatBySeason(
     league.sportsdbId,
     startDate,
     endDate,
-    40,
+    24,
   );
 
   const mapped = allEvents
@@ -1842,7 +1777,8 @@ async function fetchSportsDBLeague(
   if (league.id === NATIONS_CHAMPIONSHIP_SPORT_ID) {
     return fetchNationsChampionshipByRounds(league, startDate, endDate, timeZone);
   }
-  // Boxing: round-by-round on TheSportsDB (ESPN has no boxing scoreboard API)
+  // Boxing: round-by-round on TheSportsDB (ESPN has no boxing scoreboard API).
+  // Cap rounds at 24 — cards are sparse; empty-streak stop already exits early.
   if (COMBAT_SPORT_IDS.has(league.sportsdbId)) {
     return fetchSportsDBCombatBySeason(league, startDate, endDate, timeZone);
   }
@@ -2192,6 +2128,25 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       { error: 'Missing start or end date' },
       { status: 400 }
+    );
+  }
+
+  // Reject malformed / abusive date windows before any upstream fan-out.
+  const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+  if (!ISO_DATE.test(startDate) || !ISO_DATE.test(endDate)) {
+    return NextResponse.json({ error: 'Dates must be YYYY-MM-DD' }, { status: 400 });
+  }
+  const startMs = Date.parse(`${startDate}T00:00:00Z`);
+  const endMs = Date.parse(`${endDate}T00:00:00Z`);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) {
+    return NextResponse.json({ error: 'Invalid date range' }, { status: 400 });
+  }
+  const MAX_RANGE_DAYS = 120;
+  const rangeDays = Math.floor((endMs - startMs) / 86_400_000) + 1;
+  if (rangeDays > MAX_RANGE_DAYS) {
+    return NextResponse.json(
+      { error: `Date range too large (max ${MAX_RANGE_DAYS} days)` },
+      { status: 400 },
     );
   }
 

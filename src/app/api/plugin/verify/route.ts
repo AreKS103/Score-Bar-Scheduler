@@ -20,9 +20,11 @@ function isRateLimited(ip: string): boolean {
 }
 
 function getCorsHeaders(req?: NextRequest): Record<string, string> {
-  const origin = req?.headers.get('origin') ?? '*';
+  const origin = req?.headers.get('origin') ?? '';
+  // Reflect only http(s) origins — never echo arbitrary Origin values.
+  const safeOrigin = /^https?:\/\/[^\s/]+$/i.test(origin) ? origin : '';
   return {
-    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Origin': safeOrigin || 'null',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Vary': 'Origin',
@@ -70,72 +72,59 @@ export async function POST(req: NextRequest) {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Resolve the key to its DB hash using the same logic as embed-instances
+    // Resolve the key to its DB hash using the same logic as embed-instances.
+    // IMPORTANT: never authenticate by connected_site alone — knowing a public
+    // WordPress URL must not be enough to obtain that account's embedToken.
     const hash = resolveKeyHash(apiKey);
 
-    // ── Step 1: Try to find user by the resolved hash ─────────────────────
     const { data: keyData } = await supabase
       .from('user_api_keys')
       .select('user_id, key_hash')
       .eq('key_hash', hash)
       .maybeSingle();
 
-    let userId: string | null = keyData?.user_id ?? null;
-    let storedKeyHash: string | null = keyData?.key_hash ?? null;
-    const foundByHash = userId !== null;
-
-    // ── Step 2: Key not found by hash — try by siteUrl (handles key
-    //    regeneration where WordPress still holds the old token but the
-    //    user has pasted a new key; DB row exists but hash is stale) ───────
-    if (!userId && siteUrl) {
-      const { data: siteData } = await supabase
-        .from('user_api_keys')
-        .select('user_id, key_hash')
-        .eq('connected_site', siteUrl)
-        .maybeSingle();
-      userId = siteData?.user_id ?? null;
-      storedKeyHash = siteData?.key_hash ?? null;
-    }
-
-    if (!userId) {
+    if (!keyData?.user_id || !keyData.key_hash) {
       return NextResponse.json({ error: 'Invalid API Key' }, { status: 401, headers: corsHeaders });
     }
 
-    // ── Step 3: Sync DB — only update key_hash when the user was found by
-    //    their own valid hash (Step 1). If found via siteUrl fallback (Step 2),
-    //    do NOT overwrite key_hash — an unverified caller must not be able to
-    //    replace a victim's stored hash with their own key. ──────────────────
-    const updatePayload: Record<string, string> = {
-      updated_at: new Date().toISOString(),
-    };
-    if (foundByHash) updatePayload.key_hash = hash;
-    if (siteUrl) updatePayload.connected_site = siteUrl;
+    // Only the raw sb_live_* key may mutate account fields (connected_site,
+    // key_hash re-sync). The public embed token (64-hex) is in every embedded
+    // page's HTML — accepting it here would let anyone repoint connected_site.
+    const isRawKey = apiKey.startsWith('sb_');
 
-    const { error: updateErr } = await supabase
-      .from('user_api_keys')
-      .update(updatePayload)
-      .eq('user_id', userId);
+    if (isRawKey) {
+      const updatePayload: Record<string, string> = {
+        updated_at: new Date().toISOString(),
+      };
+      // Keep hash in sync (idempotent when already correct).
+      updatePayload.key_hash = hash;
+      if (typeof siteUrl === 'string' && siteUrl.trim()) {
+        const normalized = siteUrl.trim().replace(/\/+$/, '');
+        if (/^https?:\/\/[^\s]+$/i.test(normalized) && normalized.length <= 500) {
+          updatePayload.connected_site = normalized;
+        }
+      }
 
-    if (updateErr) {
-      console.error('[verify] Failed to update key_hash:', updateErr);
-      // Non-fatal: still return success so WordPress can save the token.
+      const { error: updateErr } = await supabase
+        .from('user_api_keys')
+        .update(updatePayload)
+        .eq('user_id', keyData.user_id);
+
+      if (updateErr) {
+        console.error('[verify] Failed to update key_hash:', updateErr);
+        // Non-fatal: still return success so WordPress can save the token.
+      }
     }
 
-    // Return the key_hash that the public embed endpoint will actually accept.
-    // If the request was authenticated by siteUrl fallback, `hash` may be the
-    // submitted/stale WP value, so returning it would make WordPress save an
-    // embed token that does not exist in user_api_keys and the iframe would show
-    // "Invalid embed token." In that case return the stored DB key_hash instead.
-    const embedToken = foundByHash ? hash : storedKeyHash;
-    if (!embedToken || !/^[0-9a-f]{64}$/.test(embedToken)) {
+    const embedToken = keyData.key_hash;
+    if (!/^[0-9a-f]{64}$/.test(embedToken)) {
       return NextResponse.json(
         { error: 'Connection found, but no valid embed token is stored. Reconnect WordPress from the Scorebar setup wizard.' },
         { status: 409, headers: corsHeaders }
       );
     }
 
-    // Return the key_hash as embedToken — this is safe to expose in iframe URLs
-    // because a SHA-256 hash cannot be reversed to recover the original API key.
+    // Return the key_hash as embedToken — safe in iframe URLs (not reversible to sb_live_*).
     return NextResponse.json({ ok: true, message: 'Connected successfully', embedToken }, { headers: corsHeaders });
   } catch (error) {
     console.error('[plugin/verify] error:', error);
