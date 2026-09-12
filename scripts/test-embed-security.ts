@@ -1,6 +1,9 @@
 /* eslint-disable no-console */
 // Logic unit checks for the embed-instances hardening (pure functions,
 // replicated 1:1 from the route so no server/env is needed).
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 export {};
 
 function hostOf(url: string): string {
@@ -47,6 +50,23 @@ let blocked = 0;
 for (let i = 0; i < 40; i++) if (isRateLimited('key-a')) blocked++;
 check('first 30 pass, next 10 blocked', blocked === 10);
 check('other key unaffected', !isRateLimited('key-b'));
+
+console.log('source hardening contracts:');
+const source = (relativePath: string) => readFileSync(join(process.cwd(), relativePath), 'utf8');
+const embedRoute = source('src/app/api/embed-instances/route.ts');
+const publicEmbedRoute = source('src/app/embed/[apiKey]/route.ts');
+const elementorInit = source('wordpress-plugin/includes/elementor-init.php');
+const editorSync = source('wordpress-plugin/includes/elementor-editor-sync.js');
+const shortcode = source('wordpress-plugin/includes/shortcode.php');
+
+check('registration uses atomic widget identity upsert', embedRoute.includes("onConflict: 'user_id,widget_id'"));
+check('public hash tokens cannot DELETE', embedRoute.includes("if (!apiKey.startsWith('sb_'))"));
+check('poll checks lightweight schedule identity', publicEmbedRoute.includes(".select('id, published_at')"));
+check('unchanged poll exits with compact response', publicEmbedRoute.includes('unchanged: true'));
+check('Elementor deletion diffs per-post metadata', elementorInit.includes("get_post_meta($post_id, $meta_key, true)")
+  && elementorInit.includes('array_diff($previous_ids, $current_ids)'));
+check('editor browser deletion path removed', !/\bDELETE\b/.test(editorSync));
+check('shortcode browser deletion removed', !shortcode.includes('MutationObserver') && !shortcode.includes("method: 'DELETE'"));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

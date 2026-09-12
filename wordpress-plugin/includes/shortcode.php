@@ -115,9 +115,7 @@ function schedule_shortcode_render($atts) {
     if (!empty($atts['highlight_text_color']))  { $query_args['hlTextColor'] = ltrim(sanitize_hex_color('#' . ltrim($atts['highlight_text_color'], '#')), '#'); }
     if (!empty($atts['highlight_time_color']))  { $query_args['hlTimeColor'] = ltrim(sanitize_hex_color('#' . ltrim($atts['highlight_time_color'], '#')), '#'); }
 
-    // Deterministic UID — must NOT use rand() because Elementor re-renders the
-    // shortcode with a new PHP execution, and if the UID changes the MutationObserver
-    // can no longer find the old element and fires a false-positive DELETE.
+    // Deterministic UID keeps resize behavior stable across repeated renders.
     $uid        = 'sb' . substr(md5(serialize($atts)), 0, 8);
     $app_domain  = schedule_get_app_domain();
     $iframe_url = $app_domain . '/embed/' . sanitize_text_field($iframe_key) . '?' . http_build_query($query_args);
@@ -236,48 +234,6 @@ function schedule_shortcode_render($atts) {
                 } catch(err) { sbLog_<?php echo esc_js($uid); ?>('height error', err); }
             }
         });
-        // MutationObserver: fire DELETE when this embed is permanently removed from the DOM.
-        // Confirms briefly to survive Elementor re-renders without making real deletes feel stale.
-        (function(){
-            var wid = document.getElementById('<?php echo esc_js($uid); ?>');
-            if (!wid || !window.MutationObserver) return;
-            var deleted = false;
-            var widId = '<?php echo esc_js($uid); ?>';
-            var obs = new MutationObserver(function(mutations) {
-                try {
-                    var _inWpCtx = (
-                        (window.elementorFrontend && typeof window.elementorFrontend.isEditMode === 'function' && window.elementorFrontend.isEditMode()) ||
-                        !!(window.parent && window.parent !== window && window.parent.elementor)
-                    );
-                    if (!_inWpCtx) return;
-                } catch(e) { return; }
-                if (deleted) return;
-                for (var i = 0; i < mutations.length; i++) {
-                    var rn = mutations[i].removedNodes;
-                    for (var j = 0; j < rn.length; j++) {
-                        var node = rn[j];
-                        if (node.nodeType !== 1) continue;
-                        if (node === wid || (node.contains && node.contains(wid))) {
-                            deleted = true;
-                            var checks = 0;
-                            var iv = setInterval(function() {
-                                checks++;
-                                if (document.getElementById(widId)) { deleted = false; clearInterval(iv); return; }
-                                if (checks >= 3) {
-                                    clearInterval(iv);
-                                    var delParams = {};
-                                    <?php if (!empty($atts['embed_id'])): ?>delParams.embedId = '<?php echo esc_js($atts['embed_id']); ?>';<?php else: ?>deleted = false; return;<?php endif; ?>
-                                    obs.disconnect();
-                                    if (typeof sbFireDelete === 'function') sbFireDelete(delParams);
-                                }
-                            }, 1000);
-                            return;
-                        }
-                    }
-                }
-            });
-            obs.observe(document.body, { childList: true, subtree: true });
-        })();
     })();
     </script>
     <?php

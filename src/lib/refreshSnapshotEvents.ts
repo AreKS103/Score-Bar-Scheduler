@@ -1,6 +1,6 @@
 import type { MatchEvent, SportConfig } from '@/types';
 import { SPORTS_CONFIG } from '@/lib/config';
-import { refreshWorldCupSnapshotEvents, WORLD_CUP_SPORT_ID } from '@/lib/worldCup';
+import { WORLD_CUP_SPORT_ID } from '@/lib/worldCup';
 import { fetchEspnEvents } from '@/lib/api/espnHosts';
 
 const ESPN_REFRESH_CACHE_TTL_MS = 2 * 60 * 1000;
@@ -118,10 +118,6 @@ function parseEspnSourceEventId(event: MatchEvent): string {
   return numeric ? numeric[0] : rest;
 }
 
-function isWorldCupRefreshableEvent(event: MatchEvent): boolean {
-  return event.sportId === WORLD_CUP_SPORT_ID && event.source !== 'manual';
-}
-
 function isEspnTeamRefreshableEvent(event: MatchEvent): boolean {
   if (event.source !== 'espn' || event.sportId === WORLD_CUP_SPORT_ID) return false;
   if (!parseEspnSourceEventId(event)) return false;
@@ -129,7 +125,7 @@ function isEspnTeamRefreshableEvent(event: MatchEvent): boolean {
 }
 
 export function isRefreshableSnapshotEvent(event: MatchEvent): boolean {
-  return isWorldCupRefreshableEvent(event) || isEspnTeamRefreshableEvent(event);
+  return isEspnTeamRefreshableEvent(event);
 }
 
 export function hasRefreshableSnapshotEvents(events: MatchEvent[]): boolean {
@@ -319,10 +315,7 @@ export async function refreshSnapshotEvents(events: MatchEvent[], timeZone?: str
   if (!hasRefreshableSnapshotEvents(events)) return events;
 
   const safeTimeZone = normalizeTimeZone(timeZone);
-  const refreshPass = (async () => {
-    const worldCupRefreshed = await refreshWorldCupSnapshotEvents(events, safeTimeZone);
-    return refreshEspnTeamSnapshotEvents(worldCupRefreshed, safeTimeZone);
-  })();
+  const refreshPass = refreshEspnTeamSnapshotEvents(events, safeTimeZone);
 
   const budget = new Promise<MatchEvent[] | null>((resolve) => {
     const timer = setTimeout(() => resolve(null), REFRESH_TOTAL_BUDGET_MS);

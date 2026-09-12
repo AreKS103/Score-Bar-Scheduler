@@ -4,9 +4,9 @@ import { createClient } from '@/lib/supabase/server';
 import { getOrgMemberIds } from '@/lib/supabase/org';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { normalizeTournamentGame, MARCH_MADNESS_LOGO, MARCH_MADNESS_WOMEN_LOGO } from '@/lib/marchMadness';
-import { fetchWorldCupFixtures, formatWorldCupStage, WORLD_CUP_LABEL, WORLD_CUP_LOGO, WORLD_CUP_SPORT_ID, WORLD_CUP_ESPN_SLUG } from '@/lib/worldCup';
 import { fetchAllGiroEvents } from '@/lib/api/giro';
 import { SPORTS_CONFIG } from '@/lib/config';
+import { WORLD_CUP_SPORT_ID } from '@/lib/worldCup';
 import {
   NATIONS_CHAMPIONSHIP_SPORT_ID,
   NATIONS_CHAMPIONSHIP_SPORTSDB_ID,
@@ -91,9 +91,11 @@ async function readEventsDbCache(cacheKey: string): Promise<CacheEntry | null> {
       .gt('expires_at', new Date().toISOString())
       .maybeSingle();
     if (!row) return null;
-    const data = (row as { response_data: MatchEvent[] }).response_data;
+    const rawData = (row as { response_data: MatchEvent[] }).response_data;
     const ts = new Date((row as { fetched_at?: string }).fetched_at ?? 0).getTime();
-    if (!Array.isArray(data) || data.length === 0 || Number.isNaN(ts)) return null;
+    if (!Array.isArray(rawData) || rawData.length === 0 || Number.isNaN(ts)) return null;
+    const data = rawData.filter((event) => event.sportId !== WORLD_CUP_SPORT_ID);
+    if (data.length === 0) return null;
     return { data, timestamp: ts };
   } catch {
     return null;
@@ -133,7 +135,6 @@ const ESPN_PRIORITY_LEAGUES = [
   // Tier 1: Most important leagues
   { id: 'soccer-epl', slug: 'soccer/eng.1' },
   { id: 'soccer-ucl', slug: 'soccer/uefa.champions' },
-  { id: WORLD_CUP_SPORT_ID, slug: WORLD_CUP_ESPN_SLUG },
   { id: 'basketball-nba', slug: 'basketball/nba' },
   { id: 'football-nfl', slug: 'football/nfl' },
   { id: 'soccer-laliga', slug: 'soccer/esp.1' },
@@ -199,7 +200,6 @@ const ESPN_SECONDARY_LEAGUES = [
 const LEAGUE_METADATA: Record<string, { label: string; category: string; logo: string }> = {
   'soccer-epl': { label: 'EPL', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/23.png' },
   'soccer-ucl': { label: 'UEFA Champions League', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/2.png' },
-  [WORLD_CUP_SPORT_ID]: { label: WORLD_CUP_LABEL, category: 'Football', logo: WORLD_CUP_LOGO },
   'soccer-uel': { label: 'UEFA Europa League', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/2310.png' },
   'soccer-uecl': { label: 'Europa Conference League', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/45.png' },
   'soccer-facup': { label: 'FA Cup', category: 'Football', logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/4.png' },
@@ -792,7 +792,6 @@ function mapTeamSportEvents(
 ): MatchEvent[] {
   const isGolf = league.slug.startsWith('golf/');
   const isNCAA = league.id === 'basketball-ncaam' || league.id === 'basketball-ncaaw';
-  const isWorldCup = league.id === WORLD_CUP_SPORT_ID;
 
   return events.map((event): MatchEvent => {
     const comp = event.competitions?.[0];
@@ -826,8 +825,6 @@ function mapTeamSportEvents(
       if (info.leagueLabel === 'March Madness') {
         leagueLogo = league.id === 'basketball-ncaaw' ? MARCH_MADNESS_WOMEN_LOGO : MARCH_MADNESS_LOGO;
       }
-    } else if (isWorldCup) {
-      round = formatWorldCupStage(event.season?.slug);
     } else {
       // Round info from event name
       const name = event.name || '';
@@ -857,12 +854,9 @@ function mapTeamSportEvents(
       sourceEventId: event.id,
       isoDate: event.date,
       status: event.status?.type?.description || comp?.status?.type?.description || '',
-      ...(isWorldCup ? {
-        stageSlug: event.season?.slug || 'group-stage',
-      } : {}),
     };
-  }).filter(e => e.date && (e.home !== 'TBD' || isNCAA || isWorldCup));
-  // NCAA and World Cup tournament bracket slots with placeholders are valid and should be shown.
+  }).filter(e => e.date && (e.home !== 'TBD' || isNCAA));
+  // NCAA tournament bracket slots with placeholders are valid and should be shown.
 }
 
 async function fetchESPNLeague(
@@ -873,11 +867,6 @@ async function fetchESPNLeague(
 ): Promise<MatchEvent[]> {
   const meta = getLeagueMetadata(league.id);
   if (!meta) return [];
-
-  if (league.id === WORLD_CUP_SPORT_ID) {
-    const { fixtures } = await fetchWorldCupFixtures(timeZone);
-    return fixtures.filter((event) => event.date >= startDate && event.date <= endDate);
-  }
 
   try {
     const isMMA = league.slug.startsWith('mma/') || league.slug.startsWith('boxing/');
@@ -2081,7 +2070,7 @@ async function fetchAllEvents(startDate: string, endDate: string, timeZone: stri
     console.log(`[Events API] sports with zero events in window: ${zeroSports.join(', ')}`);
   }
 
-  return deduped;
+  return deduped.filter((event) => event.sportId !== WORLD_CUP_SPORT_ID);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2103,26 +2092,9 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url);
-  const sportId = searchParams.get('sportId');
-  const scope = searchParams.get('scope');
   const startDate = searchParams.get('start');
   const endDate = searchParams.get('end');
   const timeZone = normalizeTimeZone(searchParams.get('timeZone'));
-
-  if (sportId === WORLD_CUP_SPORT_ID && scope === 'all') {
-    const payload = await fetchWorldCupFixtures(timeZone);
-    return NextResponse.json({
-      events: payload.fixtures,
-      cached: false,
-      timeZone,
-      source: payload.source,
-      complete: payload.complete,
-      updatedAt: payload.updatedAt,
-      scope: 'world-cup-all',
-    }, {
-      headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=900' },
-    });
-  }
 
   if (!startDate || !endDate) {
     return NextResponse.json(
@@ -2169,7 +2141,11 @@ export async function GET(req: NextRequest) {
         .in('user_id', orgMemberIds)
         .gt('expires_at', new Date().toISOString());
       const all = (data ?? []).map(r => r.event_data as MatchEvent);
-      const filtered = all.filter(e => e.date >= startDate && e.date <= endDate);
+      const filtered = all.filter(
+        (event) => event.sportId !== WORLD_CUP_SPORT_ID
+          && event.date >= startDate
+          && event.date <= endDate,
+      );
       CUSTOM_EVENTS_CACHE.set(customCacheKey, { data: filtered, timestamp: now });
       return filtered;
     } catch { return []; }

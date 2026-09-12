@@ -2,9 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getUserOrgId, getOrgMemberIds } from '@/lib/supabase/org';
 import type { MatchEvent } from '@/types';
-import { refreshSnapshotEvents } from '@/lib/refreshSnapshotEvents';
+import { WORLD_CUP_SPORT_ID } from '@/lib/worldCup';
+import { generateHTML } from '@/lib/generateHTML';
 
 const MAX_HISTORY = 50; // per embed_target — keep full history
+
+function withoutRetiredWorldCup(events: unknown): MatchEvent[] {
+  return Array.isArray(events)
+    ? (events as MatchEvent[]).filter((event) => event?.sportId !== WORLD_CUP_SPORT_ID)
+    : [];
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,12 +21,23 @@ export async function POST(req: NextRequest) {
 
     const orgId = await getUserOrgId(user.id);
 
-    const { weekLabel, dateRangeStart, dateRangeEnd, htmlContent, eventsSnapshot, leagueOrder, featuredLeagues, embedTarget, publishedAtLabel } = await req.json();
-    if (!htmlContent || !eventsSnapshot) {
+    const { weekLabel, dateRangeStart, dateRangeEnd, eventsSnapshot, leagueOrder, featuredLeagues, embedTarget, publishedAtLabel } = await req.json();
+    if (!eventsSnapshot) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
     const targetValue = (typeof embedTarget === 'string' && embedTarget.trim()) ? embedTarget.trim() : null;
+    const safeEvents = withoutRetiredWorldCup(eventsSnapshot);
+    const safeLeagueOrder = Array.isArray(leagueOrder) ? leagueOrder : [];
+    const safeFeaturedLeagues = featuredLeagues && typeof featuredLeagues === 'object'
+      ? featuredLeagues as Record<string, string>
+      : {};
+    const htmlContent = generateHTML(
+      safeEvents,
+      safeLeagueOrder,
+      new Map(Object.entries(safeFeaturedLeagues)),
+      targetValue ?? undefined,
+    );
 
     // Look up the user's display name from user_profiles
     const { data: profile } = await supabase
@@ -35,9 +53,9 @@ export async function POST(req: NextRequest) {
       date_range_start: dateRangeStart,
       date_range_end: dateRangeEnd,
       html_content: htmlContent,
-      events_snapshot: eventsSnapshot,
-      league_order: leagueOrder || [],
-      featured_leagues: featuredLeagues || {},
+      events_snapshot: safeEvents,
+      league_order: safeLeagueOrder,
+      featured_leagues: safeFeaturedLeagues,
       embed_target: targetValue,
       author_email: user.email ?? null,
       author_username: profile?.username ?? null,
@@ -94,7 +112,7 @@ export async function GET(req: NextRequest) {
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       const schedule = data?.[0] ?? null;
       if (schedule && Array.isArray(schedule.events_snapshot)) {
-        schedule.events_snapshot = await refreshSnapshotEvents(schedule.events_snapshot as MatchEvent[]);
+        schedule.events_snapshot = withoutRetiredWorldCup(schedule.events_snapshot);
       }
       return NextResponse.json({ schedule }, {
         headers: { 'Cache-Control': 'private, max-age=15, stale-while-revalidate=60' },

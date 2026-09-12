@@ -6,6 +6,7 @@
  */
 
 import type { MatchEvent, ScreenTag } from '@/types';
+import { WORLD_CUP_SPORT_ID } from '@/lib/worldCup';
 
 const CACHE_KEY = 'scorebar_events_cache';
 const LEGACY_CACHE_KEY = 'sportglobe_events_cache';
@@ -55,7 +56,7 @@ export function getCachedEvents(dateRange: { start: string; end: string }, timeZ
       return null;
     }
 
-    return cache.events;
+    return cache.events.filter((event) => event.sportId !== WORLD_CUP_SPORT_ID);
   } catch (err) {
     console.warn('[ClientCache] Failed to read cache:', err);
     return null;
@@ -250,7 +251,12 @@ export function saveLocalCustomEvent(event: MatchEvent): void {
 /** Load local fallback custom events for a date range (inclusive). */
 export function loadLocalCustomEvents(dateRange: { start: string; end: string }): MatchEvent[] {
   const store = readLocalCustomEventsStore();
-  return store.events.filter((e) => e.source === 'manual' && e.date >= dateRange.start && e.date <= dateRange.end);
+  return store.events.filter(
+    (event) => event.source === 'manual'
+      && event.sportId !== WORLD_CUP_SPORT_ID
+      && event.date >= dateRange.start
+      && event.date <= dateRange.end,
+  );
 }
 
 /** Remove one locally persisted custom/manual event by MatchEvent.id. */
@@ -314,7 +320,7 @@ function legacySelectionsKey(embedTarget: string): string {
 
 export interface SavedSelectionState {
   /** Map of event ID → selection flags + optional full-event snapshot for SportsDB events */
-  selections: Record<string, { isSelected: boolean; isFeatured: boolean; tags: ScreenTag[]; aiImportance?: string; snapshot?: MatchEvent }>;
+  selections: Record<string, { isSelected: boolean; isFeatured: boolean; tags: ScreenTag[]; snapshot?: MatchEvent }>;
   /** Preserved league order from the preview sidebar */
   leagueOrder: string[];
   /** Preserved featured leagues (sportId → label override) */

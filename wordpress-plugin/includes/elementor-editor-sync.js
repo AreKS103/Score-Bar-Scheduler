@@ -1,8 +1,8 @@
 /* global $e, elementor */
 /* Scorebar Scheduler — Elementor editor sync script.
  * Runs in the main Elementor editor window (not inside the preview iframe).
- * Fires POST (register) / DELETE (remove) to the Supabase-backed API whenever
- * a schedule_widget is added to or removed from the Elementor canvas.
+ * Registers schedule_widget instances with the Supabase-backed API. Deletion
+ * is reconciled server-to-server after Elementor saves the post.
  *
  * Config is injected by scorebar-scheduler.php via wp_localize_script:
  *   window._sbEditorCfg = { appUrl: '...', apiKey: '...' }
@@ -19,8 +19,7 @@
     return;
   }
 
-  /* ── Dedup: prevent multiple hooks from sending duplicate DELETEs / REGISTERs ── */
-  var deletedWidgets = {};
+  /* ── Dedup: prevent hooks from sending duplicate registrations ── */
   var registeredWidgets = new Set();
   var registeredEmbedIds = {}; // widgetId → last embedId sent, for rename detection
 
@@ -106,35 +105,6 @@
     }, 500);
   }
 
-  /* ── HTTP helpers ──────────────────────────────────────────────────────── */
-
-  function apiDelete(widgetId, embedId) {
-    var params = new URLSearchParams({ apiKey: apiKey });
-    if (widgetId) {
-      params.set('widgetId', widgetId);
-    } else {
-      params.set('embedId', embedId || '__null__');
-    }
-    try {
-      fetch(appUrl + '/api/embed-instances?' + params.toString(), {
-        method: 'DELETE',
-        keepalive: true
-      }).catch(function (e) { console.warn('[SB] delete failed', e); });
-    } catch (e) {
-      console.warn('[SB] delete failed', e);
-    }
-  }
-
-  /** Deduplicated delete — only fires once per widgetId per session */
-  function apiDeleteOnce(widgetId, embedId) {
-    var key = widgetId || embedId || '__null__';
-    if (deletedWidgets[key]) return;
-    deletedWidgets[key] = true;
-    registeredWidgets.delete(key); // allow re-registration if widget is re-added
-    delete registeredEmbedIds[key];
-    apiDelete(widgetId, embedId);
-  }
-
   var scanTimer = null;
 
   function extractEmbedIdFromWidgetNode(widgetNode) {
@@ -150,12 +120,6 @@
   function registerWidgetNode(widgetNode) {
     var widgetId = widgetNode && widgetNode.dataset && widgetNode.dataset.id;
     if (!widgetId) return;
-
-    if (deleteTimers[widgetId]) {
-      clearTimeout(deleteTimers[widgetId]);
-      delete deleteTimers[widgetId];
-      console.log('[SB] scan cancelled pending delete:', widgetId);
-    }
 
     apiRegister(widgetId, extractEmbedIdFromWidgetNode(widgetNode));
   }
@@ -196,16 +160,6 @@
   }
 
   function apiRegister(widgetId, embedId) {
-    // FIX 2: Cancel any pending delete for this widget before registering.
-    // This handles the re-render cycle: MutationObserver fires DELETE when
-    // Elementor temporarily removes the widget node, then the widget re-appears
-    // and calls apiRegister — the pending delete must be cancelled.
-    if (widgetId && deleteTimers[widgetId]) {
-      clearTimeout(deleteTimers[widgetId]);
-      delete deleteTimers[widgetId];
-      console.log('[SB] cancelled pending delete on re-register:', widgetId);
-    }
-
     var dedupKey = widgetId || embedId || '__unknown__';
     if (registeredWidgets.has(dedupKey)) {
       // Allow re-registration if the embed name changed in Elementor settings
@@ -269,18 +223,6 @@
     // ── Primary: $e.hooks (Elementor 3.x command-based hooks) ─────────────
     if (window.$e && window.$e.hooks) {
       try {
-        $e.hooks.registerDataAfter('document/elements/delete', function (result, args) {
-          try {
-            var containers = (args && args.containers) || (args && args.container ? [args.container] : []);
-            containers.forEach(function (c) {
-              var el = c && c.model;
-              if (isScheduleWidget(el)) {
-                apiDeleteOnce(getWidgetId(el), getEmbedId(el));
-              }
-            });
-          } catch (e) { console.warn('[SB] delete hook error', e); }
-        });
-
         $e.hooks.registerDataAfter('document/elements/create', function (result) {
           try {
             var container = result;
@@ -313,14 +255,6 @@
       try {
         if (elementor.channels && elementor.channels.data) {
           var ch = elementor.channels.data;
-          ch.on('element:before:remove', function (view) {
-            try {
-              var el = view && (view.model || view);
-              if (isScheduleWidget(el)) {
-                apiDeleteOnce(getWidgetId(el), getEmbedId(el));
-              }
-            } catch (e) {}
-          });
           ch.on('element:after:add', function (model) {
             try {
               var el = model && (model.model || model);
@@ -349,7 +283,7 @@
             var widgets = iframe.contentDocument.querySelectorAll('[data-widget_type^="schedule_widget"]');
             widgets.forEach(function (w) {
               var wid = w.dataset && w.dataset.id;
-              if (!wid || deletedWidgets[wid]) return;
+              if (!wid) return;
               registerWidgetNode(w);
             });
           } catch (e) {}
@@ -358,57 +292,11 @@
     }
   }
 
-  /* ── DOM-level fallback: MutationObserver on Elementor preview iframe ─── */
-
-  var deleteTimers = {};
+  /* ── DOM-level registration fallback on the Elementor preview iframe ─── */
 
   function attachDocObserver(doc) {
     new MutationObserver(function (mutations) {
       mutations.forEach(function (mutation) {
-
-        // ── Removed nodes → potential DELETE ────────────────────────────
-        mutation.removedNodes.forEach(function (node) {
-          if (node.nodeType !== 1) return;
-          var candidates = [];
-          if (node.dataset && node.dataset.widget_type === 'schedule_widget.default') {
-            candidates.push(node);
-          }
-          if (typeof node.querySelectorAll === 'function') {
-            node.querySelectorAll('[data-widget_type^="schedule_widget"]').forEach(function (w) {
-              candidates.push(w);
-            });
-          }
-          candidates.forEach(function (w) {
-            var widgetId = (w.dataset && w.dataset.id) || null;
-            if (!widgetId) return;
-            if (deleteTimers[widgetId]) clearTimeout(deleteTimers[widgetId]);
-            deleteTimers[widgetId] = setTimeout(function () {
-              delete deleteTimers[widgetId];
-              // FIX 1: Verify the widget is truly gone — not just temporarily
-              // removed by an Elementor iframe re-render.
-              try {
-                var currentIframe = document.getElementById('elementor-preview-iframe');
-                if (currentIframe && currentIframe.contentDocument) {
-                  var stillExists = currentIframe.contentDocument.querySelector(
-                    '[data-id="' + widgetId + '"][data-widget_type^="schedule_widget"]'
-                  );
-                  if (stillExists) {
-                    console.log('[SB] widget still in DOM, cancelling delete:', widgetId);
-                    return; // Widget came back — do NOT delete
-                  }
-                }
-              } catch (e) {}
-              var embedId = null;
-              try {
-                var fr = w.querySelector('iframe[src]');
-                if (fr) embedId = new URL(fr.src).searchParams.get('embedId') || null;
-              } catch (e) {}
-              console.log('[SB] confirmed gone after 1.5s, deleting:', widgetId);
-              apiDeleteOnce(widgetId, embedId);
-            }, 1500);
-          });
-        });
-
         // ── Added nodes → potential REGISTER ────────────────────────────
         mutation.addedNodes.forEach(function (node) {
           if (node.nodeType !== 1) return;
@@ -425,12 +313,6 @@
           }
 
           addedCandidates.forEach(function (w) {
-            var wid = w.dataset && w.dataset.id;
-            // Cancel any pending delete for this widget (it's being re-added)
-            if (wid && deleteTimers[wid]) {
-              clearTimeout(deleteTimers[wid]);
-              delete deleteTimers[wid];
-            }
             registerWidgetNode(w);
             schedulePreviewScan(800);
           });
@@ -538,15 +420,6 @@
         widgets.forEach(function (w) {
           var widgetId = w.dataset && w.dataset.id;
           if (!widgetId) return;
-
-          // FIX 3: Cancel any pending delete — widget is clearly still alive
-          // (it just sent a resize message to the editor window)
-          if (deleteTimers[widgetId]) {
-            clearTimeout(deleteTimers[widgetId]);
-            delete deleteTimers[widgetId];
-            console.log('[SB] sbHeight cancelled pending delete:', widgetId);
-          }
-
           registerWidgetNode(w);
         });
       } catch (e) {}

@@ -7,11 +7,12 @@
 //   2. the PUBLIC embed token (scraped from scorekh.com HTML) can no longer
 //      register embeds from a foreign domain (tch1.com → 403)
 //   3. the same token still works from the legitimate domain (200)
-//   4. named-embed DELETE via the public token is refused (403)
-//   5. /api/events returns ESPN-sourced events again
+//   4. all DELETE forms via the public token are refused (403)
+//   5. concurrent registration remains idempotent
+//   6. /api/events returns ESPN-sourced events again
 export {};
 
-const APP = 'https://scorebar.vercel.app';
+const APP = process.env.SCOREBAR_APP_URL ?? 'https://scorebar.vercel.app';
 const SITE = 'https://scorekh.com/';
 
 async function extractPublicEmbedToken(): Promise<string> {
@@ -29,7 +30,9 @@ async function postBeacon(apiKey: string, pageUrl: string) {
   const r = await fetch(`${APP}/api/embed-instances`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ apiKey, pageUrl, widgetId: 'verifytest', embedId: 'Security Verify Probe' }),
+    // Reuse the real widget identity so the successful-domain check is
+    // idempotent and can never leave a probe row behind.
+    body: JSON.stringify({ apiKey, pageUrl, widgetId: 'dc8d77d', embedId: 'Schedule Page' }),
   });
   return r.status;
 }
@@ -55,15 +58,27 @@ async function main() {
   console.log('4) legitimate domain still accepted:');
   check('scorekh.com → 200', (await postBeacon(token, 'https://scorekh.com/')) === 200);
 
-  console.log('5) public token cannot delete named embeds:');
-  const del = await fetch(`${APP}/api/embed-instances?embedId=${encodeURIComponent('Home Page')}&apiKey=${token}`, { method: 'DELETE' });
-  check('DELETE embedId with public token → 403', del.status === 403, `(got ${del.status})`);
+  console.log('5) public token cannot delete embeds:');
+  const namedDelete = await fetch(`${APP}/api/embed-instances?embedId=${encodeURIComponent('Home Page')}&apiKey=${token}`, { method: 'DELETE' });
+  check('DELETE embedId with public token → 403', namedDelete.status === 403, `(got ${namedDelete.status})`);
+  const widgetDelete = await fetch(`${APP}/api/embed-instances?widgetId=dc8d77d&apiKey=${token}`, { method: 'DELETE' });
+  check('DELETE widgetId with public token → 403', widgetDelete.status === 403, `(got ${widgetDelete.status})`);
 
-  console.log('6) ESPN pipeline restored:');
+  console.log('6) concurrent registration remains idempotent:');
+  const concurrentStatuses = await Promise.all(
+    Array.from({ length: 25 }, () => postBeacon(token, 'https://scorekh.com/')),
+  );
+  check(
+    '25 concurrent registrations succeed',
+    concurrentStatuses.every((status) => status === 200),
+    `(${concurrentStatuses.filter((status) => status === 200).length}/25 successful)`,
+  );
+
+  console.log('7) ESPN pipeline restored:');
   const today = new Date();
   const fmt = (d: Date) => d.toISOString().split('T')[0];
   const end = new Date(today); end.setUTCDate(end.getUTCDate() + 7);
-  const ev = await fetch(`${APP}/api/events?startDate=${fmt(today)}&endDate=${fmt(end)}`);
+  const ev = await fetch(`${APP}/api/events?start=${fmt(today)}&end=${fmt(end)}`);
   const payload = await ev.json();
   const events = Array.isArray(payload) ? payload : (payload.events ?? []);
   const espn = events.filter((e: { source?: string }) => e.source === 'espn');

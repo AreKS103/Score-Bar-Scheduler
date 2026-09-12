@@ -292,65 +292,24 @@ if (!function_exists('schedule_enqueue_editor_sync')) {
 }
 add_action('elementor/editor/after_enqueue_scripts', 'schedule_enqueue_editor_sync');
 
-// ── AJAX endpoint: return the CURRENT embed key (never baked into HTML) ─────
-// Used by sbFireDelete() in schedule-frontend.js so the MutationObserver DELETE
-// always sends the up-to-date key even if the user rotated it after the page was rendered.
-if (!function_exists('schedule_ajax_get_token')) {
-    function schedule_ajax_get_token() {
-        check_ajax_referer('schedule_token_nonce');
-        $embed_token = get_option('schedule_embed_token', '');
-        $api_key     = get_option('schedule_api_key', '');
-        $key = !empty($embed_token) ? $embed_token : $api_key;
-        if (empty($key)) {
-            wp_send_json_error('no_key', 403);
+// Establish the app connection from the document head so an iframe rendered
+// later in the Elementor page does not pay DNS/TLS setup on its critical path.
+if (!function_exists('schedule_add_app_resource_hint')) {
+    function schedule_add_app_resource_hint($urls, $relation_type) {
+        if (!in_array($relation_type, ['preconnect', 'dns-prefetch'], true)) {
+            return $urls;
         }
-        wp_send_json_success($key);
+        $app = schedule_get_app_domain();
+        $parts = wp_parse_url($app);
+        if (empty($parts['host'])) return $urls;
+        $origin = (!empty($parts['scheme']) ? $parts['scheme'] : 'https')
+            . '://' . $parts['host']
+            . (!empty($parts['port']) ? ':' . (int) $parts['port'] : '');
+        if (!in_array($origin, $urls, true)) $urls[] = $origin;
+        return $urls;
     }
 }
-add_action('wp_ajax_schedule_get_token',        'schedule_ajax_get_token');
-add_action('wp_ajax_nopriv_schedule_get_token', 'schedule_ajax_get_token');
-
-// ── Frontend script: inject _sbFrontendCfg (ajaxUrl + nonce + appUrl) ───────
-// Only on pages that actually contain a Scheduler widget/shortcode.
-if (!function_exists('schedule_page_has_widget')) {
-    function schedule_page_has_widget() {
-        if (is_admin()) return false;
-        if (!is_singular()) return false;
-        global $post;
-        if (!$post instanceof WP_Post) return false;
-        $content = (string) $post->post_content;
-        if (has_shortcode($content, 'schedule')
-            || has_shortcode($content, 'scorebar_schedule')
-            || has_shortcode($content, 'sports_schedule')) {
-            return true;
-        }
-        $elementor_data = get_post_meta($post->ID, '_elementor_data', true);
-        if (is_string($elementor_data) && strpos($elementor_data, 'schedule_widget') !== false) {
-            return true;
-        }
-        return false;
-    }
-}
-
-if (!function_exists('schedule_enqueue_frontend_config')) {
-    function schedule_enqueue_frontend_config() {
-        $api_key = get_option('schedule_api_key', '');
-        if (empty($api_key) || !schedule_page_has_widget()) return;
-        wp_enqueue_script(
-            'schedule-frontend',
-            SCHEDULE_PLUGIN_URL . 'includes/schedule-frontend.js',
-            [],
-            '1.0.1',
-            true
-        );
-        wp_localize_script('schedule-frontend', '_sbFrontendCfg', [
-            'ajaxUrl' => admin_url('admin-ajax.php'),
-            'nonce'   => wp_create_nonce('schedule_token_nonce'),
-            'appUrl'  => schedule_get_app_domain(),
-        ]);
-    }
-}
-add_action('wp_enqueue_scripts', 'schedule_enqueue_frontend_config');
+add_filter('wp_resource_hints', 'schedule_add_app_resource_hint', 10, 2);
 
 // ── Auto-update checker ───────────────────────────────────────────────────────
 // Modern approach (WP 5.8+): uses the "Update URI" plugin header.

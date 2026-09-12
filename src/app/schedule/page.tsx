@@ -51,17 +51,14 @@ const OrgModal = dynamic(() => import('@/components/OrgModal'), { ssr: false });
 import UserProfileMenu from '@/components/UserProfileMenu';
 const BusinessInfoModal = dynamic(() => import('@/components/BusinessInfoModal'), { ssr: false });
 const WPConnectWizard = dynamic(() => import('@/components/onboarding/WPConnectWizard'), { ssr: false });
-const MatchFinderPanel = dynamic(() => import('@/components/ai/MatchFinderPanel'), { ssr: false });
 const PrintScheduleModal = dynamic(() => import('@/components/PrintScheduleModal'), { ssr: false });
-import MatchFinderButton from '@/components/ai/MatchFinderButton';
-import { MatchFinderProvider } from '@/components/ai/MatchFinderProvider';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useOrgRealtime } from '@/hooks/useOrgRealtime';
 import { useEmbedRealtime } from '@/hooks/useEmbedRealtime';
 import { useSelectionsRealtime } from '@/hooks/useSelectionsRealtime';
 import { useTimezoneStore } from '@/lib/timezoneStore';
-import { isWorldCupPlaceholderTeamName, WORLD_CUP_SPORT_ID } from '@/lib/worldCup';
+import { WORLD_CUP_SPORT_ID } from '@/lib/worldCup';
 import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
@@ -465,8 +462,17 @@ export default function SchedulePage() {
     loadEmbedInstances();
     // Realtime (useEmbedRealtime) is the primary trigger for instant updates;
     // this slow poll is only a safety-net fallback for a dropped socket.
-    const id = setInterval(loadEmbedInstances, 60_000);
-    return () => clearInterval(id);
+    const refreshWhenVisible = () => {
+      if (!document.hidden) void loadEmbedInstances();
+    };
+    const id = setInterval(refreshWhenVisible, 600_000);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    window.addEventListener('online', refreshWhenVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+      window.removeEventListener('online', refreshWhenVisible);
+    };
   }, [loadEmbedInstances]);
 
   // ─── Rename embed instance ─────────────────────────────────────────────────
@@ -726,8 +732,18 @@ export default function SchedulePage() {
         .finally(() => { if (!snapshotCancelled) setSnapshotLoading(false); });
     };
     load(true);
-    const id = setInterval(() => load(false), 120_000);
-    return () => { snapshotCancelled = true; clearInterval(id); };
+    const refreshWhenVisible = () => {
+      if (!document.hidden) void load(false);
+    };
+    const id = setInterval(refreshWhenVisible, 300_000);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    window.addEventListener('online', refreshWhenVisible);
+    return () => {
+      snapshotCancelled = true;
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+      window.removeEventListener('online', refreshWhenVisible);
+    };
   }, [publishTarget]);
 
   // ─── Handle wp-callback redirect params ──────────────────────────────────
@@ -998,7 +1014,6 @@ export default function SchedulePage() {
   const [dragOverLeague, setDragOverLeague] = useState<string | null>(null);
   const [headerHeight, setHeaderHeight] = useState(116);
   const hasFetchedRef = useRef(false);
-  const worldCupLoadingRef = useRef(false);
   const previousTimezoneRef = useRef(selectedTimezone);
   const prevPreviewContentCountRef = useRef(0);
   const isSwitchingEmbedRef = useRef(false);
@@ -1133,7 +1148,8 @@ export default function SchedulePage() {
       }
 
       const data = await res.json();
-      const allEventsRaw = data.events ?? [];
+      const allEventsRaw = ((data.events ?? []) as MatchEvent[])
+        .filter((event) => event.sportId !== WORLD_CUP_SPORT_ID);
       
       // Build in-memory selection map from the latest store state, not this
       // async callback's closed-over `events`. A fetch that started before a
@@ -1191,7 +1207,7 @@ export default function SchedulePage() {
           }
           // Prefer snapshot (full event survives Supabase round-trip) over prev cache
           const eventData = sel.snapshot ?? prevById.get(id);
-          if (eventData) {
+          if (eventData && eventData.sportId !== WORLD_CUP_SPORT_ID) {
             preserved.push({ ...eventData, isSelected: sel.isSelected, isFeatured: sel.isFeatured, tags: sel.tags });
             preservedIds.add(id);
           }
@@ -1267,99 +1283,6 @@ export default function SchedulePage() {
     }
   }, [events, setEvents, setFetchStatuses]);
 
-  const loadWorldCupFixtures = useCallback(async (forceRefresh = false) => {
-    if (worldCupLoadingRef.current) return;
-
-    const currentEvents = useScheduleStore.getState().events;
-    const existingWorldCupEvents = currentEvents.filter((event) => event.sportId === WORLD_CUP_SPORT_ID);
-    const hasVerbosePlaceholders = existingWorldCupEvents.some((event) =>
-      (event.home !== 'TBD' && isWorldCupPlaceholderTeamName(event.home))
-      || Boolean(event.away && event.away !== 'TBD' && isWorldCupPlaceholderTeamName(event.away)),
-    );
-    if (!forceRefresh && existingWorldCupEvents.length >= 100 && !hasVerbosePlaceholders) return;
-
-    worldCupLoadingRef.current = true;
-    setFetchStatuses({
-      ...useScheduleStore.getState().fetchStatuses,
-      [WORLD_CUP_SPORT_ID]: { loading: true, error: null },
-    });
-
-    try {
-      const timeZone = useTimezoneStore.getState().timezone;
-      const res = await fetch(`/api/events?sportId=${encodeURIComponent(WORLD_CUP_SPORT_ID)}&scope=all&timeZone=${encodeURIComponent(timeZone)}`, {
-        cache: 'no-store',
-      });
-      if (!res.ok) throw new Error(`World Cup API error: ${res.status}`);
-
-      const data = await res.json();
-      const fixtures = (data.events ?? []) as MatchEvent[];
-      if (fixtures.length === 0) {
-        setFetchStatuses({
-          ...useScheduleStore.getState().fetchStatuses,
-          [WORLD_CUP_SPORT_ID]: { loading: false, error: null },
-        });
-        return;
-      }
-
-      const latestEvents = useScheduleStore.getState().events;
-      const latestWorldCupCount = latestEvents.filter((event) => event.sportId === WORLD_CUP_SPORT_ID).length;
-      if (data.complete === false && latestWorldCupCount >= fixtures.length) {
-        setFetchStatuses({
-          ...useScheduleStore.getState().fetchStatuses,
-          [WORLD_CUP_SPORT_ID]: { loading: false, error: null },
-        });
-        return;
-      }
-
-      const currentById = new Map(latestEvents.map((event) => [event.id, event]));
-      const savedSel = loadSelectionState(effectiveTargetRef.current)?.selections ?? {};
-      const nonWorldCupEvents = latestEvents.filter((event) => event.sportId !== WORLD_CUP_SPORT_ID);
-      const staleSavedWorldCupIds: string[] = [];
-      const mergedFixtures = fixtures.map((fixture) => {
-        const current = currentById.get(fixture.id);
-        const saved = savedSel[fixture.id];
-
-        if (current) {
-          if (saved && (saved.isSelected || saved.isFeatured || saved.tags.length > 0)
-              && !(current.isSelected || current.isFeatured || current.tags.length > 0)) {
-            staleSavedWorldCupIds.push(fixture.id);
-          }
-          return {
-            ...fixture,
-            isSelected: current.isSelected,
-            isFeatured: current.isFeatured,
-            tags: current.tags,
-          };
-        }
-        if (saved) return { ...fixture, ...saved };
-        return fixture;
-      });
-      if (staleSavedWorldCupIds.length > 0) {
-        console.warn('[SelectionSync] blocked stale saved World Cup selection during fixture merge', {
-          target: effectiveTargetRef.current || '(default)',
-          blockedCount: staleSavedWorldCupIds.length,
-          sample: staleSavedWorldCupIds.slice(0, 12),
-          localDirty: selectionDirtyRef.current,
-        });
-      }
-
-      setEvents([...nonWorldCupEvents, ...mergedFixtures]);
-      setFetchStatuses({
-        ...useScheduleStore.getState().fetchStatuses,
-        [WORLD_CUP_SPORT_ID]: { loading: false, error: null },
-      });
-      console.log(`[Schedule] Loaded ${mergedFixtures.length} World Cup fixtures for builder selection`);
-    } catch (err) {
-      console.error('[Schedule] World Cup fixture load failed:', err);
-      setFetchStatuses({
-        ...useScheduleStore.getState().fetchStatuses,
-        [WORLD_CUP_SPORT_ID]: { loading: false, error: 'Fetch failed' },
-      });
-    } finally {
-      worldCupLoadingRef.current = false;
-    }
-  }, [setEvents, setFetchStatuses]);
-
   // ─── Auto-fetch on mount ───────────────────────────────────────────────────
   useEffect(() => {
     if (!hasFetchedRef.current) {
@@ -1377,9 +1300,7 @@ export default function SchedulePage() {
         setPanelWidth(vw);
         widthRef.current = vw;
       }
-      void handleFetch().finally(() => {
-        void loadWorldCupFixtures();
-      });
+      void handleFetch();
       useFavoritesStore.getState().loadFromSupabase();
       // Retry syncing any locally stored custom events to Supabase (best-effort).
       syncLocalCustomEventsToSupabase()
@@ -1392,21 +1313,14 @@ export default function SchedulePage() {
       // NOTE: Supabase selection sync is handled by the isInitialEmbedRef effect
       // which fires when embedInstances load and fires with the correct embed key.
     }
-  }, [handleFetch, loadWorldCupFixtures, setEvents]);
+  }, [handleFetch, setEvents]);
 
   useEffect(() => {
     if (previousTimezoneRef.current === selectedTimezone) return;
     previousTimezoneRef.current = selectedTimezone;
     if (!hasFetchedRef.current) return;
-    void handleFetch(true).finally(() => {
-      void loadWorldCupFixtures(true);
-    });
-  }, [handleFetch, loadWorldCupFixtures, selectedTimezone]);
-
-  useEffect(() => {
-    if (activeSportFilter !== WORLD_CUP_SPORT_ID) return;
-    void loadWorldCupFixtures();
-  }, [activeSportFilter, loadWorldCupFixtures]);
+    void handleFetch(true);
+  }, [handleFetch, selectedTimezone]);
 
   // ─── Filtered events (sport filter + search) ──────────────────────────────
   const filteredEvents = useMemo(() => {
@@ -2468,7 +2382,6 @@ export default function SchedulePage() {
   }, [dateRange.end, dateRange.start, publishTarget, setDateRange, setEvents]);
 
   return (
-    <MatchFinderProvider>
     <div className="flex h-dvh bg-background text-foreground">
       {/* ── Mobile sidebar backdrop ───────────────────────────────────────────── */}
       {sidebarOpen && (
@@ -2679,9 +2592,6 @@ export default function SchedulePage() {
               <Plus className="w-3.5 h-3.5" /> <span className="phone-ls-hide">Add Custom Event</span>
             </Button>
 
-            <Separator orientation="vertical" className="h-5 hidden sm:block" />
-
-            <MatchFinderButton />
           </div>
         </header>
 
@@ -2696,7 +2606,7 @@ export default function SchedulePage() {
               </div>
             </div>
           )}
-          {events.length === 0 && !isFetching && hasFetchedRef.current && (
+          {events.length === 0 && !isFetching && hasFetchedRef.current && activeSportFilter !== WORLD_CUP_SPORT_ID && (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <div className="text-6xl mb-4">🏟️</div>
               <h2 className="text-xl font-semibold text-foreground mb-2">
@@ -2719,7 +2629,19 @@ export default function SchedulePage() {
             </div>
           )}
 
-          {filteredEvents.length === 0 && events.length > 0 && (
+          {filteredEvents.length === 0 && !isFetching && hasFetchedRef.current && activeSportFilter === WORLD_CUP_SPORT_ID && (
+            <div className="flex flex-col items-center justify-center h-full py-20 text-center">
+              <div className="text-6xl mb-4">🏆</div>
+              <h2 className="text-xl font-semibold text-foreground mb-2">
+                World Cup fixtures coming soon
+              </h2>
+              <p className="text-sm text-muted-foreground max-w-md">
+                The World Cup schedule will appear here when fixtures are available.
+              </p>
+            </div>
+          )}
+
+          {filteredEvents.length === 0 && events.length > 0 && activeSportFilter !== WORLD_CUP_SPORT_ID && (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <div className="text-4xl mb-3">🔍</div>
               <p className="text-sm text-muted-foreground">
@@ -3630,73 +3552,6 @@ export default function SchedulePage() {
         </div>
       )}
 
-      {/* AI Match Finder Panel */}
-      <MatchFinderPanel
-        events={events}
-        embedInstances={embedInstances}
-        publishTarget={publishTarget}
-        username={userUsername}
-        onAddMatches={(eventIds, embedTarget, aiRatings) => {
-          // ── Batch-select the chosen AI matches ──
-          const idSet = new Set(eventIds);
-
-          // If the target embed is different from the current one, switch first
-          if (embedTarget !== effectiveTargetRef.current) {
-            setPublishTarget(embedTarget);
-          }
-
-          // Select them in the store
-          handleBatchSetSelected(eventIds, true);
-
-          // Pin new leagues to the top of league order
-          const newSportIds = new Set<string>();
-          for (const ev of useScheduleStore.getState().events) {
-            if (idSet.has(ev.id)) newSportIds.add(ev.sportId);
-          }
-          if (newSportIds.size > 0) {
-            markSelectionDirty();
-            setLeagueOrder((prev) => {
-              const additions = Array.from(newSportIds).filter((id) => !prev.includes(id));
-              return additions.length > 0 ? [...additions, ...prev] : prev;
-            });
-          }
-
-          // Persist selection immediately — includes AI importance rating per event
-          const allEvents = useScheduleStore.getState().events;
-          const selections: SavedSelectionState['selections'] = {};
-          for (const e of allEvents) {
-            if (e.isSelected || e.isFeatured || e.tags.length > 0) {
-              selections[e.id] = {
-                isSelected: e.isSelected,
-                isFeatured: e.isFeatured,
-                tags: e.tags,
-                // Preserve existing aiImportance if already set
-                ...(aiRatings.has(e.id) ? { aiImportance: aiRatings.get(e.id) } : {}),
-              };
-            }
-          }
-          // Force-include AI-selected events with their importance rating
-          for (const eid of eventIds) {
-            if (!selections[eid]) {
-              selections[eid] = {
-                isSelected: true,
-                isFeatured: false,
-                tags: [],
-                aiImportance: aiRatings.get(eid),
-              };
-            } else if (aiRatings.has(eid) && !selections[eid].aiImportance) {
-              selections[eid] = { ...selections[eid], aiImportance: aiRatings.get(eid) };
-            }
-          }
-          saveSelectionToSupabase({
-            selections,
-            leagueOrder,
-            featuredLeagues: Object.fromEntries(featuredLeagues),
-            savedAt: Date.now(),
-          }, embedTarget || effectiveTargetRef.current);
-        }}
-      />
     </div>
-    </MatchFinderProvider>
   );
 }

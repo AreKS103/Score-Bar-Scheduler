@@ -13,7 +13,6 @@
  *       seo.php
  *       settings.php
  *       shortcode.php
- *       schedule-frontend.js
  *       banner.php
  *       banner-frontend.js
  *
@@ -51,7 +50,6 @@ const PLUGIN_FILES = [
   'includes/seo.php',
   'includes/settings.php',
   'includes/shortcode.php',
-  'includes/schedule-frontend.js',
   'includes/banner.php',
   'includes/banner-frontend.js',
   'includes/overflow-diagnostic.php',

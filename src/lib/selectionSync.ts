@@ -2,7 +2,6 @@ export interface SelectionEntry {
   isSelected: boolean;
   isFeatured: boolean;
   tags: string[];
-  aiImportance?: string;
   snapshot?: unknown;
 }
 

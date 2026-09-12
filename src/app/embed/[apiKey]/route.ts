@@ -16,7 +16,6 @@ import {
   resolveTypographySizes,
   SCHEDULE_TYPOGRAPHY_LIVE_JS,
 } from '@/lib/scheduleTypography';
-import { hasRefreshableSnapshotEvents, isRefreshableSnapshotEvent, refreshSnapshotEvents } from '@/lib/refreshSnapshotEvents';
 
 export const dynamic = 'force-dynamic';
 
@@ -97,28 +96,6 @@ function buildEmbedPollScript(applyContentBody: string): string {
 
 function buildEmptyEmbedRefreshScript(): string {
   return `<script>(function(){var RETRY=${EMPTY_EMBED_RETRY_MS};var JITTER=${EMBED_POLL_JITTER_MS};function reload(){location.reload();}function schedule(){setTimeout(function(){if(document.hidden){schedule();return;}reload();},RETRY+Math.floor(Math.random()*JITTER));}schedule();window.addEventListener('message',function(ev){if(ev.data&&ev.data.sbRefresh)reload();});})();</script>`;
-}
-
-function buildPublishedScheduleSerial(publishedAt: string, events: MatchEvent[]): string {
-  const refreshableRows = events.filter(isRefreshableSnapshotEvent);
-  if (refreshableRows.length === 0) return publishedAt;
-
-  const fingerprint = refreshableRows
-    .map((event) => [
-      event.id,
-      event.sourceEventId ?? '',
-      event.date,
-      event.time,
-      event.home,
-      event.away,
-      event.homeLogo ?? '',
-      event.awayLogo ?? '',
-      event.round,
-      event.status ?? '',
-    ].join('|'))
-    .join('~');
-  const hash = crypto.createHash('sha1').update(fingerprint).digest('hex').slice(0, 12);
-  return `${publishedAt || 'published'}:src:${hash}`;
 }
 
 function buildResizeScript(): string {
@@ -317,6 +294,8 @@ export async function GET(
   try {
   const { apiKey } = await params;
   const sp = Object.fromEntries(request.nextUrl.searchParams.entries());
+  const isPoll = sp._poll === '1';
+  const clientSerial = typeof sp._serial === 'string' ? sp._serial : '';
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -365,11 +344,13 @@ export async function GET(
 
   type EmbedInstRow = { embed_id?: string | null };
   type ScheduleRow = {
+    id: string;
     events_snapshot: unknown;
     league_order: unknown;
     featured_leagues: unknown;
     published_at?: string;
   };
+  type ScheduleIdentityRow = Pick<ScheduleRow, 'id' | 'published_at'>;
 
   const instPromise = widgetId
     ? supabase
@@ -383,20 +364,30 @@ export async function GET(
   // Optimistic schedule fetch using embedId from the URL — runs in parallel with
   // embed_instances lookup so we save one serial Supabase round-trip on cold loads.
   const optimisticSchedulePromise = embedId
-    ? supabase
-        .from('published_schedules')
-        .select('events_snapshot, league_order, featured_leagues, published_at')
-        .in('user_id', orgMemberIdsForWidget)
-        .eq('embed_target', embedId)
-        .order('published_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+    ? isPoll
+      ? supabase
+          .from('published_schedules')
+          .select('id, published_at')
+          .in('user_id', orgMemberIdsForWidget)
+          .eq('embed_target', embedId)
+          .order('published_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : supabase
+          .from('published_schedules')
+          .select('id, events_snapshot, league_order, featured_leagues, published_at')
+          .in('user_id', orgMemberIdsForWidget)
+          .eq('embed_target', embedId)
+          .order('published_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
     : Promise.resolve({ data: null as ScheduleRow | null });
 
-  const [{ data: inst }, { data: optimisticSchedule }] = await Promise.all([
+  const [{ data: inst }, { data: optimisticScheduleData }] = await Promise.all([
     instPromise,
     optimisticSchedulePromise,
   ]);
+  const optimisticSchedule = optimisticScheduleData as ScheduleRow | ScheduleIdentityRow | null;
 
   if (widgetId) {
     if (inst?.embed_id) {
@@ -407,30 +398,60 @@ export async function GET(
   }
 
   let schedule: ScheduleRow | null = null;
+  let scheduleIdentity: ScheduleIdentityRow | null = null;
   let scheduleAt = '';
 
   if (!widgetNotRegistered) {
     if (!scheduleTarget) {
       schedule = null;
     } else if (optimisticSchedule && scheduleTarget === embedId) {
-      schedule = optimisticSchedule;
-      scheduleAt = optimisticSchedule.published_at ?? '';
-    } else {
+      if (isPoll) {
+        scheduleIdentity = optimisticSchedule as ScheduleIdentityRow;
+      } else {
+        schedule = optimisticSchedule as ScheduleRow;
+      }
+    } else if (isPoll) {
       const { data } = await supabase
         .from('published_schedules')
-        .select('events_snapshot, league_order, featured_leagues, published_at')
+        .select('id, published_at')
         .in('user_id', orgMemberIdsForWidget)
         .eq('embed_target', scheduleTarget)
         .order('published_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      schedule = data;
-      if (data) scheduleAt = data.published_at ?? '';
+      scheduleIdentity = data as ScheduleIdentityRow | null;
+    } else {
+      const { data } = await supabase
+        .from('published_schedules')
+        .select('id, events_snapshot, league_order, featured_leagues, published_at')
+        .in('user_id', orgMemberIdsForWidget)
+        .eq('embed_target', scheduleTarget)
+        .order('published_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      schedule = data as ScheduleRow | null;
     }
   }
 
-  const isPoll = sp._poll === '1';
-  const clientSerial = typeof sp._serial === 'string' ? sp._serial : '';
+  if (isPoll && scheduleIdentity) {
+    scheduleAt = scheduleIdentity.published_at ?? '';
+    if (clientSerial === scheduleAt) {
+      return Response.json(
+        { serial: scheduleAt, unchanged: true, empty: false },
+        { headers: { 'Cache-Control': 'no-store' } },
+      );
+    }
+
+    const { data } = await supabase
+      .from('published_schedules')
+      .select('id, events_snapshot, league_order, featured_leagues, published_at')
+      .in('user_id', orgMemberIdsForWidget)
+      .eq('id', scheduleIdentity.id)
+      .maybeSingle();
+    schedule = data as ScheduleRow | null;
+  } else if (schedule) {
+    scheduleAt = schedule.published_at ?? '';
+  }
 
   if (!schedule) {
     if (isPoll) {
@@ -470,7 +491,7 @@ export async function GET(
     showDate:      sp.showDate   !== '0',
     showTime:      sp.showTime   !== '0',
     theme:         ['dark', 'light', 'auto'].includes(sp.theme) ? sp.theme : 'light',
-    accentColor:   sp.accent ? `#${sp.accent.replace(/^#/, '')}` : '#4b5563',
+    accentColor:   colorVal(sp.accent) || '#4b5563',
     fontSize:      ['sm', 'md', 'lg'].includes(sp.fontSize)      ? sp.fontSize      : 'md',
     logoSize:      sizeVal(sp.logoSize),
     headerSize:    sizeVal(sp.headerSize),
@@ -480,8 +501,8 @@ export async function GET(
     showSportTabs: sp.tabs !== '0',
     fontFamily:    ['system', 'serif', 'mono'].includes(sp.font) ? sp.font : 'system',
     hideLogos:     sp.hideLogos === '1',
-    bgColor:       sp.bg       ? `#${sp.bg.replace(/^#/, '')}` : '',
-    textColor:     sp.textColor ? `#${sp.textColor.replace(/^#/, '')}` : '',
+    bgColor:       colorVal(sp.bg),
+    textColor:     colorVal(sp.textColor),
     padding:       (() => { const n = parseInt(sp.padding ?? ''); return (!isNaN(n) && n >= 0 && n <= 80) ? String(n) : '12'; })(),
     tabStyle:      ['pill', 'underline', 'square'].includes(sp.tabStyle) ? sp.tabStyle  : 'pill',
     listStyle:     ['default', 'card'].includes(sp.listStyle)            ? sp.listStyle : 'default',
@@ -509,17 +530,8 @@ export async function GET(
   };
   opts.appUrl = `${request.nextUrl.protocol}//${request.nextUrl.host}`;
 
-  const snapshotEvents = (schedule.events_snapshot ?? []) as MatchEvent[];
-  const hasRefreshableEvents = hasRefreshableSnapshotEvents(snapshotEvents);
-  if (isPoll && !hasRefreshableEvents && clientSerial === scheduleAt) {
-    return Response.json(
-      { serial: scheduleAt, unchanged: true, empty: false },
-      { headers: { 'Cache-Control': 'no-store' } },
-    );
-  }
-
-  const events = await refreshSnapshotEvents(snapshotEvents, sp.timeZone);
-  const scheduleSerial = buildPublishedScheduleSerial(scheduleAt, events);
+  const events = (schedule.events_snapshot ?? []) as MatchEvent[];
+  const scheduleSerial = scheduleAt;
   const leagueOrder = (schedule.league_order ?? []) as string[];
   const featuredLeaguesObj = (schedule.featured_leagues ?? {}) as Record<string, string>;
   const featuredLeagues = new Map(Object.entries(featuredLeaguesObj));

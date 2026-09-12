@@ -1,4 +1,4 @@
-import { withSentryConfig } from '@sentry/nextjs';
+import { withSentryConfig } from '@sentry/nextjs/config';
 import withBundleAnalyzer from '@next/bundle-analyzer';
 import type { NextConfig } from 'next';
 import path from 'path';
@@ -45,7 +45,7 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https:",
               "font-src 'self' data:",
-              "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.sentry.io https://*.upstash.io https://site.api.espn.com https://cdn.espn.com https://sports.core.api.espn.com https://www.thesportsdb.com https://api.cloudflare.com",
+              "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.sentry.io https://site.api.espn.com https://cdn.espn.com https://sports.core.api.espn.com https://www.thesportsdb.com",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",

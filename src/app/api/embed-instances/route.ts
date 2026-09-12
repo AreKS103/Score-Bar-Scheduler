@@ -112,11 +112,15 @@ interface KeyRecord {
 }
 
 async function lookupKey(hash: string): Promise<KeyRecord | null> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('user_api_keys')
     .select('user_id, allowed_domains')
     .eq('key_hash', hash)
     .single();
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw new Error(error.message);
+  }
   return data ?? null;
 }
 
@@ -146,11 +150,12 @@ async function enforceDomainAllowlist(
 
   // Unpinned legacy key — pin it to the first host we see a beacon from.
   if (host) {
-    await supabase
+    const { error } = await supabase
       .from('user_api_keys')
       .update({ allowed_domains: [host] })
       .eq('key_hash', keyHash)
       .is('allowed_domains', null);
+    if (error) throw new Error(error.message);
   }
   return null;
 }
@@ -182,11 +187,12 @@ function isGeneratedDuplicateName(name: string, baseName: string): boolean {
 }
 
 async function getUniqueEmbedId(userId: string, desiredName: string, excludeId?: string): Promise<string> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('embed_instances')
     .select('id, embed_id')
     .eq('user_id', userId)
     .not('embed_id', 'is', null);
+  if (error) throw new Error(error.message);
 
   const usedNames = new Set(
     (data ?? [])
@@ -198,11 +204,30 @@ async function getUniqueEmbedId(userId: string, desiredName: string, excludeId?:
   return buildUniqueEmbedId(desiredName, usedNames);
 }
 
+async function getNextNumericEmbedId(userId: string): Promise<string> {
+  const { data, error } = await supabase
+    .from('embed_instances')
+    .select('embed_id')
+    .eq('user_id', userId);
+  if (error) throw new Error(error.message);
+
+  const maxNum = (data ?? [])
+    .map((row) => parseInt(row.embed_id ?? '', 10))
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .reduce((max, value) => Math.max(max, value), 0);
+
+  return String(maxNum + 1);
+}
+
+const WIDGET_LABEL_RETRY_LIMIT = 5;
+
 /** POST /api/embed-instances — called by beacon in embed HTML to register/refresh an instance */
 export async function POST(req: NextRequest) {
   try {
     const { apiKey, embedId, widgetId, pageUrl } = await req.json();
-    if (!apiKey) return NextResponse.json({ error: 'Missing apiKey' }, { status: 400, headers: corsHeaders });
+    if (typeof apiKey !== 'string' || !apiKey) {
+      return NextResponse.json({ error: 'Missing apiKey' }, { status: 400, headers: corsHeaders });
+    }
 
     const hash = resolveKeyHash(apiKey);
 
@@ -213,131 +238,166 @@ export async function POST(req: NextRequest) {
     const keyData = await lookupKey(hash);
     if (!keyData) return NextResponse.json({ error: 'Invalid key' }, { status: 401, headers: corsHeaders });
 
-    const safeUrl      = (pageUrl  || '').substring(0, 512);
+    const safeUrl      = typeof pageUrl === 'string' ? pageUrl.substring(0, 512) : '';
     const domainReject = await enforceDomainAllowlist(hash, keyData, safeUrl);
     if (domainReject) return domainReject;
 
     // instanceId = user-assigned embed name, or null if the widget has no name yet
-    const instanceId   = (embedId || '').trim() || null;
+    const instanceId   = typeof embedId === 'string'
+      ? embedId.trim().substring(0, 64) || null
+      : null;
     const safeWidgetId = sanitizeWidgetId(widgetId);
     const now          = new Date().toISOString();
     const uid          = keyData.user_id;
 
-    // Resolve org_id for the user (best-effort, nullable)
-    const orgId = await getUserOrgId(uid);
+    const { data: orgMembership, error: orgError } = await supabase
+      .from('organization_members')
+      .select('organization_id')
+      .eq('user_id', uid)
+      .eq('status', 'active')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (orgError) {
+      return NextResponse.json({ error: orgError.message }, { status: 500, headers: corsHeaders });
+    }
+    const orgId = orgMembership?.organization_id ?? null;
 
     if (safeWidgetId) {
       // ── Widget-based path (Elementor / platform with a stable widget ID) ──────
       // The widget_id column uniquely identifies a physical widget on a page.
-      // One row per widget — rename the label → UPDATE the row, never INSERT again.
+      // The upsert below is atomic once UNIQUE(user_id, widget_id) exists.
 
-      const { data: existing } = await supabase
+      const { data: existing, error: existingError } = await supabase
         .from('embed_instances')
         .select('id, embed_id, page_url, last_seen')
         .eq('user_id', uid)
         .eq('widget_id', safeWidgetId)
         .maybeSingle();
+      if (existingError) {
+        return NextResponse.json({ error: existingError.message }, { status: 500, headers: corsHeaders });
+      }
 
-      if (existing?.id) {
-        // ── Row already exists for this widget ──
-        const oldEmbedId = ((existing.embed_id as string | null) ?? '').trim();
-        // If the beacon sends no embedId keep the currently stored label;
-        // if it sends a name that's a rename operation.
-        const desiredEmbedId = instanceId ?? oldEmbedId;
-        let newEmbedId = desiredEmbedId;
+      const oldEmbedId = ((existing?.embed_id as string | null) ?? '').trim();
+      let newEmbedId = instanceId ?? oldEmbedId;
 
-        if (instanceId !== null && desiredEmbedId !== oldEmbedId) {
-          const { data: conflict } = await supabase
-            .from('embed_instances')
-            .select('id')
-            .eq('user_id', uid)
-            .eq('embed_id', desiredEmbedId)
-            .neq('id', existing.id)
-            .maybeSingle();
-
-          if (conflict?.id) {
-            newEmbedId = isGeneratedDuplicateName(oldEmbedId, desiredEmbedId)
-              ? oldEmbedId
-              : await getUniqueEmbedId(uid, desiredEmbedId, existing.id);
-          }
-        }
-
-        if (newEmbedId === oldEmbedId && !shouldRefreshLastSeen(existing.last_seen, existing.page_url, safeUrl)) {
-          return NextResponse.json({ ok: true, skipped: true }, { headers: corsHeaders });
-        }
-
-        const { error: updateErr } = await supabase
+      if (!newEmbedId) {
+        newEmbedId = await getNextNumericEmbedId(uid);
+      } else if (existing?.id && instanceId !== null && newEmbedId !== oldEmbedId) {
+        const { data: conflict, error: conflictError } = await supabase
           .from('embed_instances')
-          .update({ embed_id: newEmbedId, page_url: safeUrl, last_seen: now })
-          .eq('id', existing.id);
-        if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500, headers: corsHeaders });
-
-        // Cascade rename to published_schedules and user_selections
-        if (newEmbedId !== oldEmbedId) {
-          await Promise.all([
-            supabase
-              .from('published_schedules')
-              .update({ embed_target: newEmbedId })
-              .eq('user_id', uid)
-              .eq('embed_target', oldEmbedId),
-            supabase
-              .from('user_selections')
-              .update({ embed_target: newEmbedId })
-              .eq('user_id', uid)
-              .eq('embed_target', oldEmbedId),
-          ]);
+          .select('id')
+          .eq('user_id', uid)
+          .eq('embed_id', newEmbedId)
+          .neq('id', existing.id)
+          .maybeSingle();
+        if (conflictError) {
+          return NextResponse.json({ error: conflictError.message }, { status: 500, headers: corsHeaders });
         }
-      } else {
-        // ── No row for this widget yet — first-ever beacon from this widget ──
-        let newEmbedId: string;
-
-        if (instanceId !== null) {
-          // Named widget: if another physical widget already uses this label,
-          // this is usually an Elementor duplicate. Keep both widgets by giving
-          // the new row an inherited unique label: "Papi", "Papi 2", etc.
-          const { data: byEmbed } = await supabase
-            .from('embed_instances')
-            .select('id')
-            .eq('user_id', uid)
-            .eq('embed_id', instanceId)
-            .maybeSingle();
-
-          if (byEmbed?.id) {
-            newEmbedId = await getUniqueEmbedId(uid, instanceId);
-          } else {
-            newEmbedId = instanceId;
-          }
-        } else {
-          // Unnamed widget: assign the next sequential integer ("1", "2", …).
-          // Fetch all embed_ids for this user to determine the next number.
-          const { data: allRows } = await supabase
-            .from('embed_instances')
-            .select('embed_id')
-            .eq('user_id', uid);
-
-          const maxNum = (allRows ?? [])
-            .map(r => parseInt(r.embed_id ?? '', 10))
-            .filter(n => Number.isFinite(n) && n > 0)
-            .reduce((m, n) => Math.max(m, n), 0);
-
-          newEmbedId = String(maxNum + 1);
+        if (conflict?.id) {
+          newEmbedId = isGeneratedDuplicateName(oldEmbedId, newEmbedId)
+            ? oldEmbedId
+            : await getUniqueEmbedId(uid, newEmbedId, existing.id);
         }
+      }
 
-        const { error: insertErr } = await supabase
+      if (
+        existing?.id
+        && newEmbedId === oldEmbedId
+        && !shouldRefreshLastSeen(existing.last_seen, existing.page_url, safeUrl)
+      ) {
+        return NextResponse.json({ ok: true, skipped: true }, { headers: corsHeaders });
+      }
+
+      let savedEmbedId: string | null = null;
+      for (let attempt = 0; attempt < WIDGET_LABEL_RETRY_LIMIT; attempt++) {
+        const { data: saved, error: upsertError } = await supabase
           .from('embed_instances')
-          .insert({ user_id: uid, embed_id: newEmbedId, widget_id: safeWidgetId, page_url: safeUrl, last_seen: now, organization_id: orgId });
-        if (insertErr) return NextResponse.json({ error: insertErr.message }, { status: 500, headers: corsHeaders });
+          .upsert(
+            {
+              user_id: uid,
+              embed_id: newEmbedId,
+              widget_id: safeWidgetId,
+              page_url: safeUrl,
+              last_seen: now,
+              organization_id: orgId,
+            },
+            { onConflict: 'user_id,widget_id' },
+          )
+          .select('id, embed_id')
+          .single();
+
+        if (!upsertError) {
+          savedEmbedId = saved.embed_id;
+          break;
+        }
+
+        // The widget conflict itself is handled by ON CONFLICT. Retry only when
+        // a different widget won the unique label concurrently.
+        if (upsertError.code !== '23505') {
+          return NextResponse.json({ error: upsertError.message }, { status: 500, headers: corsHeaders });
+        }
+
+        const { data: labelOwner, error: labelOwnerError } = await supabase
+          .from('embed_instances')
+          .select('id, widget_id')
+          .eq('user_id', uid)
+          .eq('embed_id', newEmbedId)
+          .maybeSingle();
+        if (labelOwnerError) {
+          return NextResponse.json({ error: labelOwnerError.message }, { status: 500, headers: corsHeaders });
+        }
+        if (!labelOwner || labelOwner.widget_id === safeWidgetId) {
+          return NextResponse.json({ error: upsertError.message }, { status: 500, headers: corsHeaders });
+        }
+        if (attempt === WIDGET_LABEL_RETRY_LIMIT - 1) {
+          return NextResponse.json(
+            { error: 'Could not allocate a unique embed label' },
+            { status: 409, headers: corsHeaders },
+          );
+        }
+
+        newEmbedId = instanceId === null && !oldEmbedId
+          ? await getNextNumericEmbedId(uid)
+          : await getUniqueEmbedId(uid, instanceId ?? oldEmbedId, existing?.id);
+      }
+
+      if (savedEmbedId === null) {
+        return NextResponse.json({ error: 'Could not allocate a unique embed label' }, { status: 409, headers: corsHeaders });
+      }
+
+      // Cascade a true rename only after the widget row was saved.
+      if (existing?.id && savedEmbedId !== oldEmbedId) {
+        const [scheduleResult, selectionsResult] = await Promise.all([
+          supabase
+            .from('published_schedules')
+            .update({ embed_target: savedEmbedId })
+            .eq('user_id', uid)
+            .eq('embed_target', oldEmbedId),
+          supabase
+            .from('user_selections')
+            .update({ embed_target: savedEmbedId })
+            .eq('user_id', uid)
+            .eq('embed_target', oldEmbedId),
+        ]);
+        const cascadeError = scheduleResult.error ?? selectionsResult.error;
+        if (cascadeError) {
+          return NextResponse.json({ error: cascadeError.message }, { status: 500, headers: corsHeaders });
+        }
       }
     } else if (instanceId === null) {
       // ── Legacy unnamed shortcode with no widget ID ───────────────────────────
       // Postgres UNIQUE (user_id, embed_id) does NOT catch NULL duplicates —
       // handle with explicit UPDATE-or-INSERT.
-      const { data: existing } = await supabase
+      const { data: existing, error: existingError } = await supabase
         .from('embed_instances')
         .select('id, page_url, last_seen')
         .eq('user_id', uid)
         .is('embed_id', null)
         .maybeSingle();
+      if (existingError) {
+        return NextResponse.json({ error: existingError.message }, { status: 500, headers: corsHeaders });
+      }
 
       if (existing?.id) {
         if (!shouldRefreshLastSeen(existing.last_seen, existing.page_url, safeUrl)) {
@@ -357,12 +417,15 @@ export async function POST(req: NextRequest) {
       }
     } else {
       // ── Named shortcode with no widget ID — standard upsert ─────────────────
-      const { data: existing } = await supabase
+      const { data: existing, error: existingError } = await supabase
         .from('embed_instances')
         .select('id, page_url, last_seen')
         .eq('user_id', uid)
         .eq('embed_id', instanceId)
         .maybeSingle();
+      if (existingError) {
+        return NextResponse.json({ error: existingError.message }, { status: 500, headers: corsHeaders });
+      }
 
       if (existing?.id && !shouldRefreshLastSeen(existing.last_seen, existing.page_url, safeUrl)) {
         return NextResponse.json({ ok: true, skipped: true }, { headers: corsHeaders });
@@ -521,25 +584,33 @@ export async function GET(req: NextRequest) {
  *  Removes a single embed instance row for the authenticated user.
  *  Pass embedId=__null__ to delete the unnamed (embed_id IS NULL) row.
  *  Pass embedId=__all__ to delete ALL embed instances (used by WordPress uninstall).
- *  Auth: session cookie OR apiKey query param.
+ *  Auth: session cookie OR raw sb_* account key.
  */
 export async function DELETE(req: NextRequest) {
   const sessionCors = getSessionCorsHeaders(req);
 
-  // Support both session auth and API key auth (for WordPress uninstall),
-  // but bulk deletion (__all__) requires session auth to prevent a compromised
-  // API key from wiping all published schedules.
+  // Support session auth and raw account-key auth for server-to-server cleanup.
+  // A public 64-hex embed token is present in page HTML and can never DELETE.
   let userId: string;
   let authedViaApiKey = false;
   let authedWithRawKey = false;
   const apiKey = req.nextUrl.searchParams.get('apiKey');
   if (apiKey) {
-    // The raw sb_live_* key is only held by the account owner / WP admin panel;
-    // the public embed token (64-hex key_hash) appears in page HTML by design,
-    // so it gets strictly less privilege.
+    if (!apiKey.startsWith('sb_')) {
+      return NextResponse.json(
+        { error: 'DELETE requires the account API key or a dashboard session' },
+        { status: 403, headers: corsHeaders },
+      );
+    }
     authedWithRawKey = apiKey.startsWith('sb_');
     const hash = resolveKeyHash(apiKey);
-    const keyData = await lookupKey(hash);
+    let keyData: KeyRecord | null;
+    try {
+      keyData = await lookupKey(hash);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Key lookup failed';
+      return NextResponse.json({ error: message }, { status: 500, headers: corsHeaders });
+    }
     if (!keyData) return NextResponse.json({ error: 'Invalid key' }, { status: 401, headers: corsHeaders });
     if (isRateLimited(`del:${hash}`)) {
       return NextResponse.json({ error: 'Too many requests' }, { status: 429, headers: corsHeaders });
@@ -548,7 +619,8 @@ export async function DELETE(req: NextRequest) {
     authedViaApiKey = true;
   } else {
     const sessionClient = await createServerClient();
-    const { data: { user } } = await sessionClient.auth.getUser();
+    const { data: { user }, error } = await sessionClient.auth.getUser();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: sessionCors });
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: sessionCors });
     userId = user.id;
   }
@@ -557,38 +629,47 @@ export async function DELETE(req: NextRequest) {
   const safeWidgetId = sanitizeWidgetId(rawWidgetId);
   const rawId = req.nextUrl.searchParams.get('embedId');
 
-  const orgMemberIds = await getOrgMemberIds(userId);
   if (safeWidgetId) {
-    const { data: inst } = await supabase
+    const { data: inst, error: instanceError } = await supabase
       .from('embed_instances')
       .select('id, embed_id')
-      .in('user_id', orgMemberIds)
+      .eq('user_id', userId)
       .eq('widget_id', safeWidgetId)
       .maybeSingle();
+    if (instanceError) {
+      return NextResponse.json({ error: instanceError.message }, { status: 500, headers: apiKey ? corsHeaders : sessionCors });
+    }
     if (!inst) {
       // Nothing registered under this widgetId — treat as success
       return NextResponse.json({ ok: true }, { headers: apiKey ? corsHeaders : sessionCors });
     }
 
-    await supabase
+    const { error: deleteError } = await supabase
       .from('embed_instances')
       .delete()
-      .in('user_id', orgMemberIds)
+      .eq('user_id', userId)
       .eq('id', inst.id);
+    if (deleteError) {
+      return NextResponse.json({ error: deleteError.message }, { status: 500, headers: apiKey ? corsHeaders : sessionCors });
+    }
 
-    // Selections cascade only for trusted auth (session or raw key). A caller
-    // holding just the public embed token may unregister a widget row — the
-    // beacon recreates it on next pageview — but must not wipe saved picks.
+    // All callers here are trusted: session or raw account key.
     if (authedWithRawKey || !authedViaApiKey) {
       const selDeleteQuery = supabase
         .from('user_selections')
         .delete()
-        .in('user_id', orgMemberIds);
+        .eq('user_id', userId);
 
       if (inst.embed_id === null) {
-        await selDeleteQuery.is('embed_target', null);
+        const { error } = await selDeleteQuery.is('embed_target', null);
+        if (error) {
+          return NextResponse.json({ error: error.message }, { status: 500, headers: apiKey ? corsHeaders : sessionCors });
+        }
       } else {
-        await selDeleteQuery.eq('embed_target', inst.embed_id);
+        const { error } = await selDeleteQuery.eq('embed_target', inst.embed_id);
+        if (error) {
+          return NextResponse.json({ error: error.message }, { status: 500, headers: apiKey ? corsHeaders : sessionCors });
+        }
       }
     }
 
@@ -598,6 +679,8 @@ export async function DELETE(req: NextRequest) {
   if (rawId === null) {
     return NextResponse.json({ error: 'Missing embedId param' }, { status: 400, headers: apiKey ? corsHeaders : sessionCors });
   }
+
+  const orgMemberIds = await getOrgMemberIds(userId);
 
   // Deletes by embed name (or the unnamed row) are destructive to account
   // configuration — the public embed token alone is never enough.
@@ -616,9 +699,15 @@ export async function DELETE(req: NextRequest) {
     if (authedViaApiKey) {
       return NextResponse.json({ error: 'Session authentication required for bulk delete' }, { status: 403, headers: sessionCors });
     }
-    await supabase.from('embed_instances').delete().in('user_id', orgMemberIds);
-    await supabase.from('published_schedules').delete().in('user_id', orgMemberIds);
-    await supabase.from('user_selections').delete().in('user_id', orgMemberIds);
+    const results = await Promise.all([
+      supabase.from('embed_instances').delete().in('user_id', orgMemberIds),
+      supabase.from('published_schedules').delete().in('user_id', orgMemberIds),
+      supabase.from('user_selections').delete().in('user_id', orgMemberIds),
+    ]);
+    const error = results.find((result) => result.error)?.error;
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500, headers });
+    }
     return NextResponse.json({ ok: true }, { headers });
   }
 
@@ -631,19 +720,16 @@ export async function DELETE(req: NextRequest) {
     .delete()
     .in('user_id', orgMemberIds);
 
-  if (instanceId === null) {
-    await query.is('embed_id', null);
-  } else {
-    await query.eq('embed_id', instanceId);
+  const { error: deleteError } = instanceId === null
+    ? await query.is('embed_id', null)
+    : await query.eq('embed_id', instanceId);
+  if (deleteError) {
+    return NextResponse.json({ error: deleteError.message }, { status: 500, headers });
   }
 
   // NOTE: published_schedules is intentionally NOT cascade-deleted here.
-  // The MutationObserver (in shortcode.php / elementor-widget.php) fires this
-  // DELETE on Elementor re-renders (false positives). If we also deleted
-  // published_schedules the user would silently lose their published content,
-  // and the beacon would re-create embed_instances on next load — making the
-  // data disappear with no obvious trace. Published schedules must only be
-  // cleared via the explicit "Clear Schedule" button (/api/delete-schedule).
+  // Published schedules are managed separately through the explicit
+  // "Clear Schedule" action (/api/delete-schedule).
 
   // Also clean up saved user selections for this embed target so stale rows
   // don't accumulate in user_selections after the embed is removed.
@@ -652,10 +738,11 @@ export async function DELETE(req: NextRequest) {
     .delete()
     .in('user_id', orgMemberIds);
 
-  if (instanceId === null) {
-    await selDeleteQuery.is('embed_target', null);
-  } else {
-    await selDeleteQuery.eq('embed_target', instanceId);
+  const { error: selectionError } = instanceId === null
+    ? await selDeleteQuery.is('embed_target', null)
+    : await selDeleteQuery.eq('embed_target', instanceId);
+  if (selectionError) {
+    return NextResponse.json({ error: selectionError.message }, { status: 500, headers });
   }
 
   return NextResponse.json({ ok: true }, { headers });
