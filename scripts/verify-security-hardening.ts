@@ -32,7 +32,7 @@ async function postBeacon(apiKey: string, pageUrl: string) {
     headers: { 'Content-Type': 'application/json' },
     // Reuse the real widget identity so the successful-domain check is
     // idempotent and can never leave a probe row behind.
-    body: JSON.stringify({ apiKey, pageUrl, widgetId: 'dc8d77d', embedId: 'Schedule Page' }),
+    body: JSON.stringify({ apiKey, pageUrl, widgetId: '8629c89', embedId: 'Homepage' }),
   });
   return r.status;
 }
@@ -61,7 +61,7 @@ async function main() {
   console.log('5) public token cannot delete embeds:');
   const namedDelete = await fetch(`${APP}/api/embed-instances?embedId=${encodeURIComponent('Home Page')}&apiKey=${token}`, { method: 'DELETE' });
   check('DELETE embedId with public token → 403', namedDelete.status === 403, `(got ${namedDelete.status})`);
-  const widgetDelete = await fetch(`${APP}/api/embed-instances?widgetId=dc8d77d&apiKey=${token}`, { method: 'DELETE' });
+  const widgetDelete = await fetch(`${APP}/api/embed-instances?widgetId=8629c89&apiKey=${token}`, { method: 'DELETE' });
   check('DELETE widgetId with public token → 403', widgetDelete.status === 403, `(got ${widgetDelete.status})`);
 
   console.log('6) concurrent registration remains idempotent:');
