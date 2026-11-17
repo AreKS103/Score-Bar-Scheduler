@@ -383,13 +383,13 @@
       if (document.hidden) {
         stopRotation();
       } else {
-        load(true);
+        load(false);
         startRotation();
       }
     });
-    window.addEventListener('focus', function () { load(true); });
+    window.addEventListener('focus', function () { load(false); });
     window.addEventListener('pageshow', function () { load(false); });
-    window.addEventListener('online', function () { load(true); });
+    window.addEventListener('online', function () { load(false); });
     window.addEventListener('resize', measureLayout);
 
     if (banner.classList.contains('sb-reel-mode')) {
